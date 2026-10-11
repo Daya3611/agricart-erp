@@ -10,7 +10,7 @@ function isSafeInternalUrl(path: string): boolean {
   return true;
 }
 
-export function proxy(request: NextRequest) {
+export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Ignore static assets, images, API routes, and public files
@@ -115,3 +115,7 @@ export const config = {
     '/((?!_next/static|_next/image|favicon.ico).*)',
   ],
 };
+
+export default middleware;
+export { middleware as proxy };
+
