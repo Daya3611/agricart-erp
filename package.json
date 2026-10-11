@@ -6,12 +6,15 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
+    "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
     "bootstrap": "bun run src/lib/scripts/bootstrap.ts",
     "migrate": "bun run src/lib/scripts/migrate.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.9.0",
     "@hookform/resolvers": "^5.9.1",
+    "@opentelemetry/api": "^1.9.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "date-fns": "^4.4.0",
@@ -30,6 +33,7 @@
     "zod": "^4.6.5"
   },
   "devDependencies": {
+    "@opennextjs/cloudflare": "^1.20.10",
     "@tailwindcss/postcss": "^4.3.3",
     "@tailwindcss/turbopack": "^4",
     "@types/node": "^20",
@@ -37,7 +41,8 @@
     "@types/react-dom": "^19",
     "babel-plugin-react-compiler": "1.0.0",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "wrangler": "^4.149.0"
   },
   "packageManager": "bun@1.4.0",
   "ignoreScripts": [
