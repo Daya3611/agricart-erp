@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { SESSION_COOKIE_NAME, ROLE_COOKIE_NAME } from '@/lib/auth/session';
+import { SESSION_COOKIE_NAME, ROLE_COOKIE_NAME } from '@/lib/auth/constants';
 
 const PUBLIC_ROUTES = ['/login', '/forgot-password', '/reset-password', '/setup-password'];
 

@@ -3,9 +3,8 @@ import { adminAuth, adminDb, hasValidAdminCredentials } from '@/lib/firebase/adm
 import { fetchCollection, fetchDocument } from '@/lib/firebase/firestore';
 import { ERP_COLLECTIONS } from '@/lib/firebase/collections';
 import { UserProfile, UserRole } from '@/types';
-
-export const SESSION_COOKIE_NAME = 'agricart_session';
-export const ROLE_COOKIE_NAME = 'agricart_role';
+import { SESSION_COOKIE_NAME, ROLE_COOKIE_NAME } from './constants';
+export { SESSION_COOKIE_NAME, ROLE_COOKIE_NAME };
 
 function decodeJwtPayload(jwt: string): any {
   try {
