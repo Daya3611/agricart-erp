@@ -136,9 +136,9 @@ export default function ManagerDashboardPage() {
       {/* Quick Links */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <Link href="/manager/reports">
-          <div className="p-4 bg-white rounded-xl border border-slate-200/80 hover:border-purple-300 transition-all flex items-center justify-between shadow-2xs group">
+          <div className="p-4 bg-white rounded-2xl border border-slate-200/80 hover:border-purple-300 transition-all flex items-center justify-between shadow-2xs group">
             <div className="flex items-center gap-3">
-              <div className="p-2.5 bg-purple-50 text-purple-700 rounded-lg group-hover:bg-purple-100 transition-colors">
+              <div className="p-2.5 bg-purple-50 text-purple-700 rounded-full group-hover:bg-purple-100 transition-colors">
                 <FileText className="h-5 w-5" />
               </div>
               <div>
@@ -151,9 +151,9 @@ export default function ManagerDashboardPage() {
         </Link>
 
         <Link href="/manager/staff">
-          <div className="p-4 bg-white rounded-xl border border-slate-200/80 hover:border-purple-300 transition-all flex items-center justify-between shadow-2xs group">
+          <div className="p-4 bg-white rounded-2xl border border-slate-200/80 hover:border-purple-300 transition-all flex items-center justify-between shadow-2xs group">
             <div className="flex items-center gap-3">
-              <div className="p-2.5 bg-purple-50 text-purple-700 rounded-lg group-hover:bg-purple-100 transition-colors">
+              <div className="p-2.5 bg-purple-50 text-purple-700 rounded-full group-hover:bg-purple-100 transition-colors">
                 <Users className="h-5 w-5" />
               </div>
               <div>
@@ -166,9 +166,9 @@ export default function ManagerDashboardPage() {
         </Link>
 
         <Link href="/manager/analytics">
-          <div className="p-4 bg-white rounded-xl border border-slate-200/80 hover:border-purple-300 transition-all flex items-center justify-between shadow-2xs group">
+          <div className="p-4 bg-white rounded-2xl border border-slate-200/80 hover:border-purple-300 transition-all flex items-center justify-between shadow-2xs group">
             <div className="flex items-center gap-3">
-              <div className="p-2.5 bg-purple-50 text-purple-700 rounded-lg group-hover:bg-purple-100 transition-colors">
+              <div className="p-2.5 bg-purple-50 text-purple-700 rounded-full group-hover:bg-purple-100 transition-colors">
                 <TrendingUp className="h-5 w-5" />
               </div>
               <div>

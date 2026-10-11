@@ -134,7 +134,7 @@ export default function AdminReportsPage() {
                     <TableCell className="font-bold text-slate-900 whitespace-nowrap">
                       {r.reportDate}
                       {r.isLate && (
-                        <span className="ml-1 text-[10px] text-amber-700 font-bold bg-amber-100 px-1.5 py-0.5 rounded-md">
+                        <span className="ml-1 text-[10px] text-amber-700 font-bold bg-amber-100 px-2 py-0.5 rounded-full">
                           Late
                         </span>
                       )}

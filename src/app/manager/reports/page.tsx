@@ -88,6 +88,7 @@ export default function ManagerReportsPage() {
           <div className="flex flex-wrap items-center gap-3">
             <Input
               type="text"
+              pill
               placeholder="Search staff, ID, activities..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
@@ -97,7 +98,7 @@ export default function ManagerReportsPage() {
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-800"
+              className="h-10 rounded-full border border-slate-200/90 bg-white px-4 text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
             >
               <option value="all">All Statuses</option>
               <option value="submitted">Submitted (Awaiting Review)</option>

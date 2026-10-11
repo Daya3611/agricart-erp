@@ -79,7 +79,7 @@ export default function StaffReportHistoryPage() {
                   setStatusFilter(e.target.value);
                   setCurrentPage(1);
                 }}
-                className="h-9 rounded-xl border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-800"
+                className="h-9 rounded-full border border-slate-200 bg-white px-3.5 text-xs font-semibold text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
               >
                 <option value="all">All Statuses</option>
                 <option value="approved">Approved</option>
@@ -94,6 +94,7 @@ export default function StaffReportHistoryPage() {
               <span className="text-xs font-bold text-slate-600">From:</span>
               <Input
                 type="date"
+                pill
                 value={startDate}
                 onChange={(e) => {
                   setStartDate(e.target.value);
@@ -107,6 +108,7 @@ export default function StaffReportHistoryPage() {
               <span className="text-xs font-bold text-slate-600">To:</span>
               <Input
                 type="date"
+                pill
                 value={endDate}
                 onChange={(e) => {
                   setEndDate(e.target.value);
@@ -149,7 +151,9 @@ export default function StaffReportHistoryPage() {
           {loading ? (
             <div className="p-8 text-center text-xs text-slate-500">Loading history...</div>
           ) : paginatedReports.length === 0 ? (
-            <div className="p-8 text-center text-xs text-slate-500">No reports found matching your criteria.</div>
+            <div className="p-8 text-center text-xs text-slate-500 bg-slate-50/60 rounded-2xl border border-slate-100">
+              No reports found matching your criteria.
+            </div>
           ) : (
             <div className="space-y-4">
               <div className="overflow-x-auto">

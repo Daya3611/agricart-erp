@@ -260,14 +260,14 @@ export function StaffFormModal({
             </Select>
           </div>
 
-          <div>
+          {/* <div>
             <label className="font-bold text-slate-700 block mb-1">Joining Date</label>
             <Input
               type="date"
               value={joiningDate}
               onChange={(e) => setJoiningDate(e.target.value)}
             />
-          </div>
+          </div> */}
 
           {isEditing && (
             <div>

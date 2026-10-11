@@ -274,6 +274,7 @@ export default function AdminStaffManagementPage() {
               <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
               <Input
                 type="text"
+                pill
                 placeholder="Search by name, ID, or email..."
                 value={searchQuery}
                 onChange={(e) => {
@@ -291,7 +292,7 @@ export default function AdminStaffManagementPage() {
                   setSelectedRoleFilter(e.target.value);
                   setCurrentPage(1);
                 }}
-                className="h-9 rounded-xl border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-800"
+                className="h-9 rounded-full border border-slate-200/90 bg-white px-3.5 text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
               >
                 <option value="all">All Roles</option>
                 <option value="super_admin">Super Admin</option>
@@ -306,7 +307,7 @@ export default function AdminStaffManagementPage() {
                   setSelectedDeptFilter(e.target.value);
                   setCurrentPage(1);
                 }}
-                className="h-9 rounded-xl border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-800"
+                className="h-9 rounded-full border border-slate-200/90 bg-white px-3.5 text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
               >
                 <option value="all">All Departments</option>
                 {departments.map((d) => (
@@ -322,7 +323,7 @@ export default function AdminStaffManagementPage() {
                   setSelectedCenterFilter(e.target.value);
                   setCurrentPage(1);
                 }}
-                className="h-9 rounded-xl border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-800"
+                className="h-9 rounded-full border border-slate-200/90 bg-white px-3.5 text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
               >
                 <option value="all">All Centers</option>
                 {centers.map((c) => (
@@ -338,7 +339,7 @@ export default function AdminStaffManagementPage() {
                   setSelectedStatusFilter(e.target.value);
                   setCurrentPage(1);
                 }}
-                className="h-9 rounded-xl border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-800"
+                className="h-9 rounded-full border border-slate-200/90 bg-white px-3.5 text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
               >
                 <option value="all">All Statuses</option>
                 <option value="active">Active Only</option>

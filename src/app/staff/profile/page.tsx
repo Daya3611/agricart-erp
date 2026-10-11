@@ -201,10 +201,10 @@ export default function StaffProfilePage() {
               <span className="text-slate-500 font-medium block">Reporting Manager</span>
               <span className="font-bold text-slate-900">{user.reportingManagerName || 'Operations Head'}</span>
             </div>
-            <div>
+            {/* <div>
               <span className="text-slate-500 font-medium block">Official Joining Date</span>
               <span className="font-bold text-slate-900">{user.joiningDate}</span>
-            </div>
+            </div> */}
             <div>
               <span className="text-slate-500 font-medium block">Daily Reporting Deadline</span>
               <span className="font-bold text-emerald-700">07:00 PM Daily (Asia/Kolkata)</span>

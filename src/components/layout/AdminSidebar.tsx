@@ -15,10 +15,10 @@ import {
   Mail,
   ShieldCheck,
   Settings,
-  Sprout,
   LogOut,
   Shield,
 } from 'lucide-react';
+import Image from 'next/image';
 import { UserProfile, UserRole } from '@/types';
 import { cn } from '@/lib/utils/cn';
 
@@ -55,9 +55,16 @@ export function AdminSidebar({ user }: AdminSidebarProps) {
     <aside className="fixed inset-y-0 left-0 z-30 w-64 bg-white border-r border-slate-200/80 h-screen flex flex-col justify-between shadow-xs overflow-y-auto">
       <div>
         {/* Company Header */}
-        <div className="p-5 border-b border-slate-100 flex items-center gap-3 sticky top-0 bg-white/95 backdrop-blur-xs z-10">
-          <div className="h-10 w-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-bold shadow-md shadow-emerald-600/20">
-            <Sprout className="h-6 w-6" />
+        <div className="p-4 border-b border-slate-100 flex items-center gap-3 sticky top-0 bg-white/95 backdrop-blur-xs z-10">
+          <div className="relative h-11 w-11 shrink-0 rounded-xl bg-white border border-slate-200/80 p-1 flex items-center justify-center shadow-xs">
+            <Image
+              src="/logo.png"
+              alt="Agricart FPC Logo"
+              width={40}
+              height={40}
+              priority
+              className="h-full w-full object-contain"
+            />
           </div>
           <div>
             <h1 className="font-extrabold text-base text-slate-900 leading-tight tracking-tight">

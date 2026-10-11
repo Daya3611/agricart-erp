@@ -57,7 +57,7 @@ export default function AdminPendingReviewsPage() {
           {loading ? (
             <div className="p-8 text-center text-xs text-slate-500">Loading pending reviews...</div>
           ) : reports.length === 0 ? (
-            <div className="p-8 text-center text-xs text-emerald-800 font-bold bg-emerald-50 rounded-xl">
+            <div className="p-8 text-center text-xs text-emerald-800 font-bold bg-emerald-50 rounded-2xl border border-emerald-100">
               ✅ All clear! There are no pending report reviews in the queue.
             </div>
           ) : (

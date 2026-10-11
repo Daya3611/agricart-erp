@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import Image from 'next/image';
 import { Settings, Save, Clock, Mail, Shield, Sprout, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -141,24 +142,41 @@ export default function AdminSettingsPage() {
             </CardTitle>
             <CardDescription>Agricart FPC organizational profile details</CardDescription>
           </CardHeader>
-          <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
-            <div>
-              <label className="font-bold text-slate-700 block mb-1">Company Legal Name</label>
-              <Input
-                value={companyName}
-                onChange={(e) => setCompanyName(e.target.value)}
-                disabled={!isSuperAdmin}
-              />
+          <CardContent className="space-y-4 text-xs">
+            <div className="flex items-center gap-4 p-3 bg-slate-50/80 rounded-xl border border-slate-100">
+              <div className="relative h-14 w-14 shrink-0 bg-white rounded-xl border border-slate-200/80 p-1 flex items-center justify-center shadow-xs">
+                <Image
+                  src="/logo.png"
+                  alt="Agricart Official Logo"
+                  width={48}
+                  height={48}
+                  className="h-full w-full object-contain"
+                />
+              </div>
+              <div>
+                <p className="font-bold text-slate-900 text-sm">Official Organization Logo</p>
+                <p className="text-slate-500 text-xs">Agricart Farmers Producer Company Limited (/logo.png)</p>
+              </div>
             </div>
-            <div>
-              <label className="font-bold text-slate-700 block mb-1">Operating Timezone</label>
-              <Select
-                value={timezone}
-                onChange={(e) => setTimezone(e.target.value)}
-                disabled={!isSuperAdmin}
-              >
-                <option value="Asia/Kolkata">Asia/Kolkata (IST - UTC+05:30)</option>
-              </Select>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="font-bold text-slate-700 block mb-1">Company Legal Name</label>
+                <Input
+                  value={companyName}
+                  onChange={(e) => setCompanyName(e.target.value)}
+                  disabled={!isSuperAdmin}
+                />
+              </div>
+              <div>
+                <label className="font-bold text-slate-700 block mb-1">Operating Timezone</label>
+                <Select
+                  value={timezone}
+                  onChange={(e) => setTimezone(e.target.value)}
+                  disabled={!isSuperAdmin}
+                >
+                  <option value="Asia/Kolkata">Asia/Kolkata (IST - UTC+05:30)</option>
+                </Select>
+              </div>
             </div>
           </CardContent>
         </Card>

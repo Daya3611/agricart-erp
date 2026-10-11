@@ -1,8 +1,7 @@
 import React from 'react';
 import { redirect } from 'next/navigation';
 import { getServerSession } from '@/lib/auth/session';
-import { AdminSidebar } from '@/components/layout/AdminSidebar';
-import { Navbar } from '@/components/layout/Navbar';
+import { AppShell } from '@/components/layout/app-shell';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,18 +27,12 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 flex">
-      <AdminSidebar user={sessionUser} />
-      <div className="flex-1 flex flex-col min-w-0 ml-64 min-h-screen">
-        <Navbar
-          user={sessionUser}
-          title="Agricart Administrative Portal"
-          subtitle={`Administrator: ${sessionUser.fullName} (${sessionUser.role === 'super_admin' ? 'Super Admin' : 'Admin'})`}
-        />
-        <main className="flex-1 p-6 space-y-6">
-          {children}
-        </main>
-      </div>
-    </div>
+    <AppShell
+      user={sessionUser}
+      title="Agricart Administrative Portal"
+      subtitle={`Administrator: ${sessionUser.fullName} (${sessionUser.role === 'super_admin' ? 'Super Admin' : 'Admin'})`}
+    >
+      {children}
+    </AppShell>
   );
 }

@@ -226,9 +226,9 @@ export default function StaffDashboardPage() {
       {/* Quick Action Navigation Buttons */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <Link href="/staff/daily-report">
-          <div className="p-3.5 bg-white rounded-xl border border-slate-200/80 hover:border-emerald-300 transition-all flex items-center justify-between shadow-2xs group">
+          <div className="p-3.5 bg-white rounded-2xl border border-slate-200/80 hover:border-emerald-300 transition-all flex items-center justify-between shadow-2xs group">
             <div className="flex items-center gap-2.5">
-              <div className="p-2 bg-emerald-50 text-emerald-700 rounded-lg group-hover:bg-emerald-100 transition-colors">
+              <div className="p-2 bg-emerald-50 text-emerald-700 rounded-full group-hover:bg-emerald-100 transition-colors">
                 <PlusCircle className="h-4 w-4" />
               </div>
               <span className="text-xs font-bold text-slate-800">Submit Report</span>
@@ -238,9 +238,9 @@ export default function StaffDashboardPage() {
         </Link>
 
         <Link href="/staff/report-history">
-          <div className="p-3.5 bg-white rounded-xl border border-slate-200/80 hover:border-sky-300 transition-all flex items-center justify-between shadow-2xs group">
+          <div className="p-3.5 bg-white rounded-2xl border border-slate-200/80 hover:border-sky-300 transition-all flex items-center justify-between shadow-2xs group">
             <div className="flex items-center gap-2.5">
-              <div className="p-2 bg-sky-50 text-sky-700 rounded-lg group-hover:bg-sky-100 transition-colors">
+              <div className="p-2 bg-sky-50 text-sky-700 rounded-full group-hover:bg-sky-100 transition-colors">
                 <History className="h-4 w-4" />
               </div>
               <span className="text-xs font-bold text-slate-800">My Reports</span>
@@ -250,9 +250,9 @@ export default function StaffDashboardPage() {
         </Link>
 
         <Link href="/staff/corrections">
-          <div className="p-3.5 bg-white rounded-xl border border-slate-200/80 hover:border-rose-300 transition-all flex items-center justify-between shadow-2xs group">
+          <div className="p-3.5 bg-white rounded-2xl border border-slate-200/80 hover:border-rose-300 transition-all flex items-center justify-between shadow-2xs group">
             <div className="flex items-center gap-2.5">
-              <div className="p-2 bg-rose-50 text-rose-700 rounded-lg group-hover:bg-rose-100 transition-colors">
+              <div className="p-2 bg-rose-50 text-rose-700 rounded-full group-hover:bg-rose-100 transition-colors">
                 <AlertCircle className="h-4 w-4" />
               </div>
               <div>
@@ -265,9 +265,9 @@ export default function StaffDashboardPage() {
         </Link>
 
         <Link href="/staff/profile">
-          <div className="p-3.5 bg-white rounded-xl border border-slate-200/80 hover:border-purple-300 transition-all flex items-center justify-between shadow-2xs group">
+          <div className="p-3.5 bg-white rounded-2xl border border-slate-200/80 hover:border-purple-300 transition-all flex items-center justify-between shadow-2xs group">
             <div className="flex items-center gap-2.5">
-              <div className="p-2 bg-purple-50 text-purple-700 rounded-lg group-hover:bg-purple-100 transition-colors">
+              <div className="p-2 bg-purple-50 text-purple-700 rounded-full group-hover:bg-purple-100 transition-colors">
                 <User className="h-4 w-4" />
               </div>
               <span className="text-xs font-bold text-slate-800">My Profile</span>
@@ -382,7 +382,7 @@ export default function StaffDashboardPage() {
               {reports.slice(0, 5).map((rep) => (
                 <div
                   key={rep.id}
-                  className="p-4 bg-slate-50/80 rounded-xl border border-slate-200/80 flex flex-wrap items-center justify-between gap-3 hover:border-emerald-300 transition-all"
+                  className="p-4 bg-slate-50/80 rounded-2xl border border-slate-200/80 flex flex-wrap items-center justify-between gap-3 hover:border-emerald-300 transition-all"
                 >
                   <div className="space-y-1 max-w-lg">
                     <div className="flex items-center gap-2">

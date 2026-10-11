@@ -244,6 +244,7 @@ export default function AdminCentersPage() {
             <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
             <Input
               type="text"
+              pill
               placeholder="Search by name, code, address, or facility type..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
@@ -256,7 +257,7 @@ export default function AdminCentersPage() {
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value as any)}
-              className="h-9 rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-800"
+              className="h-9 rounded-full border border-slate-200/90 bg-white px-3.5 text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
             >
               <option value="all">All ({centers.length})</option>
               <option value="active">Operational ({centers.filter((c) => c.active).length})</option>

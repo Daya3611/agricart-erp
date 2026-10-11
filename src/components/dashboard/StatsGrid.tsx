@@ -85,7 +85,7 @@ export function StatsGrid({ stats }: StatsGridProps) {
             <CardContent className="p-4 flex flex-col justify-between h-full">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">{card.title}</span>
-                <div className={`p-2 rounded-xl border ${card.color}`}>
+                <div className={`p-2 rounded-2xl border ${card.color}`}>
                   <Icon className="h-4 w-4" />
                 </div>
               </div>

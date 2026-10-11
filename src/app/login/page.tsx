@@ -2,7 +2,8 @@
 
 import React, { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Sprout, Lock, Mail, ArrowRight, AlertTriangle } from 'lucide-react';
+import Image from 'next/image';
+import { Lock, Mail, ArrowRight, AlertTriangle } from 'lucide-react';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { auth } from '@/lib/firebase/client';
 import { Button } from '@/components/ui/button';
@@ -114,16 +115,25 @@ function LoginFormContent() {
     <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
       <div className="w-full max-w-md space-y-6">
         {/* Branding Header */}
-        <div className="text-center space-y-2">
-          <div className="inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-600 text-white shadow-lg shadow-emerald-600/20 mb-2">
-            <Sprout className="h-8 w-8" />
+        <div className="text-center space-y-3">
+          <div className="relative mx-auto h-24 w-24 sm:h-28 sm:w-28 drop-shadow-sm">
+            <Image
+              src="/logo.png"
+              alt="Agricart Farmers Producer Company Limited"
+              width={112}
+              height={112}
+              priority
+              className="h-full w-full object-contain"
+            />
           </div>
-          <h1 className="text-2xl font-black tracking-tight text-slate-900">
-            AGRICART FPC
-          </h1>
-          <p className="text-xs font-semibold uppercase tracking-wider text-emerald-700">
-            Enterprise ERP & Management Portal
-          </p>
+          <div>
+            <h1 className="text-2xl font-black tracking-tight text-slate-900">
+              AGRICART FPC
+            </h1>
+            <p className="text-xs font-semibold uppercase tracking-wider text-emerald-700">
+              Enterprise ERP & Management Portal
+            </p>
+          </div>
         </div>
 
         {/* Login Form Card */}
@@ -191,7 +201,7 @@ function LoginFormContent() {
         {/* Footer info */}
         <div className="text-center text-xs text-slate-500 space-y-1">
           <p className="font-semibold text-slate-700">Agricart Farmers Producer Company Ltd</p>
-          <p>ISO Certified Producer Company | Maharashtra, India</p>
+
         </div>
       </div>
     </div>

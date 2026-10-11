@@ -45,6 +45,7 @@ export function FilterToolbar({
         <div>
           <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Date Range</label>
           <Select
+            pill
             value={filters.datePreset || 'today'}
             onChange={(e) => handleChange('datePreset', e.target.value)}
           >
@@ -61,6 +62,7 @@ export function FilterToolbar({
         <div>
           <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Department</label>
           <Select
+            pill
             value={filters.departmentId || ''}
             onChange={(e) => handleChange('departmentId', e.target.value)}
           >
@@ -77,6 +79,7 @@ export function FilterToolbar({
         <div>
           <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Center / Location</label>
           <Select
+            pill
             value={filters.centerId || ''}
             onChange={(e) => handleChange('centerId', e.target.value)}
           >
@@ -93,6 +96,7 @@ export function FilterToolbar({
         <div>
           <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Report Status</label>
           <Select
+            pill
             value={filters.status || 'all'}
             onChange={(e) => handleChange('status', e.target.value)}
           >
@@ -113,6 +117,7 @@ export function FilterToolbar({
             <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
             <Input
               type="text"
+              pill
               placeholder="Search by staff name, employee ID, or activity..."
               value={filters.searchQuery || ''}
               onChange={(e) => handleChange('searchQuery', e.target.value)}

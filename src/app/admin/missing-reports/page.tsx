@@ -89,7 +89,7 @@ export default function AdminMissingReportsPage() {
       </div>
 
       {cronFeedback && (
-        <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl text-xs font-bold text-emerald-900 flex items-center gap-2">
+        <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl text-xs font-bold text-emerald-900 flex items-center gap-2">
           <CheckCircle2 className="h-4 w-4 text-emerald-600" /> {cronFeedback}
         </div>
       )}
@@ -107,7 +107,7 @@ export default function AdminMissingReportsPage() {
           {loading ? (
             <div className="p-8 text-center text-xs text-slate-500">Checking missing reports...</div>
           ) : missingStaff.length === 0 ? (
-            <div className="p-8 text-center text-xs font-bold text-emerald-800 bg-emerald-50 rounded-xl">
+            <div className="p-8 text-center text-xs font-bold text-emerald-800 bg-emerald-50 rounded-2xl border border-emerald-100">
               🎉 All active field staff have submitted their daily activity reports for today!
             </div>
           ) : (

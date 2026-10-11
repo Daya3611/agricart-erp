@@ -136,9 +136,9 @@ export default function AdminDashboardPage() {
       {/* Quick Action Navigation Shortcuts */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <Link href="/admin/pending-reviews">
-          <div className="p-3.5 bg-white rounded-xl border border-slate-200/80 hover:border-sky-300 transition-all flex items-center justify-between shadow-2xs group">
+          <div className="p-3.5 bg-white rounded-2xl border border-slate-200/80 hover:border-sky-300 transition-all flex items-center justify-between shadow-2xs group">
             <div className="flex items-center gap-2.5">
-              <div className="p-2 bg-sky-50 text-sky-700 rounded-lg group-hover:bg-sky-100 transition-colors">
+              <div className="p-2 bg-sky-50 text-sky-700 rounded-full group-hover:bg-sky-100 transition-colors">
                 <Clock className="h-4 w-4" />
               </div>
               <div>
@@ -151,9 +151,9 @@ export default function AdminDashboardPage() {
         </Link>
 
         <Link href="/admin/missing-reports">
-          <div className="p-3.5 bg-white rounded-xl border border-slate-200/80 hover:border-amber-300 transition-all flex items-center justify-between shadow-2xs group">
+          <div className="p-3.5 bg-white rounded-2xl border border-slate-200/80 hover:border-amber-300 transition-all flex items-center justify-between shadow-2xs group">
             <div className="flex items-center gap-2.5">
-              <div className="p-2 bg-amber-50 text-amber-700 rounded-lg group-hover:bg-amber-100 transition-colors">
+              <div className="p-2 bg-amber-50 text-amber-700 rounded-full group-hover:bg-amber-100 transition-colors">
                 <AlertTriangle className="h-4 w-4" />
               </div>
               <div>
@@ -166,9 +166,9 @@ export default function AdminDashboardPage() {
         </Link>
 
         <Link href="/admin/staff">
-          <div className="p-3.5 bg-white rounded-xl border border-slate-200/80 hover:border-emerald-300 transition-all flex items-center justify-between shadow-2xs group">
+          <div className="p-3.5 bg-white rounded-2xl border border-slate-200/80 hover:border-emerald-300 transition-all flex items-center justify-between shadow-2xs group">
             <div className="flex items-center gap-2.5">
-              <div className="p-2 bg-emerald-50 text-emerald-700 rounded-lg group-hover:bg-emerald-100 transition-colors">
+              <div className="p-2 bg-emerald-50 text-emerald-700 rounded-full group-hover:bg-emerald-100 transition-colors">
                 <Users className="h-4 w-4" />
               </div>
               <div>
@@ -181,9 +181,9 @@ export default function AdminDashboardPage() {
         </Link>
 
         <Link href="/admin/reports">
-          <div className="p-3.5 bg-white rounded-xl border border-slate-200/80 hover:border-purple-300 transition-all flex items-center justify-between shadow-2xs group">
+          <div className="p-3.5 bg-white rounded-2xl border border-slate-200/80 hover:border-purple-300 transition-all flex items-center justify-between shadow-2xs group">
             <div className="flex items-center gap-2.5">
-              <div className="p-2 bg-purple-50 text-purple-700 rounded-lg group-hover:bg-purple-100 transition-colors">
+              <div className="p-2 bg-purple-50 text-purple-700 rounded-full group-hover:bg-purple-100 transition-colors">
                 <Building2 className="h-4 w-4" />
               </div>
               <div>

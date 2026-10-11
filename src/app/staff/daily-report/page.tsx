@@ -339,18 +339,18 @@ function DailyReportFormContent() {
             <CardDescription>Upload real photos/videos to Firebase Cloud Storage</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4 text-xs">
-            <div className="p-4 bg-emerald-50/50 rounded-xl border border-emerald-100 space-y-3">
+            <div className="p-5 bg-emerald-50/40 rounded-2xl border-2 border-dashed border-emerald-300/80 space-y-3">
               <label className="font-bold text-slate-800 block">Add Photo or Video Attachment</label>
               <Input
                 type="text"
                 placeholder="Optional Caption for attachment (e.g. Onion Crate Moisture Test at Dindori)"
                 value={uploadCaption}
                 onChange={(e) => setUploadCaption(e.target.value)}
-                className="bg-white"
+                className="bg-white rounded-xl"
               />
 
               <div className="flex items-center gap-3">
-                <label className="cursor-pointer inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-4 py-2 rounded-xl transition-all shadow-2xs">
+                <label className="cursor-pointer inline-flex items-center gap-2 bg-emerald-700 hover:bg-emerald-800 text-white font-bold px-5 py-2.5 rounded-full transition-all shadow-xs">
                   <Upload className="h-4 w-4" />
                   <span>{uploading ? 'Uploading to Firebase Storage...' : 'Choose Photos / Videos'}</span>
                   <input
@@ -373,13 +373,14 @@ function DailyReportFormContent() {
                   {attachments.map((att) => (
                     <div
                       key={att.id}
-                      className="relative rounded-xl border border-slate-200 bg-white p-2.5 space-y-1.5 shadow-2xs"
+                      className="relative rounded-2xl border border-slate-200 bg-white p-3 space-y-1.5 shadow-2xs"
                     >
                       <div className="flex items-center justify-between text-[11px] font-bold text-slate-800">
                         <span className="truncate">{att.originalFilename}</span>
                         <button
+                          type="button"
                           onClick={() => handleRemoveAttachment(att.id)}
-                          className="text-rose-600 hover:bg-rose-50 p-1 rounded-md"
+                          className="text-rose-600 hover:bg-rose-50 p-1.5 rounded-full transition-colors"
                         >
                           <Trash2 className="h-3.5 w-3.5" />
                         </button>
