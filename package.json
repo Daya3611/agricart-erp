@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
+    "deploy:build": "opennextjs-cloudflare build",
     "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
     "bootstrap": "bun run src/lib/scripts/bootstrap.ts",
     "migrate": "bun run src/lib/scripts/migrate.ts"
