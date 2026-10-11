@@ -3,6 +3,8 @@ import { getServerSession } from '@/lib/auth/session';
 import { adminStorage, adminDb } from '@/lib/firebase/admin';
 import { ERP_COLLECTIONS } from '@/lib/firebase/collections';
 
+export const dynamic = 'force-dynamic';
+
 export async function POST(req: Request) {
   try {
     const sessionUser = await getServerSession();

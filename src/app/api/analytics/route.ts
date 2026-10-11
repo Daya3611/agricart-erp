@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { requireAuthenticatedUser } from '@/lib/auth/permissions';
 import { getDashboardStats } from '@/lib/services/report-service';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET() {
   try {
     const sessionUser = await requireAuthenticatedUser();

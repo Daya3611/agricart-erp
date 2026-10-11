@@ -7,6 +7,8 @@ import { sendEmail } from '@/lib/email/resend';
 import { getReportReviewStatusEmail } from '@/lib/email/templates';
 import { DailyReport } from '@/types';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const user = await requireAuthenticatedUser();
