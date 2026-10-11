@@ -15,10 +15,12 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Agricart FPC - Activity Reporting & Operations ERP",
   description: "Enterprise ERP and activity reporting portal for Agricart Farmers Producer Company Limited",
+  manifest: "/manifest.json",
   icons: {
     icon: "/logo.png",
     shortcut: "/logo.png",
     apple: "/logo.png",
+
   },
 };
 
