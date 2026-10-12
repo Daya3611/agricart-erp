@@ -1,0 +1,51 @@
+{
+  "packageId": "in.agricartfpc.erp.twa",
+  "host": "erp.agricartfpc.in",
+  "name": "Agricart ERP",
+  "launcherName": "Agricart ERP",
+  "display": "standalone",
+  "themeColor": "#166534",
+  "themeColorDark": "#000000",
+  "navigationColor": "#000000",
+  "navigationColorDark": "#000000",
+  "navigationDividerColor": "#000000",
+  "navigationDividerColorDark": "#000000",
+  "backgroundColor": "#F8FAF8",
+  "enableNotifications": true,
+  "startUrl": "/",
+  "iconUrl": "https://erp.agricartfpc.in/icons/icon-512.png",
+  "maskableIconUrl": "https://erp.agricartfpc.in/icons/icon-maskable-512.png",
+  "splashScreenFadeOutDuration": 300,
+  "signingKey": {
+    "path": "/home/daya/Downloads/___REDACTED___ - Google Play package/signing.keystore",
+    "alias": "my-key-alias"
+  },
+  "appVersionName": "2",
+  "appVersionCode": 2,
+  "shortcuts": [],
+  "generatorApp": "bubblewrap-cli",
+  "webManifestUrl": "https://erp.agricartfpc.in/manifest.json",
+  "fallbackType": "customtabs",
+  "features": {
+    "locationDelegation": {
+      "enabled": true
+    }
+  },
+  "alphaDependencies": {
+    "enabled": false
+  },
+  "enableSiteSettingsShortcut": true,
+  "isChromeOSOnly": false,
+  "isMetaQuest": false,
+  "fullScopeUrl": "https://erp.agricartfpc.in/",
+  "minSdkVersion": 21,
+  "orientation": "any",
+  "fingerprints": [],
+  "additionalTrustedOrigins": [],
+  "retainedBundles": [],
+  "protocolHandlers": [],
+  "fileHandlers": [],
+  "launchHandlerClientMode": "",
+  "displayOverride": [],
+  "appVersion": "2"
+}
