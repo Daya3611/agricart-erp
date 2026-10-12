@@ -170,7 +170,7 @@ export default function ManagerLeavesPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Staff Member</TableHead>
+                  <TableHead>Staff</TableHead>
                   <TableHead>Leave Type</TableHead>
                   <TableHead>Dates</TableHead>
                   <TableHead>Duration</TableHead>

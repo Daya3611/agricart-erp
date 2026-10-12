@@ -119,7 +119,7 @@ export default function AdminDashboardPage() {
         <div className="flex items-center gap-2">
           <Link href="/admin/staff">
             <Button size="sm" className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold border-0 shadow-sm">
-              <Plus className="h-4 w-4 mr-1" /> Add Staff Member
+              <Plus className="h-4 w-4 mr-1" /> Add Staff
             </Button>
           </Link>
           <Button
@@ -237,7 +237,7 @@ export default function AdminDashboardPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Date</TableHead>
-                  <TableHead>Staff Member</TableHead>
+                  <TableHead>Staff</TableHead>
                   <TableHead>Department</TableHead>
                   <TableHead>Center / Location</TableHead>
                   <TableHead>Status</TableHead>

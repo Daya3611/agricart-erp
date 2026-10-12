@@ -39,7 +39,7 @@ export default function ManagerStaffPage() {
           <Users className="h-6 w-6 text-purple-600" /> Assigned Department Staff
         </h1>
         <p className="text-xs text-slate-500 font-medium">
-          View active field staff members and officers assigned to your department and procurement centers.
+          View active field Staffs and officers assigned to your department and procurement centers.
         </p>
       </div>
 
@@ -72,7 +72,7 @@ export default function ManagerStaffPage() {
           {loading ? (
             <div className="p-8 text-center text-xs text-slate-500">Loading department staff...</div>
           ) : filteredStaff.length === 0 ? (
-            <div className="p-8 text-center text-xs text-slate-500">No staff members found matching criteria.</div>
+            <div className="p-8 text-center text-xs text-slate-500">No Staffs found matching criteria.</div>
           ) : (
             <Table>
               <TableHeader>

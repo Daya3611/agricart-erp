@@ -8,7 +8,7 @@ export async function GET() {
   try {
     const sessionUser = await requireAuthenticatedUser();
     if (sessionUser.role === 'staff') {
-      return NextResponse.json({ success: false, error: 'FORBIDDEN: Staff members cannot access administrative analytics.' }, { status: 403 });
+      return NextResponse.json({ success: false, error: 'FORBIDDEN: Staffs cannot access administrative analytics.' }, { status: 403 });
     }
 
     const params = sessionUser.role === 'manager' && sessionUser.departmentId ? { departmentId: sessionUser.departmentId } : undefined;

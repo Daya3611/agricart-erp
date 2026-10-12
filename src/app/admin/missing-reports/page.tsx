@@ -99,7 +99,7 @@ export default function AdminMissingReportsPage() {
             <AlertTriangle className="h-6 w-6 text-amber-600" /> Missing & Overdue Daily Reports
           </h1>
           <p className="text-xs text-slate-500 font-medium">
-            Active staff members expected to report today who have not submitted their daily activity report.
+            Active Staffs expected to report today who have not submitted their daily activity report.
           </p>
         </div>
 
@@ -186,7 +186,7 @@ export default function AdminMissingReportsPage() {
               Staff on Approved Leave Today ({onLeaveStaff.length})
             </CardTitle>
             <CardDescription className="text-sky-800">
-              These staff members have authorized approved leave for today and are exempt from daily report submission.
+              These Staffs have authorized approved leave for today and are exempt from daily report submission.
             </CardDescription>
           </CardHeader>
           <CardContent>

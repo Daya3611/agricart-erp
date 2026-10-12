@@ -21,7 +21,7 @@ import { calculateLeaveDays } from '@/lib/utils/leave';
 export { calculateLeaveDays };
 
 /**
- * Checks for overlapping approved or pending leaves for the same staff member.
+ * Checks for overlapping approved or pending leaves for the same Staff.
  */
 export async function checkLeaveOverlap(
   staffUid: string,
@@ -77,7 +77,7 @@ export async function createLeaveRecord(
 
     // 2. Authorization check
     if (actor.role === 'staff' && actor.uid !== staffUid) {
-      return { success: false, error: 'FORBIDDEN: Staff members cannot create leaves for other employees.' };
+      return { success: false, error: 'FORBIDDEN: Staffs cannot create leaves for other employees.' };
     }
     if (actor.role === 'manager' && actor.uid !== staffUid) {
       const isDeptMatch = actor.departmentId && targetUser.departmentId === actor.departmentId;

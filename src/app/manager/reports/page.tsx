@@ -130,7 +130,7 @@ export default function ManagerReportsPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Date</TableHead>
-                  <TableHead>Staff Member</TableHead>
+                  <TableHead>Staff</TableHead>
                   <TableHead>Work Location</TableHead>
                   <TableHead>Farmers / Meetings</TableHead>
                   <TableHead>Evidence</TableHead>

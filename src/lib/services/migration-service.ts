@@ -64,7 +64,7 @@ export async function migrateToErpCollections(): Promise<MigrationReport> {
         const employeeProfile = {
           uid: targetUid,
           employeeId: empId,
-          fullName: data.fullName || data.name || data.displayName || 'Staff Member',
+          fullName: data.fullName || data.name || data.displayName || 'Staff',
           email: (data.email || '').toLowerCase().trim(),
           phone: data.phone || data.mobile || '',
           designation: data.designation || 'Field Officer',

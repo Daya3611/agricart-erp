@@ -215,7 +215,7 @@ export default function AdminStaffManagementPage() {
     super_admin: { label: 'Super Admin', variant: 'default' },
     admin: { label: 'Admin', variant: 'info' },
     manager: { label: 'Dept Head', variant: 'purple' },
-    staff: { label: 'Staff Member', variant: 'secondary' },
+    staff: { label: 'Staff', variant: 'secondary' },
   };
 
   const isSuperAdmin = currentUser?.role === 'super_admin';
@@ -256,11 +256,10 @@ export default function AdminStaffManagementPage() {
 
       {notification && (
         <div
-          className={`p-3.5 rounded-xl text-xs font-bold border transition-all ${
-            notification.type === 'success'
-              ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
-              : 'bg-rose-50 border-rose-200 text-rose-900'
-          }`}
+          className={`p-3.5 rounded-xl text-xs font-bold border transition-all ${notification.type === 'success'
+            ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+            : 'bg-rose-50 border-rose-200 text-rose-900'
+            }`}
         >
           {notification.message}
         </div>
@@ -298,7 +297,7 @@ export default function AdminStaffManagementPage() {
                 <option value="super_admin">Super Admin</option>
                 <option value="admin">Administrator</option>
                 <option value="manager">Department Head</option>
-                <option value="staff">Staff Member</option>
+                <option value="staff">Staff</option>
               </select>
 
               <select
@@ -408,7 +407,7 @@ export default function AdminStaffManagementPage() {
                           </p>
                         </div>
                       </TableCell>
-                      <TableCell>
+                      <TableCell className='text-xs'>
                         <Badge variant={roleBadges[staff.role]?.variant || 'secondary'}>
                           {roleBadges[staff.role]?.label || staff.role}
                         </Badge>
@@ -430,8 +429,8 @@ export default function AdminStaffManagementPage() {
                             invitationStatus === 'sent'
                               ? 'info'
                               : invitationStatus === 'accepted'
-                              ? 'default'
-                              : 'secondary'
+                                ? 'default'
+                                : 'secondary'
                           }
                           className="text-[10px]"
                         >
@@ -656,8 +655,8 @@ export default function AdminStaffManagementPage() {
                                   r.status === 'approved'
                                     ? 'default'
                                     : r.status === 'correction_requested'
-                                    ? 'destructive'
-                                    : 'secondary'
+                                      ? 'destructive'
+                                      : 'secondary'
                                 }
                                 className="text-[10px]"
                               >

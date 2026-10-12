@@ -184,7 +184,7 @@ export function getManagerEscalationEmail({
           Dear <strong>${managerName}</strong>,
         </p>
         <p style="color: #334155; line-height: 1.6; margin: 0 0 16px 0;">
-          This is an automated escalation notice that staff member <strong>${staffName}</strong> (${employeeId}) has not submitted their required daily activity report for <strong>${reportDate}</strong> despite multiple automated reminders.
+          This is an automated escalation notice that Staff <strong>${staffName}</strong> (${employeeId}) has not submitted their required daily activity report for <strong>${reportDate}</strong> despite multiple automated reminders.
         </p>
         <div style="text-align: center; margin: 0 0 24px 0;">
           <a href="${portalUrl}" style="background-color: #ea580c; color: #ffffff; padding: 12px 24px; text-decoration: none; font-weight: 600; border-radius: 6px; display: inline-block;">

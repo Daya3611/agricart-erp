@@ -203,7 +203,7 @@ export function StaffFormModal({
           <div>
             <label className="font-bold text-slate-700 block mb-1">ERP Role</label>
             <Select value={role} onChange={(e) => setRole(e.target.value as UserRole)}>
-              <option value="staff">Staff Member</option>
+              <option value="staff">Staff</option>
               <option value="manager">Department Head / Manager</option>
               <option value="admin">Administrator</option>
               <option value="super_admin">Super Admin</option>

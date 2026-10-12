@@ -48,7 +48,7 @@ export function AdminSidebar({ user }: AdminSidebarProps) {
     super_admin: { label: 'Super Admin', bg: 'bg-emerald-100 text-emerald-800 border-emerald-200' },
     admin: { label: 'Administrator', bg: 'bg-sky-100 text-sky-800 border-sky-200' },
     manager: { label: 'Dept Head', bg: 'bg-purple-100 text-purple-800 border-purple-200' },
-    staff: { label: 'Staff Member', bg: 'bg-amber-100 text-amber-800 border-amber-200' },
+    staff: { label: 'Staff', bg: 'bg-amber-100 text-amber-800 border-amber-200' },
   };
 
   return (

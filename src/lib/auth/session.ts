@@ -14,7 +14,7 @@ function decodeJwtPayload(jwt: string): any {
       const decodedJson = Buffer.from(payloadBase64, 'base64').toString('utf8');
       return JSON.parse(decodedJson);
     }
-  } catch {}
+  } catch { }
   return null;
 }
 
@@ -100,7 +100,7 @@ export async function getServerSession(): Promise<UserProfile | null> {
       userProfile.uid = (userProfile as any).id || uid || 'usr_unknown';
     }
     if (!userProfile.fullName) {
-      userProfile.fullName = (userProfile as any).name || (userProfile as any).displayName || userEmail || 'Staff Member';
+      userProfile.fullName = (userProfile as any).name || (userProfile as any).displayName || userEmail || 'Staff';
     }
     if (!userProfile.accountStatus) {
       userProfile.accountStatus = 'active';

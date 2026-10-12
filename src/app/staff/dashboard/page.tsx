@@ -233,7 +233,7 @@ export default function StaffDashboardPage() {
             </span>
           </div>
           <h1 className="text-xl font-bold text-slate-900">
-            Welcome, {user?.fullName || 'Staff Member'} 👋
+            Welcome, {user?.fullName || 'Staff'} 👋
           </h1>
           <div className="flex flex-wrap items-center gap-3 text-xs text-slate-500 font-medium pt-0.5">
             <span className="flex items-center gap-1 font-bold text-emerald-800">

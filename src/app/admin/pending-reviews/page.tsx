@@ -65,7 +65,7 @@ export default function AdminPendingReviewsPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Date</TableHead>
-                  <TableHead>Staff Member</TableHead>
+                  <TableHead>Staff</TableHead>
                   <TableHead>Department</TableHead>
                   <TableHead>Submitted At</TableHead>
                   <TableHead>Evidence</TableHead>

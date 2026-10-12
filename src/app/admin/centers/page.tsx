@@ -229,8 +229,8 @@ export default function AdminCentersPage() {
       {notification && (
         <div
           className={`p-3.5 rounded-xl text-xs font-bold border transition-all ${notification.type === 'success'
-              ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
-              : 'bg-rose-50 border-rose-200 text-rose-900'
+            ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+            : 'bg-rose-50 border-rose-200 text-rose-900'
             }`}
         >
           {notification.message}
@@ -315,8 +315,8 @@ export default function AdminCentersPage() {
                         title={center.active ? 'Deactivate Center' : 'Activate Center'}
                         onClick={() => handleToggleActive(center)}
                         className={`h-8 w-8 p-0 ${center.active
-                            ? 'text-slate-400 hover:text-amber-600 hover:bg-amber-50'
-                            : 'text-emerald-600 hover:bg-emerald-50'
+                          ? 'text-slate-400 hover:text-amber-600 hover:bg-amber-50'
+                          : 'text-emerald-600 hover:bg-emerald-50'
                           }`}
                       >
                         <Power className="h-3.5 w-3.5" />
@@ -477,7 +477,7 @@ export default function AdminCentersPage() {
                 Removing this center will delete its record from Firestore collection <code className="font-mono bg-amber-100 px-1 py-0.5 rounded">erp_centers</code>.
               </p>
               <p className="text-amber-700 text-[11px]">
-                Tip: If staff members are assigned here, deactivating the center preserves their historical assignment.
+                Tip: If Staffs are assigned here, deactivating the center preserves their historical assignment.
               </p>
             </div>
           )}

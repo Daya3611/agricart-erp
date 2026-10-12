@@ -16,7 +16,7 @@ export function SidebarFooter({ user, collapsed }: SidebarFooterProps) {
     super_admin: { label: 'Super Admin', bg: 'bg-emerald-100 text-emerald-800 border-emerald-200' },
     admin: { label: 'Administrator', bg: 'bg-sky-100 text-sky-800 border-sky-200' },
     manager: { label: 'Dept Head', bg: 'bg-purple-100 text-purple-800 border-purple-200' },
-    staff: { label: 'Staff Member', bg: 'bg-amber-100 text-amber-800 border-amber-200' },
+    staff: { label: 'Staff', bg: 'bg-amber-100 text-amber-800 border-amber-200' },
   };
 
   const badgeInfo = roleBadges[user.role] || { label: 'Staff', bg: 'bg-slate-100 text-slate-800 border-slate-200' };

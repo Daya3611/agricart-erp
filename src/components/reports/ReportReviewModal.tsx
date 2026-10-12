@@ -208,15 +208,14 @@ export function ReportReviewModal({
             rows={3}
             value={comment}
             onChange={(e) => setComment(e.target.value)}
-            placeholder="Add comments for staff member (required if requesting corrections)..."
+            placeholder="Add comments for Staff (required if requesting corrections)..."
             className="w-full rounded-xl border border-slate-200 p-3 text-xs text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
           />
 
           {feedback && (
             <div
-              className={`p-3 rounded-xl text-xs font-bold ${
-                feedback.type === 'success' ? 'bg-emerald-100 text-emerald-900' : 'bg-rose-100 text-rose-900'
-              }`}
+              className={`p-3 rounded-xl text-xs font-bold ${feedback.type === 'success' ? 'bg-emerald-100 text-emerald-900' : 'bg-rose-100 text-rose-900'
+                }`}
             >
               {feedback.message}
             </div>

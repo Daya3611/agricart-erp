@@ -34,7 +34,7 @@ export async function generateMonthlyReport(
   const employee = {
     uid: staffUid,
     employeeId: employeeDoc?.employeeId || 'EMP-UNKNOWN',
-    fullName: employeeDoc?.fullName || 'Staff Member',
+    fullName: employeeDoc?.fullName || 'Staff',
     email: employeeDoc?.email || '',
     designation: employeeDoc?.designation || 'Field Staff',
     departmentName: employeeDoc?.departmentName || 'Field Operations',
@@ -128,8 +128,8 @@ export async function generateMonthlyReport(
       const reviewLabel = report.reviewerName
         ? `${report.status === 'approved' ? 'Approved' : 'Reviewed'} by ${report.reviewerName}`
         : report.status === 'approved'
-        ? 'Approved'
-        : 'Pending Review';
+          ? 'Approved'
+          : 'Pending Review';
 
       let remarksText = report.reviewComments || '—';
       if (hasConflict) {

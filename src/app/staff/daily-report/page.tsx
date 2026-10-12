@@ -193,7 +193,7 @@ function DailyReportFormContent() {
             <div>
               <label className="font-bold text-slate-700 block mb-1">Employee Name & ID</label>
               <Input
-                value={`${user?.fullName || 'Staff Member'} (${user?.employeeId || 'AGR-104'})`}
+                value={`${user?.fullName || 'Staff'} (${user?.employeeId || 'AGR-104'})`}
                 disabled
                 className="bg-slate-50 font-bold"
               />

@@ -120,7 +120,7 @@ export default function AdminReportsPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Date</TableHead>
-                  <TableHead>Staff Member</TableHead>
+                  <TableHead>Staff</TableHead>
                   <TableHead>Department</TableHead>
                   <TableHead>Center</TableHead>
                   <TableHead>Farmers / Meetings</TableHead>
