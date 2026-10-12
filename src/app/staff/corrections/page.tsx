@@ -18,8 +18,8 @@ export default function StaffCorrectionsPage() {
       .then((res) => res.json())
       .then((data) => {
         if (data.reports) {
-          // Filter reports with correction_requested status
-          setReports(data.reports.filter((r: DailyReport) => r.status === 'correction_requested'));
+          // Filter reports with correction_requested or edit_requested status
+          setReports(data.reports.filter((r: DailyReport) => r.status === 'correction_requested' || r.status === 'edit_requested'));
         }
       })
       .catch((err) => console.error(err))
@@ -30,7 +30,7 @@ export default function StaffCorrectionsPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-          <AlertCircle className="h-6 w-6 text-rose-600" /> Corrections Required
+          <AlertCircle className="h-6 w-6 text-rose-600" /> Corrections & Edits Required
         </h1>
         <p className="text-xs text-slate-500 font-medium">
           Daily reports that require your review and resubmission based on manager feedback.
@@ -70,7 +70,7 @@ export default function StaffCorrectionsPage() {
                         Report for {formatReadableDate(r.reportDate)}
                       </span>
                       <Badge variant="destructive" className="text-[10px] uppercase font-bold">
-                        Correction Requested
+                        {r.status === 'edit_requested' ? 'Edit Requested' : 'Correction Requested'}
                       </Badge>
                       {r.isLate && <Badge variant="warning" className="text-[10px]">Late Submission</Badge>}
                     </div>
@@ -81,13 +81,26 @@ export default function StaffCorrectionsPage() {
                   </div>
 
                   {/* Reviewer Feedback Box */}
-                  <div className="p-3.5 bg-white rounded-xl border border-rose-200 text-xs space-y-1">
+                  <div className="p-3.5 bg-white rounded-xl border border-rose-200 text-xs space-y-1.5">
                     <div className="flex items-center justify-between">
-                      <span className="font-bold text-rose-900">Reviewer: {r.reviewerName || 'Department Manager'}</span>
+                      <span className="font-bold text-rose-900">
+                        Reviewer: {r.editRequest?.requesterName || r.reviewerName || 'Department Manager'}
+                      </span>
+                      {r.editRequest?.requestedAt && (
+                        <span className="text-[10px] text-slate-500 font-medium">
+                          {formatReadableDateTime(r.editRequest.requestedAt)}
+                        </span>
+                      )}
                     </div>
                     <p className="text-slate-800 italic">
-                      "{r.reviewComments || 'Please provide additional details regarding your activities and tasks.'}"
+                      "{r.editRequest?.reason || r.reviewComments || 'Please provide additional details regarding your activities and tasks.'}"
                     </p>
+                    {r.editRequest?.instructions && (
+                      <div className="p-2.5 bg-amber-50/80 rounded-lg border border-amber-200 text-[11px] text-amber-950 font-medium">
+                        <span className="font-bold block text-amber-900 mb-0.5">Specific Instructions:</span>
+                        {r.editRequest.instructions}
+                      </div>
+                    )}
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs text-slate-700">
@@ -107,7 +120,7 @@ export default function StaffCorrectionsPage() {
                     </span>
 
                     <Link href={`/staff/daily-report?id=${r.id}`}>
-                      <Button className="bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs shadow-sm">
+                      <Button className="rounded-full bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs shadow-sm">
                         <FileEdit className="h-3.5 w-3.5 mr-1.5" /> Edit & Resubmit Report
                       </Button>
                     </Link>

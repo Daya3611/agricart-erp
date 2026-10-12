@@ -42,6 +42,8 @@ export default function StaffReportHistoryPage() {
     submitted: { label: 'Submitted', variant: 'info' },
     under_review: { label: 'Under Review', variant: 'info' },
     correction_requested: { label: 'Correction Requested', variant: 'destructive' },
+    edit_requested: { label: 'Edit Requested', variant: 'destructive' },
+    resubmitted: { label: 'Resubmitted', variant: 'purple' },
     approved: { label: 'Approved', variant: 'default' },
     rejected: { label: 'Rejected', variant: 'destructive' },
   };
@@ -85,6 +87,8 @@ export default function StaffReportHistoryPage() {
                 <option value="approved">Approved</option>
                 <option value="submitted">Submitted</option>
                 <option value="under_review">Under Review</option>
+                <option value="resubmitted">Resubmitted</option>
+                <option value="edit_requested">Edit Requested</option>
                 <option value="correction_requested">Correction Requested</option>
                 <option value="draft">Draft</option>
               </select>
@@ -201,10 +205,10 @@ export default function StaffReportHistoryPage() {
                             <Eye className="h-3.5 w-3.5 mr-1" /> View Report
                           </Button>
 
-                          {(r.status === 'correction_requested' || r.status === 'draft') && (
+                          {(r.status === 'correction_requested' || r.status === 'edit_requested' || r.status === 'draft') && (
                             <Link href={`/staff/daily-report?id=${r.id}`}>
-                              <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold">
-                                <FileEdit className="h-3.5 w-3.5 mr-1" /> Edit
+                              <Button size="sm" className="rounded-full bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold">
+                                <FileEdit className="h-3.5 w-3.5 mr-1" /> Edit & Resubmit
                               </Button>
                             </Link>
                           )}
@@ -253,14 +257,21 @@ export default function StaffReportHistoryPage() {
           open={Boolean(viewingReport)}
           onOpenChange={() => setViewingReport(null)}
           title={`Daily Report - ${formatReadableDate(viewingReport.reportDate)}`}
-          description={`Work location: ${viewingReport.workLocation} | Status: ${viewingReport.status.toUpperCase()}`}
+          description={`Work location: ${viewingReport.workLocation} | Status: ${viewingReport.status.toUpperCase()}${viewingReport.revisionNumber > 1 ? ` (Revision #${viewingReport.revisionNumber})` : ''}`}
         >
           <div className="space-y-4 max-h-[70vh] overflow-y-auto text-xs pr-1">
             {/* Status & Reviewer feedback */}
-            {viewingReport.reviewComments && (
-              <div className="p-3 bg-amber-50 rounded-xl border border-amber-200">
-                <span className="font-bold text-amber-900 block mb-0.5">Reviewer Feedback:</span>
-                <p className="text-slate-800 italic">"{viewingReport.reviewComments}"</p>
+            {(viewingReport.editRequest?.reason || viewingReport.reviewComments) && (
+              <div className="p-3 bg-amber-50 rounded-xl border border-amber-200 space-y-1">
+                <span className="font-bold text-amber-900 block mb-0.5">
+                  {viewingReport.status === 'edit_requested' ? 'Revision Instructions from Supervisor:' : 'Reviewer Feedback:'}
+                </span>
+                <p className="text-slate-800 italic">"{viewingReport.editRequest?.reason || viewingReport.reviewComments}"</p>
+                {viewingReport.editRequest?.instructions && (
+                  <p className="text-amber-950 font-medium pt-1 border-t border-amber-100">
+                    <span className="font-bold">Instructions:</span> {viewingReport.editRequest.instructions}
+                  </p>
+                )}
               </div>
             )}
 

@@ -163,8 +163,14 @@ export const ReportCreateSchema = z.object({
 
 export const ReportReviewSchema = z.object({
   reportId: z.string().min(1, 'Report ID is required'),
-  status: z.enum(['approved', 'correction_requested', 'rejected']),
+  status: z.enum(['approved', 'correction_requested', 'edit_requested', 'rejected']),
   comment: z.string().default(''),
+});
+
+export const ReportEditRequestSchema = z.object({
+  reportId: z.string().min(1, 'Report ID is required'),
+  reason: z.string().trim().min(1, 'Reason for requesting edit is required').max(1000),
+  instructions: z.string().max(2000).optional().default(''),
 });
 
 export const StaffProfileUpdateSchema = z.object({

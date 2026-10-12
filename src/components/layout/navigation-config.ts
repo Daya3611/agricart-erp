@@ -93,6 +93,7 @@ export function getNavigationForRole(role: UserRole): NavGroupConfig[] {
             label: 'Daily Reports',
             href: '/admin/reports',
             icon: FileText,
+            exactMatch: true,
           },
           {
             id: 'admin-monthly-reports',
@@ -182,6 +183,7 @@ export function getNavigationForRole(role: UserRole): NavGroupConfig[] {
             label: 'Team Reports & Reviews',
             href: '/manager/reports',
             icon: FileText,
+            exactMatch: true,
           },
           {
             id: 'manager-staff',

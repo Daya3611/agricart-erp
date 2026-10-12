@@ -119,7 +119,7 @@ export function StaffFormModal({
     <Dialog
       open={open}
       onOpenChange={onOpenChange}
-      title={isEditing && staffToEdit ? `Edit Employee - ${staffToEdit.fullName}` : 'Register New Employee (erp_emp)'}
+      title={isEditing && staffToEdit ? `Edit Employee - ${staffToEdit.fullName}` : 'Register New Employee  '}
       description={
         isEditing
           ? 'Update employee profile details, assignments, and reporting settings.'

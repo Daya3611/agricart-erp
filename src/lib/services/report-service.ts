@@ -38,14 +38,25 @@ export async function createOrUpdateReport(
     let revisionNumber = 1;
 
     if (existingDoc) {
-      previousData = existingDoc;
-      if (previousData.status === 'approved') {
-        return { success: false, error: 'Cannot modify an approved report.' };
+      // Security check: employee can only modify their own reports
+      if (existingDoc.staffUid !== staffUser.uid) {
+        return { success: false, error: 'FORBIDDEN: You cannot modify another employee\'s report.' };
       }
+
+      previousData = existingDoc;
+
+      // Cannot modify approved reports directly unless reopened via edit request
+      if (previousData.status === 'approved') {
+        return { success: false, error: 'Cannot modify an approved report directly. An edit request must be issued first.' };
+      }
+
       revisionNumber = (previousData.revisionNumber || 1) + 1;
     }
 
-    const newStatus: ReportStatus = reportData.submitNow ? 'submitted' : 'draft';
+    const isEditResubmission = existingDoc && (existingDoc.status === 'edit_requested' || existingDoc.status === 'correction_requested');
+    const newStatus: ReportStatus = reportData.submitNow
+      ? (isEditResubmission ? 'resubmitted' : 'submitted')
+      : (isEditResubmission ? existingDoc.status : 'draft');
 
     // Check if employee has an approved leave for reportDate to flag potential conflict
     let hasLeaveConflict = false;
@@ -62,6 +73,20 @@ export async function createOrUpdateReport(
       }
     } catch (e) {
       console.warn('Leave check error during report creation:', e);
+    }
+
+    // Update active edit request if this is a resubmission
+    let updatedEditRequest = previousData?.editRequest;
+    let updatedEditRequestHistory = previousData?.editRequestHistory || [];
+    if (isEditResubmission && reportData.submitNow && updatedEditRequest) {
+      updatedEditRequest = {
+        ...updatedEditRequest,
+        status: 'resolved',
+        resolvedAt: now,
+      };
+      updatedEditRequestHistory = updatedEditRequestHistory.map((er) =>
+        er.id === updatedEditRequest!.id ? { ...er, status: 'resolved' as const, resolvedAt: now } : er
+      );
     }
 
     const fullReport: DailyReport = {
@@ -94,11 +119,16 @@ export async function createOrUpdateReport(
       hasLeaveConflict,
       conflictDetails,
       submittedAt: reportData.submitNow ? (existingDoc && previousData?.submittedAt ? previousData.submittedAt : now) : (previousData?.submittedAt || undefined),
+      resubmittedAt: (isEditResubmission && reportData.submitNow) ? now : previousData?.resubmittedAt,
       reviewerUid: previousData?.reviewerUid || undefined,
       reviewerName: previousData?.reviewerName || undefined,
       reviewedAt: previousData?.reviewedAt || undefined,
       reviewComments: previousData?.reviewComments || undefined,
       revisionNumber,
+      editRequest: updatedEditRequest,
+      editRequestHistory: updatedEditRequestHistory,
+      lastApproval: previousData?.lastApproval,
+      approvalHistory: previousData?.approvalHistory || [],
       createdAt: previousData?.createdAt || now,
       updatedAt: now,
     };
@@ -139,10 +169,12 @@ export async function createOrUpdateReport(
       actorUid: staffUser.uid,
       actorName: staffUser.fullName,
       actorRole: 'staff',
-      action: reportData.submitNow ? 'submit_report' : 'save_draft',
+      action: reportData.submitNow
+        ? (isEditResubmission ? 'resubmit_report' : 'submit_report')
+        : 'save_draft',
       resourceType: 'report',
       resourceId: docId,
-      details: `${reportData.submitNow ? 'Submitted' : 'Saved draft'} report for ${reportDate}`,
+      details: `${reportData.submitNow ? (isEditResubmission ? 'Resubmitted revision' : 'Submitted') : 'Saved draft'} report for ${reportDate} (Revision #${revisionNumber})`,
     });
 
     return { success: true, reportId: docId };
@@ -165,14 +197,61 @@ export async function reviewReport(
       return { success: false, error: 'Report not found.' };
     }
 
+    // Role verification
+    if (!['super_admin', 'admin', 'manager'].includes(reviewer.role)) {
+      return { success: false, error: 'FORBIDDEN: Only administrators and managers can review reports.' };
+    }
+
+    // Guard against repeated approval or invalid transitions on already approved reports
+    if (report.status === 'approved' && actionStatus === 'approved') {
+      return { success: false, error: 'This report is already approved. Repeated approvals are not allowed.' };
+    }
+
+    if (report.status === 'approved' && actionStatus !== 'approved') {
+      return {
+        success: false,
+        error: 'Cannot directly reject or request correction on an approved report. Use the Request Edit workflow instead.',
+      };
+    }
+
     const now = new Date().toISOString();
 
-    const updatedFields = {
+    const decisionRecord = {
+      reviewerUid: reviewer.uid,
+      reviewerName: reviewer.fullName,
+      reviewerRole: reviewer.role,
+      decision: actionStatus === 'approved' ? ('approved' as const) : ('rejected' as const),
+      decidedAt: now,
+      comments: comment || '',
+      revisionNumber: report.revisionNumber || 1,
+    };
+
+    const updatedApprovalHistory = [...(report.approvalHistory || []), decisionRecord];
+
+    // If an edit request was still open, mark it resolved
+    let updatedEditRequest = report.editRequest;
+    let updatedEditRequestHistory = report.editRequestHistory || [];
+    if (updatedEditRequest && updatedEditRequest.status === 'pending') {
+      updatedEditRequest = {
+        ...updatedEditRequest,
+        status: 'resolved',
+        resolvedAt: now,
+      };
+      updatedEditRequestHistory = updatedEditRequestHistory.map((er) =>
+        er.id === updatedEditRequest!.id ? { ...er, status: 'resolved' as const, resolvedAt: now } : er
+      );
+    }
+
+    const updatedFields: Partial<DailyReport> = {
       status: actionStatus as ReportStatus,
       reviewerUid: reviewer.uid,
       reviewerName: reviewer.fullName,
       reviewedAt: now,
       reviewComments: comment || '',
+      lastApproval: actionStatus === 'approved' ? decisionRecord : report.lastApproval,
+      approvalHistory: updatedApprovalHistory,
+      editRequest: updatedEditRequest,
+      editRequestHistory: updatedEditRequestHistory,
       updatedAt: now,
     };
 
@@ -208,6 +287,130 @@ export async function reviewReport(
   }
 }
 
+export async function requestReportEdit(
+  reviewer: { uid: string; fullName: string; role: any },
+  reportId: string,
+  params: { reason: string; instructions?: string }
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const report = (await fetchDocument(ERP_COLLECTIONS.dailyReports, reportId)) as DailyReport | null;
+
+    if (!report) {
+      return { success: false, error: 'Report not found.' };
+    }
+
+    // Role check
+    if (!['super_admin', 'admin', 'manager'].includes(reviewer.role)) {
+      return { success: false, error: 'FORBIDDEN: Only administrators and managers can request report edits.' };
+    }
+
+    // Prevent duplicate requests while an edit request is already pending
+    if (report.status === 'edit_requested' || (report.editRequest && report.editRequest.status === 'pending')) {
+      return { success: false, error: 'An edit request is already pending for this report.' };
+    }
+
+    if (!params.reason || !params.reason.trim()) {
+      return { success: false, error: 'A valid reason for requesting an edit is required.' };
+    }
+
+    const now = new Date().toISOString();
+
+    // Preserve previous approval record if report was previously approved
+    let lastApproval = report.lastApproval;
+    let approvalHistory = report.approvalHistory || [];
+    if (report.status === 'approved' && !lastApproval && report.reviewerUid) {
+      lastApproval = {
+        reviewerUid: report.reviewerUid,
+        reviewerName: report.reviewerName || 'Reviewer',
+        reviewerRole: 'reviewer',
+        decision: 'approved',
+        decidedAt: report.reviewedAt || report.updatedAt || now,
+        comments: report.reviewComments || '',
+        revisionNumber: report.revisionNumber || 1,
+      };
+      if (!approvalHistory.length) {
+        approvalHistory = [lastApproval];
+      }
+    }
+
+    const editRecord = {
+      id: `edr_${reportId}_${Date.now()}`,
+      reportId,
+      reason: params.reason.trim(),
+      instructions: params.instructions?.trim() || '',
+      requesterUid: reviewer.uid,
+      requesterName: reviewer.fullName,
+      requesterRole: reviewer.role,
+      requestedAt: now,
+      status: 'pending' as const,
+    };
+
+    const updatedFields: Partial<DailyReport> = {
+      status: 'edit_requested',
+      reviewComments: params.reason.trim() + (params.instructions?.trim() ? `\nInstructions: ${params.instructions.trim()}` : ''),
+      editRequest: editRecord,
+      editRequestHistory: [...(report.editRequestHistory || []), editRecord],
+      lastApproval,
+      approvalHistory,
+      updatedAt: now,
+    };
+
+    await updateDocument(ERP_COLLECTIONS.dailyReports, reportId, updatedFields);
+
+    // Save as comment for persistent history
+    const commentId = `cmt_${reportId}_${Date.now()}`;
+    await saveDocument(ERP_COLLECTIONS.reportComments, commentId, {
+      id: commentId,
+      reportId,
+      authorUid: reviewer.uid,
+      authorName: reviewer.fullName,
+      authorRole: reviewer.role,
+      comment: `[EDIT REQUESTED] Reason: ${params.reason.trim()}${params.instructions?.trim() ? ` | Instructions: ${params.instructions.trim()}` : ''}`,
+      createdAt: now,
+    });
+
+    await logAuditAction({
+      actorUid: reviewer.uid,
+      actorName: reviewer.fullName,
+      actorRole: reviewer.role,
+      action: 'request_edit',
+      resourceType: 'report',
+      resourceId: reportId,
+      details: `Requested edit on report for ${report.staffName} (${report.reportDate}): Reason: ${params.reason.trim()}`,
+    });
+
+    // Send email notification to employee
+    if (report.staffEmail) {
+      try {
+        const { getReportReviewStatusEmail } = await import('@/lib/email/templates');
+        const { sendEmail } = await import('@/lib/email/resend');
+        const { subject, html } = getReportReviewStatusEmail({
+          recipientName: report.staffName,
+          reportDate: report.reportDate,
+          status: 'correction_requested',
+          reviewerName: reviewer.fullName,
+          comments: `${params.reason.trim()}${params.instructions?.trim() ? `\n\nInstructions: ${params.instructions.trim()}` : ''}`,
+        });
+        await sendEmail({
+          to: report.staffEmail,
+          subject: `Action Required: Edit Requested on Daily Report (${report.reportDate})`,
+          html,
+          emailType: 'correction_requested',
+          staffUid: report.staffUid,
+          reportId,
+        });
+      } catch (emailErr) {
+        console.warn('Failed to send edit request email notification:', emailErr);
+      }
+    }
+
+    return { success: true };
+  } catch (err: any) {
+    console.error('requestReportEdit error:', err);
+    return { success: false, error: err.message };
+  }
+}
+
 export async function getDashboardStats(params?: FilterParams): Promise<DashboardStats> {
   const today = getTodayDateString();
   try {
@@ -230,8 +433,8 @@ export async function getDashboardStats(params?: FilterParams): Promise<Dashboar
     }
 
     const submittedToday = reportsToday.filter((r) => r.status !== 'draft').length;
-    const awaitingApprovalCount = reportsToday.filter((r) => r.status === 'submitted' || r.status === 'under_review').length;
-    const correctionRequestedCount = reportsToday.filter((r) => r.status === 'correction_requested').length;
+    const awaitingApprovalCount = reportsToday.filter((r) => r.status === 'submitted' || r.status === 'under_review' || r.status === 'resubmitted').length;
+    const correctionRequestedCount = reportsToday.filter((r) => r.status === 'correction_requested' || r.status === 'edit_requested').length;
     const approvedReportsCount = reportsToday.filter((r) => r.status === 'approved').length;
 
     // Retrieve approved leaves covering today

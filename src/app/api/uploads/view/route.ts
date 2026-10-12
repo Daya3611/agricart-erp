@@ -2,6 +2,10 @@ import { NextResponse } from 'next/server';
 import fs from 'fs/promises';
 import path from 'path';
 import { adminStorage } from '@/lib/firebase/admin';
+import { getServerSession } from '@/lib/auth/session';
+import { fetchDocument } from '@/lib/firebase/firestore';
+import { ERP_COLLECTIONS } from '@/lib/firebase/collections';
+import { UserProfile } from '@/types';
 
 const MIME_TYPES: Record<string, string> = {
   '.png': 'image/png',
@@ -20,6 +24,11 @@ export const dynamic = 'force-dynamic';
 
 export async function GET(req: Request) {
   try {
+    const sessionUser = await getServerSession();
+    if (!sessionUser) {
+      return NextResponse.json({ error: 'Unauthorized: Valid session required to view attachments' }, { status: 401 });
+    }
+
     const url = new URL(req.url);
     const filePathParam = url.searchParams.get('path');
 
@@ -31,6 +40,30 @@ export async function GET(req: Request) {
     const sanitizedPath = filePathParam.replace(/\.\./g, '').replace(/^\/+/, '');
     const ext = path.extname(sanitizedPath).toLowerCase();
     const contentType = MIME_TYPES[ext] || 'application/octet-stream';
+
+    // Role-based authorization for private evidence attachments
+    const pathParts = sanitizedPath.split('/');
+    if (pathParts[0] === 'reports' && pathParts.length >= 2) {
+      const ownerStaffUid = pathParts[1];
+      if (sessionUser.role === 'staff' && sessionUser.uid !== ownerStaffUid) {
+        return NextResponse.json(
+          { error: 'Forbidden: You do not have permission to view other staff attachments.' },
+          { status: 403 }
+        );
+      } else if (sessionUser.role === 'manager' && sessionUser.uid !== ownerStaffUid) {
+        const ownerEmp = (await fetchDocument(ERP_COLLECTIONS.employees, ownerStaffUid)) as UserProfile | null;
+        if (ownerEmp) {
+          const isDeptMatch = sessionUser.departmentId && ownerEmp.departmentId === sessionUser.departmentId;
+          const isCenterMatch = ownerEmp.assignedCenterIds?.some((c) => sessionUser.assignedCenterIds?.includes(c));
+          if (!isDeptMatch && !isCenterMatch) {
+            return NextResponse.json(
+              { error: 'Forbidden: Staff outside your assigned department or center.' },
+              { status: 403 }
+            );
+          }
+        }
+      }
+    }
 
     // 1. Try Firebase Cloud Storage
     try {

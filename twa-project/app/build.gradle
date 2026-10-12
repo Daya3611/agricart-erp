@@ -150,9 +150,18 @@ android {
 
         
     }
+    signingConfigs {
+        release {
+            storeFile file('../signing.keystore')
+            storePassword 'JxU57YXHdi9V'
+            keyAlias 'my-key-alias'
+            keyPassword 'JxU57YXHdi9V'
+        }
+    }
     buildTypes {
         release {
-            minifyEnabled true
+            signingConfig signingConfigs.release
+            minifyEnabled false
         }
     }
     compileOptions {

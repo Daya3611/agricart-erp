@@ -108,7 +108,7 @@ export function AdminSidebar({ user }: AdminSidebarProps) {
         <nav className="px-3 py-2 space-y-1">
           {navItems.map((item) => {
             const Icon = item.icon;
-            const isActive = pathname === item.href || (item.href !== '/admin/dashboard' && pathname.startsWith(item.href));
+            const isActive = pathname === item.href || (item.href !== '/admin/dashboard' && item.href !== '/admin/reports' && pathname.startsWith(item.href + '/'));
 
             return (
               <Link

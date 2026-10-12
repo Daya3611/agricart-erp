@@ -65,7 +65,7 @@ export async function getServerSession(): Promise<UserProfile | null> {
       }
     }
 
-    // 2. Fetch trusted employee profile from Firestore (erp_emp)
+    // 2. Fetch trusted employee profile from Firestore  
     let userProfile: UserProfile | null = null;
 
     if (uid) {

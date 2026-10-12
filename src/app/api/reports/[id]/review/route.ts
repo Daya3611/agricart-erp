@@ -68,12 +68,22 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       );
     }
 
-    const result = await reviewReport(
-      { uid: reviewer.uid, fullName: reviewer.fullName, role: reviewer.role },
-      reportId,
-      actionStatus,
-      comment
-    );
+    let result;
+    if (actionStatus === 'edit_requested') {
+      const { requestReportEdit } = await import('@/lib/services/report-service');
+      result = await requestReportEdit(
+        { uid: reviewer.uid, fullName: reviewer.fullName, role: reviewer.role },
+        reportId,
+        { reason: comment || 'Edit requested by supervisor.', instructions: body.instructions || '' }
+      );
+    } else {
+      result = await reviewReport(
+        { uid: reviewer.uid, fullName: reviewer.fullName, role: reviewer.role },
+        reportId,
+        actionStatus,
+        comment
+      );
+    }
 
     if (!result.success) {
       return NextResponse.json({ success: false, error: result.error }, { status: 400 });

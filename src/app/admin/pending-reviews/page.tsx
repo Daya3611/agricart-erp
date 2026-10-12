@@ -1,10 +1,11 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Clock, Eye } from 'lucide-react';
+import { Clock, Eye, RotateCcw } from 'lucide-react';
 import { DailyReport, UserProfile } from '@/types';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ReportReviewModal } from '@/components/reports/ReportReviewModal';
 
@@ -21,9 +22,15 @@ export default function AdminPendingReviewsPage() {
       const sessData = await sessRes.json();
       if (sessData.authenticated) setUser(sessData.user);
 
-      const res = await fetch('/api/reports?status=submitted');
+      const res = await fetch('/api/reports');
       const data = await res.json();
-      if (data.reports) setReports(data.reports.filter((r: any) => r.status === 'submitted' || r.status === 'under_review'));
+      if (data.reports) {
+        setReports(
+          data.reports.filter(
+            (r: any) => r.status === 'submitted' || r.status === 'under_review' || r.status === 'resubmitted'
+          )
+        );
+      }
     } catch (err) {
       console.error(err);
     } finally {
@@ -42,7 +49,7 @@ export default function AdminPendingReviewsPage() {
           <Clock className="h-6 w-6 text-sky-600" /> Pending Reviews Queue
         </h1>
         <p className="text-xs text-slate-500 font-medium">
-          Daily activity reports submitted by field staff waiting for administrator verification and approval.
+          Daily activity reports and revisions submitted by field staff waiting for administrator verification and approval.
         </p>
       </div>
 
@@ -51,7 +58,7 @@ export default function AdminPendingReviewsPage() {
           <CardTitle className="text-base font-bold text-slate-900">
             Reports Awaiting Review ({reports.length})
           </CardTitle>
-          <CardDescription>Click Review Now to open evidence modal, verify activities, and approve or request corrections</CardDescription>
+          <CardDescription>Click Review Now or Review Revision to open evidence modal, verify activities, and approve or request corrections</CardDescription>
         </CardHeader>
         <CardContent>
           {loading ? (
@@ -69,6 +76,7 @@ export default function AdminPendingReviewsPage() {
                   <TableHead>Department</TableHead>
                   <TableHead>Submitted At</TableHead>
                   <TableHead>Evidence</TableHead>
+                  <TableHead>Status</TableHead>
                   <TableHead className="text-right">Action</TableHead>
                 </TableRow>
               </TableHeader>
@@ -87,13 +95,30 @@ export default function AdminPendingReviewsPage() {
                     <TableCell className="text-xs font-bold text-emerald-700">
                       📷 {r.attachments?.length || 0} Attachments
                     </TableCell>
+                    <TableCell>
+                      <Badge variant={r.status === 'resubmitted' ? 'purple' : 'info'}>
+                        {r.status === 'resubmitted' ? 'Resubmitted' : 'Submitted'}
+                      </Badge>
+                    </TableCell>
                     <TableCell className="text-right">
                       <Button
                         size="sm"
                         onClick={() => setSelectedReport(r)}
-                        className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
+                        className={`rounded-full px-4 text-xs font-bold text-white ${
+                          r.status === 'resubmitted'
+                            ? 'bg-purple-600 hover:bg-purple-700'
+                            : 'bg-emerald-600 hover:bg-emerald-700'
+                        }`}
                       >
-                        <Eye className="h-3.5 w-3.5 mr-1" /> Review Now
+                        {r.status === 'resubmitted' ? (
+                          <>
+                            <RotateCcw className="h-3.5 w-3.5 mr-1" /> Review Revision
+                          </>
+                        ) : (
+                          <>
+                            <Eye className="h-3.5 w-3.5 mr-1" /> Review Now
+                          </>
+                        )}
                       </Button>
                     </TableCell>
                   </TableRow>

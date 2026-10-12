@@ -74,8 +74,8 @@ export default function StaffDashboardPage() {
 
   // Authenticated user summary metrics
   const draftReports = reports.filter((r) => r.status === 'draft');
-  const awaitingReviewReports = reports.filter((r) => r.status === 'submitted' || r.status === 'under_review');
-  const correctionsRequired = reports.filter((r) => r.status === 'correction_requested');
+  const awaitingReviewReports = reports.filter((r) => r.status === 'submitted' || r.status === 'under_review' || r.status === 'resubmitted');
+  const correctionsRequired = reports.filter((r) => r.status === 'correction_requested' || r.status === 'edit_requested');
   const approvedReports = reports.filter((r) => r.status === 'approved');
 
   const getTodayStatusCard = () => {
@@ -152,23 +152,49 @@ export default function StaffDashboardPage() {
       );
     }
 
-    if (todayReport.status === 'correction_requested') {
+    if (todayReport.status === 'correction_requested' || todayReport.status === 'edit_requested') {
       return (
         <Card className="border-rose-200 bg-rose-50/70 shadow-xs">
           <CardContent className="p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
             <div className="space-y-1.5 max-w-xl">
-              <Badge variant="destructive" className="mb-1 font-bold">Correction Requested by Reviewer</Badge>
+              <Badge variant="destructive" className="mb-1 font-bold">
+                {todayReport.status === 'edit_requested' ? 'Edit Requested by Reviewer' : 'Correction Requested'}
+              </Badge>
               <h2 className="text-base font-extrabold text-rose-950">Action Needed on Today's Report</h2>
-              {todayReport.reviewComments && (
+              {(todayReport.editRequest?.reason || todayReport.reviewComments) && (
                 <div className="p-3 bg-white/90 rounded-xl border border-rose-200 text-xs">
-                  <span className="font-bold text-slate-900 block mb-0.5">Reviewer Feedback:</span>
-                  <p className="text-slate-800 italic">"{todayReport.reviewComments}"</p>
+                  <span className="font-bold text-slate-900 block mb-0.5">Reviewer Instructions:</span>
+                  <p className="text-slate-800 italic">"{todayReport.editRequest?.reason || todayReport.reviewComments}"</p>
+                  {todayReport.editRequest?.instructions && (
+                    <p className="text-slate-700 mt-1 font-medium">Details: {todayReport.editRequest.instructions}</p>
+                  )}
                 </div>
               )}
             </div>
             <Link href={`/staff/daily-report?id=${todayReport.id}`} className="w-full md:w-auto">
               <Button size="lg" className="w-full md:w-auto bg-rose-600 hover:bg-rose-700 text-white font-bold shadow-md shadow-rose-600/20">
-                <RotateCcw className="h-5 w-5 mr-1.5" /> Correct Report
+                <RotateCcw className="h-5 w-5 mr-1.5" /> Edit & Resubmit Report
+              </Button>
+            </Link>
+          </CardContent>
+        </Card>
+      );
+    }
+
+    if (todayReport.status === 'resubmitted') {
+      return (
+        <Card className="border-purple-200 bg-purple-50/60 shadow-xs">
+          <CardContent className="p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+            <div className="space-y-1">
+              <Badge variant="purple" className="mb-1 font-bold">Revision Resubmitted (Revision #{todayReport.revisionNumber})</Badge>
+              <h2 className="text-base font-extrabold text-purple-950">Revision Awaiting Supervisor Review</h2>
+              <p className="text-xs text-slate-600">
+                Your revised report was resubmitted at {todayReport.resubmittedAt ? new Date(todayReport.resubmittedAt).toLocaleTimeString('en-IN') : 'recently'}.
+              </p>
+            </div>
+            <Link href="/staff/report-history" className="w-full md:w-auto">
+              <Button variant="outline" size="sm" className="w-full md:w-auto font-bold border-purple-300 text-purple-800 hover:bg-purple-100">
+                <Eye className="h-4 w-4 mr-1.5" /> View Resubmission
               </Button>
             </Link>
           </CardContent>
@@ -262,6 +288,50 @@ export default function StaffDashboardPage() {
           </Link>
         </div>
       </div>
+
+      {/* Visible Notification Banner when Edits are Requested */}
+      {correctionsRequired.length > 0 && (
+        <div className="p-4 sm:p-5 bg-rose-50 rounded-2xl border border-rose-200 space-y-3 shadow-2xs">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="h-5 w-5 text-rose-600 shrink-0" />
+              <h2 className="text-sm font-extrabold text-rose-950">
+                Action Required: {correctionsRequired.length} Daily Report(s) Need Revisions
+              </h2>
+            </div>
+            <Link href="/staff/corrections">
+              <Button size="sm" variant="outline" className="rounded-full text-xs font-bold border-rose-300 text-rose-800 hover:bg-rose-100">
+                View All ({correctionsRequired.length})
+              </Button>
+            </Link>
+          </div>
+          <div className="space-y-2">
+            {correctionsRequired.slice(0, 3).map((r) => (
+              <div
+                key={r.id}
+                className="p-3 bg-white rounded-xl border border-rose-200/80 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs"
+              >
+                <div className="space-y-0.5">
+                  <div className="flex items-center gap-2">
+                    <span className="font-extrabold text-slate-900">Report for {formatReadableDate(r.reportDate)}</span>
+                    <Badge variant="destructive" className="text-[10px] uppercase font-bold">
+                      {r.status === 'edit_requested' ? 'Edit Requested' : 'Correction Requested'}
+                    </Badge>
+                  </div>
+                  <p className="text-slate-600 italic">
+                    Reason: "{r.editRequest?.reason || r.reviewComments || 'Revisions required by supervisor'}"
+                  </p>
+                </div>
+                <Link href={`/staff/daily-report?id=${r.id}`}>
+                  <Button size="sm" className="rounded-full text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white shrink-0">
+                    <FileEdit className="h-3.5 w-3.5 mr-1" /> Edit & Resubmit
+                  </Button>
+                </Link>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* State-aware Today's Status Banner */}
       {getTodayStatusCard()}
@@ -454,28 +524,44 @@ export default function StaffDashboardPage() {
                   <div className="space-y-1 max-w-lg">
                     <div className="flex items-center gap-2">
                       <span className="font-bold text-slate-900 text-sm">{formatReadableDate(rep.reportDate)}</span>
-                      <Badge variant={rep.status === 'approved' ? 'default' : rep.status === 'correction_requested' ? 'destructive' : rep.status === 'draft' ? 'secondary' : 'info'}>
-                        {rep.status.toUpperCase()}
+                      <Badge
+                        variant={
+                          rep.status === 'approved'
+                            ? 'default'
+                            : rep.status === 'edit_requested' || rep.status === 'correction_requested'
+                            ? 'destructive'
+                            : rep.status === 'resubmitted'
+                            ? 'purple'
+                            : rep.status === 'draft'
+                            ? 'secondary'
+                            : 'info'
+                        }
+                      >
+                        {rep.status === 'edit_requested'
+                          ? 'EDIT REQUESTED'
+                          : rep.status === 'resubmitted'
+                          ? 'RESUBMITTED'
+                          : rep.status.toUpperCase()}
                       </Badge>
                       {rep.isLate && <Badge variant="warning">Late</Badge>}
                     </div>
                     <p className="text-xs text-slate-600 line-clamp-1">{rep.activities || 'No activities described'}</p>
-                    {rep.reviewComments && (
-                      <p className="text-[11px] text-slate-500 italic">Reviewer: "{rep.reviewComments}"</p>
+                    {(rep.editRequest?.reason || rep.reviewComments) && (
+                      <p className="text-[11px] text-slate-500 italic">Reviewer: "{rep.editRequest?.reason || rep.reviewComments}"</p>
                     )}
                   </div>
 
                   <div className="flex items-center gap-3 text-xs">
                     <span className="font-bold text-emerald-700">📷 {rep.attachments?.length || 0} Files</span>
-                    {rep.status === 'correction_requested' || rep.status === 'draft' ? (
+                    {rep.status === 'correction_requested' || rep.status === 'edit_requested' || rep.status === 'draft' ? (
                       <Link href={`/staff/daily-report?id=${rep.id}`}>
-                        <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold">
-                          <FileEdit className="h-3.5 w-3.5 mr-1" /> Edit
+                        <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-full">
+                          <FileEdit className="h-3.5 w-3.5 mr-1" /> Edit & Resubmit
                         </Button>
                       </Link>
                     ) : (
                       <Link href="/staff/report-history">
-                        <Button size="sm" variant="outline" className="text-xs font-bold">
+                        <Button size="sm" variant="outline" className="text-xs font-bold rounded-full">
                           <Eye className="h-3.5 w-3.5 mr-1" /> View
                         </Button>
                       </Link>

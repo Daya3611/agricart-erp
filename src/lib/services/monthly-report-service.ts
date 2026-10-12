@@ -1,6 +1,6 @@
 import { fetchCollection, fetchDocument } from '@/lib/firebase/firestore';
 import { ERP_COLLECTIONS } from '@/lib/firebase/collections';
-import { DailyReport, MonthlyReportDay, MonthlyReportSummary, UserProfile } from '@/types';
+import { DailyReport, MonthlyReportDay, MonthlyReportSummary, ReportAttachment, UserProfile } from '@/types';
 import { getApprovedLeavesForMonth } from '@/lib/services/leave-service';
 
 const MONTH_NAMES = [
@@ -63,6 +63,20 @@ export async function generateMonthlyReport(
 
   const approvedLeaves = await getApprovedLeavesForMonth(staffUid, year, month);
 
+  // Fetch all attachments for this staff member to ensure 100% complete evidence coverage
+  const allStaffAttachments = (await fetchCollection(ERP_COLLECTIONS.reportAttachments, [
+    { field: 'staffUid', op: '==', value: staffUid },
+  ])) as ReportAttachment[];
+
+  const attachmentsByReportId = new Map<string, ReportAttachment[]>();
+  for (const att of allStaffAttachments) {
+    if (att.reportId) {
+      const existing = attachmentsByReportId.get(att.reportId) || [];
+      existing.push(att);
+      attachmentsByReportId.set(att.reportId, existing);
+    }
+  }
+
   // 4. Build daily rows for every calendar day
   const days: MonthlyReportDay[] = [];
   let submittedReportDays = 0;
@@ -92,8 +106,8 @@ export async function generateMonthlyReport(
       totalMeetingsConducted += report.meetingsConducted || 0;
 
       if (report.status === 'approved') approvedReportDays++;
-      if (report.status === 'submitted' || report.status === 'under_review') pendingReviewDays++;
-      if (report.status === 'correction_requested') correctionRequestedDays++;
+      if (report.status === 'submitted' || report.status === 'under_review' || report.status === 'resubmitted') pendingReviewDays++;
+      if (report.status === 'correction_requested' || report.status === 'edit_requested') correctionRequestedDays++;
 
       const hasConflict = Boolean(leave);
       if (hasConflict) conflictDays++;
@@ -122,8 +136,8 @@ export async function generateMonthlyReport(
 
       let statusLabel: MonthlyReportDay['reportStatus'] = 'Submitted';
       if (report.status === 'approved') statusLabel = 'Approved';
-      else if (report.status === 'correction_requested') statusLabel = 'Correction Requested';
-      else if (report.status === 'under_review') statusLabel = 'Under Review';
+      else if (report.status === 'correction_requested' || report.status === 'edit_requested') statusLabel = 'Correction Requested';
+      else if (report.status === 'under_review' || report.status === 'resubmitted') statusLabel = 'Under Review';
 
       const reviewLabel = report.reviewerName
         ? `${report.status === 'approved' ? 'Approved' : 'Reviewed'} by ${report.reviewerName}`
@@ -133,7 +147,21 @@ export async function generateMonthlyReport(
 
       let remarksText = report.reviewComments || '—';
       if (hasConflict) {
-        remarksText = `⚠️ Overlaps with approved ${leave?.leaveType.toUpperCase()} leave. ${remarksText !== '—' ? remarksText : ''}`;
+        remarksText = `[CONFLICT] Overlaps with approved ${leave?.leaveType.toUpperCase()} leave. ${remarksText !== '—' ? remarksText : ''}`;
+      }
+
+      // Combine attachments from report object and standalone attachment collection without duplicates
+      const reportAttachments = Array.isArray(report.attachments) ? report.attachments : [];
+      const collectionAttachments = attachmentsByReportId.get(report.id) || [];
+      const seenAttachmentKeys = new Set<string>();
+      const mergedAttachments: ReportAttachment[] = [];
+
+      for (const att of [...reportAttachments, ...collectionAttachments]) {
+        const key = att.id || att.storagePath || att.originalFilename;
+        if (key && !seenAttachmentKeys.has(key)) {
+          seenAttachmentKeys.add(key);
+          mergedAttachments.push(att);
+        }
       }
 
       days.push({
@@ -152,6 +180,7 @@ export async function generateMonthlyReport(
         meetingsConducted: report.meetingsConducted || 0,
         hasConflict,
         conflictDetails: hasConflict ? `Conflict: Report submitted on approved ${leave?.leaveType} leave date.` : undefined,
+        attachments: mergedAttachments,
       });
     } else if (leave) {
       approvedLeaveDays++;

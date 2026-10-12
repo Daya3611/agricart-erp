@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { FileText, Eye, CheckCircle2, Clock, AlertTriangle } from 'lucide-react';
+import { FileText, Eye, CheckCircle2, Clock, AlertTriangle, FileEdit, RotateCcw } from 'lucide-react';
 import { DailyReport, UserProfile } from '@/types';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
@@ -56,6 +56,8 @@ export default function ManagerReportsPage() {
     submitted: { label: 'Submitted', variant: 'info' },
     under_review: { label: 'Under Review', variant: 'info' },
     correction_requested: { label: 'Correction Requested', variant: 'destructive' },
+    edit_requested: { label: 'Edit Requested', variant: 'destructive' },
+    resubmitted: { label: 'Resubmitted', variant: 'purple' },
     approved: { label: 'Approved', variant: 'default' },
     rejected: { label: 'Rejected', variant: 'destructive' },
   };
@@ -103,8 +105,11 @@ export default function ManagerReportsPage() {
               <option value="all">All Statuses</option>
               <option value="submitted">Submitted (Awaiting Review)</option>
               <option value="under_review">Under Review</option>
+              <option value="resubmitted">Resubmitted Revision</option>
               <option value="approved">Approved</option>
+              <option value="edit_requested">Edit Requested</option>
               <option value="correction_requested">Correction Requested</option>
+              <option value="rejected">Rejected</option>
             </select>
           </div>
 
@@ -164,10 +169,27 @@ export default function ManagerReportsPage() {
                     <TableCell className="text-right">
                       <Button
                         size="sm"
+                        variant="outline"
                         onClick={() => setSelectedReport(r)}
-                        className="bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs"
+                        className="rounded-full px-3.5 text-xs font-bold shadow-2xs"
                       >
-                        <Eye className="h-3.5 w-3.5 mr-1" /> Review
+                        {r.status === 'approved' ? (
+                          <>
+                            <Eye className="h-3.5 w-3.5 mr-1 text-emerald-600" /> View Report
+                          </>
+                        ) : r.status === 'edit_requested' || r.status === 'correction_requested' ? (
+                          <>
+                            <FileEdit className="h-3.5 w-3.5 mr-1 text-amber-600" /> View Request
+                          </>
+                        ) : r.status === 'resubmitted' ? (
+                          <>
+                            <RotateCcw className="h-3.5 w-3.5 mr-1 text-purple-600" /> Review Revision
+                          </>
+                        ) : (
+                          <>
+                            <Eye className="h-3.5 w-3.5 mr-1 text-slate-700" /> Review
+                          </>
+                        )}
                       </Button>
                     </TableCell>
                   </TableRow>

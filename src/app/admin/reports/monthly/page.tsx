@@ -22,7 +22,6 @@ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Select } from '@/components/ui/select';
-import { exportMonthlyReportToPDF, exportMonthlyReportToDOCX } from '@/lib/utils/monthly-report-export';
 
 const MONTHS = [
   { value: 1, label: 'January' },
@@ -99,10 +98,28 @@ export default function AdminMonthlyReportPage() {
   const handleDownloadPDF = async () => {
     if (!report) return;
     setExportingPDF(true);
+    setErrorMsg(null);
     try {
-      await exportMonthlyReportToPDF(report);
-    } catch (err) {
+      const url = `/api/reports/monthly/pdf?staffUid=${encodeURIComponent(report.employee.uid)}&year=${selectedYear}&month=${selectedMonth}`;
+      const res = await fetch(url);
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => null);
+        throw new Error(errJson?.error || `Server responded with status ${res.status}`);
+      }
+      const blob = await res.blob();
+      const cleanEmpId = report.employee.employeeId.replace(/[^a-zA-Z0-9_-]/g, '_');
+      const filename = `Agricart_Monthly_Report_${cleanEmpId}_${selectedYear}-${String(selectedMonth).padStart(2, '0')}.pdf`;
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(blobUrl);
+    } catch (err: any) {
       console.error('PDF export failed:', err);
+      setErrorMsg(`PDF export failed: ${err.message || 'Unknown error'}`);
     } finally {
       setExportingPDF(false);
     }
@@ -111,10 +128,28 @@ export default function AdminMonthlyReportPage() {
   const handleDownloadDOCX = async () => {
     if (!report) return;
     setExportingDOCX(true);
+    setErrorMsg(null);
     try {
-      await exportMonthlyReportToDOCX(report);
-    } catch (err) {
+      const url = `/api/reports/monthly/docx?staffUid=${encodeURIComponent(report.employee.uid)}&year=${selectedYear}&month=${selectedMonth}`;
+      const res = await fetch(url);
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => null);
+        throw new Error(errJson?.error || `Server responded with status ${res.status}`);
+      }
+      const blob = await res.blob();
+      const cleanEmpId = report.employee.employeeId.replace(/[^a-zA-Z0-9_-]/g, '_');
+      const filename = `Agricart_Monthly_Report_${cleanEmpId}_${selectedYear}-${String(selectedMonth).padStart(2, '0')}.docx`;
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(blobUrl);
+    } catch (err: any) {
       console.error('DOCX export failed:', err);
+      setErrorMsg(`DOCX export failed: ${err.message || 'Unknown error'}`);
     } finally {
       setExportingDOCX(false);
     }
@@ -339,6 +374,18 @@ export default function AdminMonthlyReportPage() {
                           <span className="block text-[10px] text-amber-700 font-bold mt-0.5">
                             ⚠️ Note: Report submitted on approved leave date
                           </span>
+                        )}
+                        {day.attachments && day.attachments.length > 0 && (
+                          <div className="flex items-center gap-1.5 mt-1">
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                              📷 {day.attachments.filter((a) => !a.mimeType?.startsWith('video/')).length} photos
+                              {day.attachments.some((a) => a.mimeType?.startsWith('video/')) && (
+                                <span className="ml-1 text-purple-700">
+                                  🎥 {day.attachments.filter((a) => a.mimeType?.startsWith('video/')).length} videos
+                                </span>
+                              )}
+                            </span>
+                          </div>
                         )}
                       </TableCell>
                       <TableCell>

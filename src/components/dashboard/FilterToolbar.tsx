@@ -103,7 +103,9 @@ export function FilterToolbar({
             <option value="all">All Statuses</option>
             <option value="submitted">Submitted</option>
             <option value="under_review">Under Review</option>
+            <option value="resubmitted">Resubmitted Revision</option>
             <option value="approved">Approved</option>
+            <option value="edit_requested">Edit Requested</option>
             <option value="correction_requested">Correction Requested</option>
             <option value="draft">Draft</option>
             <option value="missing">Missing / Overdue</option>

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { FileText, Eye } from 'lucide-react';
+import { FileText, Eye, FileEdit, RotateCcw } from 'lucide-react';
 import { DailyReport, FilterParams, Department, Center, UserProfile } from '@/types';
 import { FilterToolbar } from '@/components/dashboard/FilterToolbar';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
@@ -77,6 +77,8 @@ export default function AdminReportsPage() {
     submitted: { label: 'Submitted', variant: 'info' },
     under_review: { label: 'Under Review', variant: 'info' },
     correction_requested: { label: 'Correction Requested', variant: 'destructive' },
+    edit_requested: { label: 'Edit Requested', variant: 'destructive' },
+    resubmitted: { label: 'Resubmitted', variant: 'purple' },
     approved: { label: 'Approved', variant: 'default' },
     rejected: { label: 'Rejected', variant: 'destructive' },
   };
@@ -160,9 +162,25 @@ export default function AdminReportsPage() {
                         size="sm"
                         variant="outline"
                         onClick={() => setSelectedReport(r)}
-                        className="text-xs font-bold"
+                        className="rounded-full px-3.5 text-xs font-bold"
                       >
-                        <Eye className="h-3.5 w-3.5 mr-1" /> View / Review
+                        {r.status === 'approved' ? (
+                          <>
+                            <Eye className="h-3.5 w-3.5 mr-1 text-emerald-600" /> View Report
+                          </>
+                        ) : r.status === 'edit_requested' || r.status === 'correction_requested' ? (
+                          <>
+                            <FileEdit className="h-3.5 w-3.5 mr-1 text-amber-600" /> View Request
+                          </>
+                        ) : r.status === 'resubmitted' ? (
+                          <>
+                            <RotateCcw className="h-3.5 w-3.5 mr-1 text-purple-600" /> Review Revision
+                          </>
+                        ) : (
+                          <>
+                            <Eye className="h-3.5 w-3.5 mr-1" /> View / Review
+                          </>
+                        )}
                       </Button>
                     </TableCell>
                   </TableRow>

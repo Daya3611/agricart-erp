@@ -226,7 +226,7 @@ export default function AdminStaffManagementPage() {
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-            <Users className="h-6 w-6 text-emerald-600" /> Employee & Staff Management (erp_emp)
+            <Users className="h-6 w-6 text-emerald-600" /> Employee & Staff Management
           </h1>
           <p className="text-xs text-slate-500 font-medium">
             Manage authenticated employee profiles, organizational assignments, reporting schedules, and compliance.

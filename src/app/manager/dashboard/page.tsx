@@ -14,6 +14,7 @@ import {
   Building2,
   MapPin,
   ArrowRight,
+  RotateCcw,
 } from 'lucide-react';
 import { DashboardStats, DailyReport, UserProfile } from '@/types';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
@@ -58,7 +59,7 @@ export default function ManagerDashboardPage() {
   }, []);
 
   const pendingReviews = teamReports.filter(
-    (r) => r.status === 'submitted' || r.status === 'under_review'
+    (r) => r.status === 'submitted' || r.status === 'under_review' || r.status === 'resubmitted'
   );
 
   return (
@@ -236,9 +237,17 @@ export default function ManagerDashboardPage() {
                       <Button
                         size="sm"
                         onClick={() => setSelectedReport(r)}
-                        className="bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs"
+                        className="rounded-full px-3.5 bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs"
                       >
-                        <Eye className="h-3.5 w-3.5 mr-1" /> Review
+                        {r.status === 'resubmitted' ? (
+                          <>
+                            <RotateCcw className="h-3.5 w-3.5 mr-1" /> Review Revision
+                          </>
+                        ) : (
+                          <>
+                            <Eye className="h-3.5 w-3.5 mr-1" /> Review
+                          </>
+                        )}
                       </Button>
                     </TableCell>
                   </TableRow>

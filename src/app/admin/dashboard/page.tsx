@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Sprout, RefreshCw, Eye, ArrowRight, Activity, Plus, Shield, Users, Building2, MapPin, AlertTriangle, Clock } from 'lucide-react';
+import { Sprout, RefreshCw, Eye, ArrowRight, Activity, Plus, Shield, Users, Building2, MapPin, AlertTriangle, Clock, FileEdit, RotateCcw } from 'lucide-react';
 import { DashboardStats, DailyReport, FilterParams, Department, Center, UserProfile } from '@/types';
 import { StatsGrid } from '@/components/dashboard/StatsGrid';
 import { AnalyticsCharts } from '@/components/dashboard/AnalyticsCharts';
@@ -93,6 +93,8 @@ export default function AdminDashboardPage() {
     submitted: { label: 'Submitted', variant: 'info' },
     under_review: { label: 'Under Review', variant: 'info' },
     correction_requested: { label: 'Correction Requested', variant: 'destructive' },
+    edit_requested: { label: 'Edit Requested', variant: 'destructive' },
+    resubmitted: { label: 'Resubmitted', variant: 'purple' },
     approved: { label: 'Approved', variant: 'default' },
     rejected: { label: 'Rejected', variant: 'destructive' },
   };
@@ -287,9 +289,25 @@ export default function AdminDashboardPage() {
                         size="sm"
                         variant="outline"
                         onClick={() => setSelectedReport(report)}
-                        className="text-xs font-bold border-slate-300 hover:border-emerald-500 hover:text-emerald-700"
+                        className="rounded-full px-3.5 text-xs font-bold border-slate-300 hover:border-emerald-500 hover:text-emerald-700"
                       >
-                        <Eye className="h-3.5 w-3.5 mr-1" /> View & Review
+                        {report.status === 'approved' ? (
+                          <>
+                            <Eye className="h-3.5 w-3.5 mr-1 text-emerald-600" /> View Report
+                          </>
+                        ) : report.status === 'edit_requested' || report.status === 'correction_requested' ? (
+                          <>
+                            <FileEdit className="h-3.5 w-3.5 mr-1 text-amber-600" /> View Request
+                          </>
+                        ) : report.status === 'resubmitted' ? (
+                          <>
+                            <RotateCcw className="h-3.5 w-3.5 mr-1 text-purple-600" /> Review Revision
+                          </>
+                        ) : (
+                          <>
+                            <Eye className="h-3.5 w-3.5 mr-1" /> View / Review
+                          </>
+                        )}
                       </Button>
                     </TableCell>
                   </TableRow>

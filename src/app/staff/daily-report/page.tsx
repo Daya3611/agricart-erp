@@ -2,12 +2,26 @@
 
 import React, { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { PlusCircle, Upload, Image as ImageIcon, Video as VideoIcon, Trash2, CheckCircle2, Save, AlertCircle, ArrowLeft } from 'lucide-react';
-import { UserProfile, ReportAttachment } from '@/types';
+import {
+  PlusCircle,
+  Upload,
+  Image as ImageIcon,
+  Video as VideoIcon,
+  Trash2,
+  CheckCircle2,
+  Save,
+  AlertCircle,
+  ArrowLeft,
+  RotateCcw,
+  ShieldCheck,
+  Lock,
+} from 'lucide-react';
+import { UserProfile, ReportAttachment, DailyReport } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
-import { getTodayDateString } from '@/lib/utils/date-utils';
+import { Badge } from '@/components/ui/badge';
+import { getTodayDateString, formatReadableDateTime } from '@/lib/utils/date-utils';
 
 function DailyReportFormContent() {
   const router = useRouter();
@@ -15,6 +29,9 @@ function DailyReportFormContent() {
   const editId = searchParams.get('id');
 
   const [user, setUser] = useState<UserProfile | null>(null);
+  const [existingReport, setExistingReport] = useState<DailyReport | null>(null);
+  const [loadingExisting, setLoadingExisting] = useState(false);
+  const [isLockedApproved, setIsLockedApproved] = useState(false);
 
   // Form Fields State
   const [reportDate, setReportDate] = useState(getTodayDateString());
@@ -48,9 +65,50 @@ function DailyReportFormContent() {
       .then((data) => {
         if (data.authenticated) setUser(data.user);
       });
-  }, []);
+
+    if (editId) {
+      setLoadingExisting(true);
+      fetch(`/api/reports/${editId}`)
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.success && data.report) {
+            const r = data.report as DailyReport;
+            setExistingReport(r);
+
+            // Check if report is approved and locked
+            if (r.status === 'approved') {
+              setIsLockedApproved(true);
+              setError('This report is already approved and locked. Modifications are only permitted if an authorized supervisor requests an edit.');
+            }
+
+            if (r.reportDate) setReportDate(r.reportDate);
+            if (r.workLocation) setWorkLocation(r.workLocation);
+            if (r.workStartTime) setWorkStartTime(r.workStartTime);
+            if (r.workEndTime) setWorkEndTime(r.workEndTime);
+            if (r.activities) setActivities(r.activities);
+            if (r.completedTasks) setCompletedTasks(r.completedTasks);
+            if (r.farmersVisited !== undefined) setFarmersVisited(r.farmersVisited);
+            if (r.meetingsConducted !== undefined) setMeetingsConducted(r.meetingsConducted);
+            if (r.achievements) setAchievements(r.achievements);
+            if (r.challenges) setChallenges(r.challenges);
+            if (r.pendingWork) setPendingWork(r.pendingWork);
+            if (r.supportRequired) setSupportRequired(r.supportRequired);
+            if (r.nextDayPlan) setNextDayPlan(r.nextDayPlan);
+            if (r.remarks) setRemarks(r.remarks);
+            if (Array.isArray(r.attachments)) setAttachments(r.attachments);
+          } else {
+            setError(data.error || 'Failed to load report for editing.');
+          }
+        })
+        .catch((err) => {
+          setError(err.message || 'Error fetching report.');
+        })
+        .finally(() => setLoadingExisting(false));
+    }
+  }, [editId]);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (isLockedApproved) return;
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
@@ -85,10 +143,16 @@ function DailyReportFormContent() {
   };
 
   const handleRemoveAttachment = (attId: string) => {
+    if (isLockedApproved) return;
     setAttachments((prev) => prev.filter((a) => a.id !== attId));
   };
 
   const handleSaveReport = async (submitNow: boolean) => {
+    if (isLockedApproved) {
+      setError('Cannot submit changes to an approved report.');
+      return;
+    }
+
     if (submitNow && (!activities.trim() || !completedTasks.trim())) {
       setError('Please fill in required fields: "Activities Performed Today" and "Tasks Completed".');
       return;
@@ -129,7 +193,13 @@ function DailyReportFormContent() {
         throw new Error(data.error || 'Failed to save daily activity report.');
       }
 
-      setSuccessMsg(submitNow ? '🎉 Report successfully submitted!' : '💾 Draft report saved.');
+      setSuccessMsg(
+        submitNow
+          ? existingReport
+            ? '🎉 Revised report successfully resubmitted!'
+            : '🎉 Report successfully submitted!'
+          : '💾 Draft report saved.'
+      );
       setTimeout(() => {
         router.push('/staff/dashboard');
       }, 1500);
@@ -139,6 +209,11 @@ function DailyReportFormContent() {
       setSubmitting(false);
     }
   };
+
+  const isRevisionMode = Boolean(
+    existingReport &&
+      (existingReport.status === 'edit_requested' || existingReport.status === 'correction_requested')
+  );
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto pb-12">
@@ -151,14 +226,86 @@ function DailyReportFormContent() {
           >
             <ArrowLeft className="h-3.5 w-3.5" /> Back to Dashboard
           </button>
-          <h1 className="text-xl font-extrabold text-slate-900">Daily Activity Report Form</h1>
+          <h1 className="text-xl font-extrabold text-slate-900">
+            {isRevisionMode
+              ? `Edit & Resubmit Daily Activity Report (${existingReport?.reportDate})`
+              : existingReport
+              ? `Daily Activity Report (${existingReport.reportDate})`
+              : 'Daily Activity Report Form'}
+          </h1>
           <p className="text-xs text-slate-500 font-medium">
             Agricart Farmers Producer Company Ltd | Staff Reporting Module
           </p>
         </div>
+
+        {existingReport && (
+          <Badge
+            variant={
+              existingReport.status === 'approved'
+                ? 'default'
+                : isRevisionMode
+                ? 'destructive'
+                : 'info'
+            }
+            className="text-xs font-bold uppercase"
+          >
+            {existingReport.status === 'edit_requested'
+              ? 'Edit Requested'
+              : existingReport.status.replace('_', ' ')}
+          </Badge>
+        )}
       </div>
 
-      {error && (
+      {loadingExisting && (
+        <div className="p-4 bg-slate-100 text-slate-700 rounded-2xl text-xs font-semibold">
+          Loading report details for revision...
+        </div>
+      )}
+
+      {/* Locked Alert for Approved Reports */}
+      {isLockedApproved && (
+        <div className="p-4 bg-amber-50 rounded-2xl border border-amber-200 text-xs flex items-start gap-3 shadow-2xs">
+          <Lock className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
+          <div className="space-y-1">
+            <h3 className="font-extrabold text-amber-950">Report is Approved & Locked</h3>
+            <p className="text-amber-800">
+              This report for {existingReport?.reportDate} has already been approved and finalized. You cannot edit it unless an authorized supervisor issues a formal <strong>Request Edit</strong>.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Revision Banner for Edit Requested Reports */}
+      {isRevisionMode && existingReport && (
+        <div className="p-4 sm:p-5 bg-rose-50 rounded-2xl border border-rose-200 text-xs space-y-2 shadow-2xs">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-rose-950 font-extrabold">
+              <AlertCircle className="h-4 w-4 text-rose-600 shrink-0" />
+              <span>
+                Revisions Requested by {existingReport.editRequest?.requesterName || existingReport.reviewerName || 'Supervisor'} (Preparing Revision #{existingReport.revisionNumber + 1})
+              </span>
+            </div>
+            <Badge variant="destructive" className="text-[10px]">Action Required</Badge>
+          </div>
+
+          <div className="p-3 bg-white/95 rounded-xl border border-rose-200/80 text-rose-950 space-y-1">
+            <p className="font-semibold text-rose-900">
+              Reason: <span className="font-normal italic text-slate-800">"{existingReport.editRequest?.reason || existingReport.reviewComments}"</span>
+            </p>
+            {existingReport.editRequest?.instructions && (
+              <p className="font-semibold text-rose-900">
+                Instructions: <span className="font-normal text-slate-800">{existingReport.editRequest.instructions}</span>
+              </p>
+            )}
+          </div>
+
+          <p className="text-slate-600 text-[11px]">
+            Your previous content and attachments have been preserved below. Make the required edits and click <strong>Resubmit Revised Report</strong>.
+          </p>
+        </div>
+      )}
+
+      {error && !isLockedApproved && (
         <div className="p-4 bg-rose-100 text-rose-900 rounded-xl text-xs font-bold flex items-center gap-2">
           <AlertCircle className="h-4 w-4 text-rose-600 flex-shrink-0" /> {error}
         </div>
@@ -174,18 +321,17 @@ function DailyReportFormContent() {
         {/* Section 1: Basic Information */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm font-bold text-emerald-700 uppercase tracking-wider">
-              1. Basic Information & Work Details
-            </CardTitle>
-            <CardDescription>Verified account data automatically attached</CardDescription>
+            <CardTitle className="text-sm font-bold text-slate-900">1. Basic Assignment & Schedule</CardTitle>
+            <CardDescription className="text-xs">Location and shift hours for reporting date</CardDescription>
           </CardHeader>
-          <CardContent className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 text-xs">
+          <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
             <div>
-              <label className="font-bold text-slate-700 block mb-1">Report Date *</label>
+              <label className="font-bold text-slate-700 block mb-1">Report Date</label>
               <Input
                 type="date"
                 value={reportDate}
                 onChange={(e) => setReportDate(e.target.value)}
+                disabled={Boolean(existingReport)}
                 required
               />
             </div>
@@ -214,6 +360,7 @@ function DailyReportFormContent() {
                 value={workLocation}
                 onChange={(e) => setWorkLocation(e.target.value)}
                 placeholder="e.g. Dindori Farmers Cluster / APMC Market"
+                disabled={isLockedApproved}
                 required
               />
             </div>
@@ -224,6 +371,7 @@ function DailyReportFormContent() {
                 type="time"
                 value={workStartTime}
                 onChange={(e) => setWorkStartTime(e.target.value)}
+                disabled={isLockedApproved}
               />
             </div>
 
@@ -233,157 +381,219 @@ function DailyReportFormContent() {
                 type="time"
                 value={workEndTime}
                 onChange={(e) => setWorkEndTime(e.target.value)}
+                disabled={isLockedApproved}
               />
             </div>
           </CardContent>
         </Card>
 
-        {/* Section 2: Activity Details */}
+        {/* Section 2: Work Performed & Output */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm font-bold text-emerald-700 uppercase tracking-wider">
-              2. Activities & Completed Tasks
-            </CardTitle>
-            <CardDescription>Detail tasks performed, stakeholders visited, and results</CardDescription>
+            <CardTitle className="text-sm font-bold text-slate-900">2. Daily Activities & Field Engagement</CardTitle>
+            <CardDescription className="text-xs">Detail operational execution and metrics achieved</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4 text-xs">
             <div>
-              <label className="font-bold text-slate-700 block mb-1">Activities Performed Today *</label>
-              <textarea
-                rows={4}
-                value={activities}
-                onChange={(e) => setActivities(e.target.value)}
-                placeholder="Detailed description of field visits, crop inspection, procurement, moisture testing..."
-                className="w-full rounded-xl border border-slate-200 p-3 text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                required
-              />
-            </div>
-
-            <div>
-              <label className="font-bold text-slate-700 block mb-1">Tasks Completed Today *</label>
+              <label className="font-bold text-slate-700 block mb-1">
+                Activities Performed Today * <span className="text-slate-400 font-normal">(Required)</span>
+              </label>
               <textarea
                 rows={3}
-                value={completedTasks}
-                onChange={(e) => setCompletedTasks(e.target.value)}
-                placeholder="Key deliverables completed (e.g. Procured 12 MT Red Onions, Distributed 200 crates)..."
-                className="w-full rounded-xl border border-slate-200 p-3 text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                value={activities}
+                onChange={(e) => setActivities(e.target.value)}
+                placeholder="Comprehensive breakdown of field visits, collection, verification, or procurement tasks handled..."
+                className="w-full rounded-xl border border-slate-200 p-3 text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                disabled={isLockedApproved}
                 required
               />
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="font-bold text-slate-700 block mb-1">Farmers / Stakeholders Visited</label>
-                <Input
-                  type="number"
-                  min={0}
-                  value={farmersVisited}
-                  onChange={(e) => setFarmersVisited(e.target.value)}
-                />
-              </div>
-
-              <div>
-                <label className="font-bold text-slate-700 block mb-1">Group Meetings Conducted</label>
-                <Input
-                  type="number"
-                  min={0}
-                  value={meetingsConducted}
-                  onChange={(e) => setMeetingsConducted(e.target.value)}
-                />
-              </div>
-            </div>
-
             <div>
-              <label className="font-bold text-slate-700 block mb-1">Results & Achievements</label>
+              <label className="font-bold text-slate-700 block mb-1">
+                Tasks Completed * <span className="text-slate-400 font-normal">(Required)</span>
+              </label>
               <textarea
                 rows={2}
-                value={achievements}
-                onChange={(e) => setAchievements(e.target.value)}
-                placeholder="Key achievements or milestone targets hit..."
-                className="w-full rounded-xl border border-slate-200 p-3 text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                value={completedTasks}
+                onChange={(e) => setCompletedTasks(e.target.value)}
+                placeholder="List completed deliverables and goals accomplished..."
+                className="w-full rounded-xl border border-slate-200 p-3 text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                disabled={isLockedApproved}
+                required
               />
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="font-bold text-amber-900 block mb-1">Challenges & Issues Faced</label>
-                <textarea
-                  rows={2}
-                  value={challenges}
-                  onChange={(e) => setChallenges(e.target.value)}
-                  placeholder="Transport bottlenecks, weather delays, quality issues..."
-                  className="w-full rounded-xl border border-amber-200 bg-amber-50/40 p-3 text-xs focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                <label className="font-bold text-slate-700 block mb-1">Number of Farmers Visited</label>
+                <Input
+                  type="number"
+                  min="0"
+                  value={farmersVisited}
+                  onChange={(e) => setFarmersVisited(e.target.value)}
+                  disabled={isLockedApproved}
                 />
               </div>
 
               <div>
-                <label className="font-bold text-slate-700 block mb-1">Plan for Next Working Day</label>
-                <textarea
-                  rows={2}
-                  value={nextDayPlan}
-                  onChange={(e) => setNextDayPlan(e.target.value)}
-                  placeholder="Scheduled field visits, meetings, or procurement targets for tomorrow..."
-                  className="w-full rounded-xl border border-slate-200 p-3 text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                <label className="font-bold text-slate-700 block mb-1">Number of Meetings Conducted</label>
+                <Input
+                  type="number"
+                  min="0"
+                  value={meetingsConducted}
+                  onChange={(e) => setMeetingsConducted(e.target.value)}
+                  disabled={isLockedApproved}
                 />
               </div>
             </div>
           </CardContent>
         </Card>
 
-        {/* Section 3: Evidence Uploads (Firebase Cloud Storage) */}
+        {/* Section 3: Performance, Challenges & Next Day Plan */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-sm font-bold text-emerald-700 uppercase tracking-wider">
-              3. Work Evidence (Photos & Videos)
-            </CardTitle>
-            <CardDescription>Upload real photos/videos to Firebase Cloud Storage</CardDescription>
+            <CardTitle className="text-sm font-bold text-slate-900">3. Operational Challenges & Forward Planning</CardTitle>
+            <CardDescription className="text-xs">Escalate roadblocks, highlight milestones, and set tomorrow's agenda</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4 text-xs">
-            <div className="p-5 bg-emerald-50/40 rounded-2xl border-2 border-dashed border-emerald-300/80 space-y-3">
-              <label className="font-bold text-slate-800 block">Add Photo or Video Attachment</label>
-              <Input
-                type="text"
-                placeholder="Optional Caption for attachment (e.g. Onion Crate Moisture Test at Dindori)"
-                value={uploadCaption}
-                onChange={(e) => setUploadCaption(e.target.value)}
-                className="bg-white rounded-xl"
+            <div>
+              <label className="font-bold text-slate-700 block mb-1">Key Achievements & Outcomes</label>
+              <textarea
+                rows={2}
+                value={achievements}
+                onChange={(e) => setAchievements(e.target.value)}
+                placeholder="Major breakthroughs, collection targets met, farmer onboardings..."
+                className="w-full rounded-xl border border-slate-200 p-3 text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                disabled={isLockedApproved}
               />
+            </div>
 
-              <div className="flex items-center gap-3">
-                <label className="cursor-pointer inline-flex items-center gap-2 bg-emerald-700 hover:bg-emerald-800 text-white font-bold px-5 py-2.5 rounded-full transition-all shadow-xs">
-                  <Upload className="h-4 w-4" />
-                  <span>{uploading ? 'Uploading to Firebase Storage...' : 'Choose Photos / Videos'}</span>
-                  <input
-                    type="file"
-                    multiple
-                    accept="image/*,video/*"
-                    onChange={handleFileUpload}
-                    disabled={uploading}
-                    className="hidden"
-                  />
-                </label>
-                <span className="text-[11px] text-slate-500 font-medium">Max 10MB per photo, 100MB per video</span>
+            <div>
+              <label className="font-bold text-slate-700 block mb-1">Challenges & Issues Encountered</label>
+              <textarea
+                rows={2}
+                value={challenges}
+                onChange={(e) => setChallenges(e.target.value)}
+                placeholder="Logistics delays, equipment faults, payment issues, climate problems..."
+                className="w-full rounded-xl border border-slate-200 p-3 text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                disabled={isLockedApproved}
+              />
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="font-bold text-slate-700 block mb-1">Pending / Incomplete Work</label>
+                <textarea
+                  rows={2}
+                  value={pendingWork}
+                  onChange={(e) => setPendingWork(e.target.value)}
+                  placeholder="Tasks rolling over to next shift..."
+                  className="w-full rounded-xl border border-slate-200 p-3 text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                  disabled={isLockedApproved}
+                />
+              </div>
+
+              <div>
+                <label className="font-bold text-slate-700 block mb-1">Support or Approval Required</label>
+                <textarea
+                  rows={2}
+                  value={supportRequired}
+                  onChange={(e) => setSupportRequired(e.target.value)}
+                  placeholder="Need transport, budget sanction, manager consultation..."
+                  className="w-full rounded-xl border border-slate-200 p-3 text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                  disabled={isLockedApproved}
+                />
               </div>
             </div>
 
+            <div>
+              <label className="font-bold text-slate-700 block mb-1">Plan for Next Working Day</label>
+              <textarea
+                rows={2}
+                value={nextDayPlan}
+                onChange={(e) => setNextDayPlan(e.target.value)}
+                placeholder="Scheduled visits, route plan, targets for next day..."
+                className="w-full rounded-xl border border-slate-200 p-3 text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                disabled={isLockedApproved}
+              />
+            </div>
+
+            <div>
+              <label className="font-bold text-slate-700 block mb-1">General Remarks / Notes</label>
+              <Input
+                value={remarks}
+                onChange={(e) => setRemarks(e.target.value)}
+                placeholder="Any other relevant details or observations..."
+                disabled={isLockedApproved}
+              />
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Section 4: Attachments (Preserved from Previous Submissions) */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm font-bold text-slate-900">4. Field Evidence & Media Attachments</CardTitle>
+            <CardDescription className="text-xs">
+              Upload geo-tagged farmer meeting photos, weighing receipts, or field survey videos. Existing attachments are preserved unless deleted.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4 text-xs">
+            {!isLockedApproved && (
+              <div className="p-4 bg-slate-50 border-2 border-dashed border-slate-200 rounded-2xl flex flex-col items-center justify-center space-y-2 text-center">
+                <Upload className="h-8 w-8 text-slate-400" />
+                <div>
+                  <label className="cursor-pointer text-emerald-700 font-extrabold hover:underline">
+                    <span>Click to choose photos or videos to upload</span>
+                    <input
+                      type="file"
+                      multiple
+                      accept="image/*,video/*"
+                      className="hidden"
+                      onChange={handleFileUpload}
+                      disabled={uploading}
+                    />
+                  </label>
+                  <p className="text-[11px] text-slate-500 mt-0.5">JPEG, PNG, WebP, MP4 up to 50MB</p>
+                </div>
+                {uploading && <p className="text-xs font-bold text-emerald-600 animate-pulse">Uploading file evidence...</p>}
+              </div>
+            )}
+
+            {/* List of Attached Evidence */}
             {attachments.length > 0 && (
               <div className="space-y-2">
-                <span className="font-bold text-slate-700 block">Uploaded Attachments ({attachments.length}):</span>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                <span className="font-bold text-slate-800 block text-xs">
+                  Attached Files ({attachments.length}):
+                </span>
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
                   {attachments.map((att) => (
                     <div
                       key={att.id}
-                      className="relative rounded-2xl border border-slate-200 bg-white p-3 space-y-1.5 shadow-2xs"
+                      className="p-3 bg-white rounded-xl border border-slate-200 shadow-2xs space-y-1.5"
                     >
-                      <div className="flex items-center justify-between text-[11px] font-bold text-slate-800">
-                        <span className="truncate">{att.originalFilename}</span>
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveAttachment(att.id)}
-                          className="text-rose-600 hover:bg-rose-50 p-1.5 rounded-full transition-colors"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2 truncate">
+                          {att.mimeType.startsWith('video') ? (
+                            <VideoIcon className="h-4 w-4 text-purple-600 shrink-0" />
+                          ) : (
+                            <ImageIcon className="h-4 w-4 text-emerald-600 shrink-0" />
+                          )}
+                          <span className="font-bold text-slate-900 text-xs truncate max-w-[120px]">
+                            {att.originalFilename}
+                          </span>
+                        </div>
+                        {!isLockedApproved && (
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveAttachment(att.id)}
+                            className="text-rose-600 hover:bg-rose-50 p-1.5 rounded-full transition-colors"
+                            title="Remove attachment"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        )}
                       </div>
                       {att.caption && (
                         <p className="text-[10px] text-emerald-800 font-semibold italic truncate">"{att.caption}"</p>
@@ -397,26 +607,40 @@ function DailyReportFormContent() {
         </Card>
 
         {/* Action Buttons */}
-        <div className="flex flex-wrap items-center justify-between gap-4 p-4 bg-white rounded-2xl border border-slate-200 shadow-sm">
-          <Button
-            type="button"
-            variant="outline"
-            disabled={submitting}
-            onClick={() => handleSaveReport(false)}
-            className="border-amber-300 text-amber-900 hover:bg-amber-50 font-bold"
-          >
-            <Save className="h-4 w-4 mr-1.5" /> Save as Draft
-          </Button>
+        {!isLockedApproved && (
+          <div className="flex flex-wrap items-center justify-between gap-4 p-4 bg-white rounded-2xl border border-slate-200 shadow-sm">
+            <Button
+              type="button"
+              variant="outline"
+              disabled={submitting}
+              onClick={() => handleSaveReport(false)}
+              className="rounded-full border-amber-300 text-amber-900 hover:bg-amber-50 font-bold text-xs"
+            >
+              <Save className="h-4 w-4 mr-1.5" /> Save as Draft
+            </Button>
 
-          <Button
-            type="button"
-            disabled={submitting}
-            onClick={() => handleSaveReport(true)}
-            className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold px-8 py-2.5 h-11 text-sm shadow-md shadow-emerald-600/20"
-          >
-            {submitting ? 'Submitting Report...' : 'Submit Activity Report'}
-          </Button>
-        </div>
+            <Button
+              type="button"
+              disabled={submitting}
+              onClick={() => handleSaveReport(true)}
+              className={`rounded-full font-extrabold px-8 py-2.5 h-11 text-sm shadow-md ${
+                isRevisionMode
+                  ? 'bg-purple-700 hover:bg-purple-800 text-white shadow-purple-700/20'
+                  : 'bg-emerald-700 hover:bg-emerald-800 text-white shadow-emerald-700/20'
+              }`}
+            >
+              {submitting ? (
+                'Submitting...'
+              ) : isRevisionMode ? (
+                <>
+                  <RotateCcw className="h-4 w-4 mr-1.5" /> Resubmit Revised Report (Revision #{(existingReport?.revisionNumber || 1) + 1})
+                </>
+              ) : (
+                'Submit Activity Report'
+              )}
+            </Button>
+          </div>
+        )}
       </form>
     </div>
   );

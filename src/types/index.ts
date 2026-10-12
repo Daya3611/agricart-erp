@@ -63,6 +63,8 @@ export type ReportStatus =
   | 'submitted'
   | 'under_review'
   | 'correction_requested'
+  | 'edit_requested'
+  | 'resubmitted'
   | 'approved'
   | 'rejected';
 
@@ -101,6 +103,29 @@ export interface ReportRevision {
   createdAt: string;
 }
 
+export interface EditRequestRecord {
+  id: string;
+  reportId: string;
+  reason: string;
+  instructions?: string;
+  requesterUid: string;
+  requesterName: string;
+  requesterRole: string;
+  requestedAt: string;
+  status: 'pending' | 'resolved';
+  resolvedAt?: string;
+}
+
+export interface ApprovalHistoryRecord {
+  reviewerUid: string;
+  reviewerName: string;
+  reviewerRole: string;
+  decision: 'approved' | 'rejected';
+  decidedAt: string;
+  comments?: string;
+  revisionNumber: number;
+}
+
 export interface DailyReport {
   id: string;
   staffUid: string;
@@ -131,11 +156,16 @@ export interface DailyReport {
   hasLeaveConflict?: boolean;
   conflictDetails?: string;
   submittedAt?: string;
+  resubmittedAt?: string;
   reviewerUid?: string;
   reviewerName?: string;
   reviewedAt?: string;
   reviewComments?: string;
   revisionNumber: number;
+  editRequest?: EditRequestRecord;
+  editRequestHistory?: EditRequestRecord[];
+  lastApproval?: ApprovalHistoryRecord;
+  approvalHistory?: ApprovalHistoryRecord[];
   createdAt: string;
   updatedAt: string;
 }
@@ -238,6 +268,7 @@ export interface MonthlyReportDay {
   meetingsConducted?: number;
   hasConflict?: boolean;
   conflictDetails?: string;
+  attachments?: ReportAttachment[];
 }
 
 export interface MonthlyReportSummary {
