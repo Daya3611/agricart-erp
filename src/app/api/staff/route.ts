@@ -251,7 +251,7 @@ export async function POST(req: Request) {
       if (createdAuthAccount) {
         try {
           await adminAuth.deleteUser(uid);
-        } catch {}
+        } catch { }
       }
       return NextResponse.json({ success: false, error: saveRes.error }, { status: 500 });
     }
