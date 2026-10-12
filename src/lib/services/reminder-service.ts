@@ -31,8 +31,21 @@ export async function processAutomaticMissingReportReminders(targetDate = getTod
         .map((r: DailyReport) => r.staffUid)
     );
 
+    // Retrieve approved leaves covering targetDate to exclude staff on authorized leave
+    const leavesSnap = await adminDb
+      .collection(ERP_COLLECTIONS.leaveRecords)
+      .where('approvalStatus', '==', 'approved')
+      .get();
+    const onLeaveStaffUids = new Set<string>();
+    leavesSnap.docs.forEach((doc: any) => {
+      const l = doc.data();
+      if (l.startDate <= targetDate && l.endDate >= targetDate) {
+        onLeaveStaffUids.add(l.staffUid);
+      }
+    });
+
     for (const staff of staffMembers) {
-      if (submittedStaffUids.has(staff.uid)) {
+      if (submittedStaffUids.has(staff.uid) || onLeaveStaffUids.has(staff.uid)) {
         results.skippedCount++;
         continue;
       }

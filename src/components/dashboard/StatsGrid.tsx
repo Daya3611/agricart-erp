@@ -15,10 +15,12 @@ export function StatsGrid({ stats }: StatsGridProps) {
     {
       title: 'Total Active Staff',
       value: stats.totalActiveStaff,
-      subtext: `${stats.scheduledStaffToday} scheduled working today`,
+      subtext: stats.onLeaveToday && stats.onLeaveToday > 0 
+        ? `${stats.scheduledStaffToday} scheduled (${stats.onLeaveToday} on leave)`
+        : `${stats.scheduledStaffToday} scheduled working today`,
       icon: Users,
       color: 'text-emerald-700 bg-emerald-50 border-emerald-200',
-      badge: null,
+      badge: stats.onLeaveToday && stats.onLeaveToday > 0 ? `${stats.onLeaveToday} on leave` : null,
     },
     {
       title: 'Reports Submitted Today',

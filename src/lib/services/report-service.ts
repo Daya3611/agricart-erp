@@ -47,6 +47,23 @@ export async function createOrUpdateReport(
 
     const newStatus: ReportStatus = reportData.submitNow ? 'submitted' : 'draft';
 
+    // Check if employee has an approved leave for reportDate to flag potential conflict
+    let hasLeaveConflict = false;
+    let conflictDetails: string | undefined = undefined;
+    try {
+      const leaves = (await fetchCollection(ERP_COLLECTIONS.leaveRecords, [
+        { field: 'staffUid', op: '==', value: staffUser.uid },
+        { field: 'approvalStatus', op: '==', value: 'approved' },
+      ])) as any[];
+      const conflictingLeave = leaves.find((l) => l.startDate <= reportDate && l.endDate >= reportDate);
+      if (conflictingLeave) {
+        hasLeaveConflict = true;
+        conflictDetails = `Report submitted on approved leave date (${conflictingLeave.leaveType?.toUpperCase() || 'LEAVE'}, ${conflictingLeave.startDate} to ${conflictingLeave.endDate})`;
+      }
+    } catch (e) {
+      console.warn('Leave check error during report creation:', e);
+    }
+
     const fullReport: DailyReport = {
       id: docId,
       staffUid: staffUser.uid,
@@ -74,6 +91,8 @@ export async function createOrUpdateReport(
       attachments: reportData.attachments || [],
       status: newStatus,
       isLate,
+      hasLeaveConflict,
+      conflictDetails,
       submittedAt: reportData.submitNow ? (existingDoc && previousData?.submittedAt ? previousData.submittedAt : now) : (previousData?.submittedAt || undefined),
       reviewerUid: previousData?.reviewerUid || undefined,
       reviewerName: previousData?.reviewerName || undefined,
@@ -214,9 +233,28 @@ export async function getDashboardStats(params?: FilterParams): Promise<Dashboar
     const awaitingApprovalCount = reportsToday.filter((r) => r.status === 'submitted' || r.status === 'under_review').length;
     const correctionRequestedCount = reportsToday.filter((r) => r.status === 'correction_requested').length;
     const approvedReportsCount = reportsToday.filter((r) => r.status === 'approved').length;
-    const missingReportsToday = Math.max(0, totalActiveStaff - submittedToday);
 
-    const dailySubmissionRate = totalActiveStaff > 0 ? Math.round((submittedToday / totalActiveStaff) * 100) : 0;
+    // Retrieve approved leaves covering today
+    let approvedLeaves = (await fetchCollection(ERP_COLLECTIONS.leaveRecords, [
+      { field: 'approvalStatus', op: '==', value: 'approved' },
+    ])) as any[];
+    if (params?.departmentId) {
+      approvedLeaves = approvedLeaves.filter((l) => l.departmentId === params.departmentId);
+    }
+    if (params?.centerId) {
+      approvedLeaves = approvedLeaves.filter((l) => l.centerId === params.centerId);
+    }
+    const onLeaveStaffUids = new Set<string>();
+    approvedLeaves.forEach((l) => {
+      if (l.startDate <= today && l.endDate >= today) {
+        onLeaveStaffUids.add(l.staffUid);
+      }
+    });
+    const onLeaveToday = onLeaveStaffUids.size;
+    const scheduledStaffToday = Math.max(0, totalActiveStaff - onLeaveToday);
+    const missingReportsToday = Math.max(0, scheduledStaffToday - submittedToday);
+
+    const dailySubmissionRate = scheduledStaffToday > 0 ? Math.round((submittedToday / scheduledStaffToday) * 100) : 100;
 
     let depts = (await fetchCollection(ERP_COLLECTIONS.departments, [{ field: 'active', op: '==', value: true }])) as any[];
     if (params?.departmentId) {
@@ -298,10 +336,11 @@ export async function getDashboardStats(params?: FilterParams): Promise<Dashboar
 
     return {
       totalActiveStaff,
-      scheduledStaffToday: totalActiveStaff,
-      reportsExpectedToday: totalActiveStaff,
+      scheduledStaffToday,
+      reportsExpectedToday: scheduledStaffToday,
       reportsSubmittedToday: submittedToday,
       missingReportsToday,
+      onLeaveToday,
       overdueReports: missingReportsToday,
       awaitingApprovalCount,
       correctionRequestedCount,

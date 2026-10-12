@@ -14,6 +14,8 @@ import {
   History,
   AlertCircle,
   User,
+  CalendarOff,
+  CalendarDays,
   type LucideIcon,
 } from 'lucide-react';
 import { UserRole } from '@/types';
@@ -74,6 +76,12 @@ export function getNavigationForRole(role: UserRole): NavGroupConfig[] {
             href: '/admin/centers',
             icon: MapPin,
           },
+          {
+            id: 'admin-leaves',
+            label: 'Leave Management',
+            href: '/admin/leaves',
+            icon: CalendarOff,
+          },
         ],
       },
       {
@@ -85,6 +93,12 @@ export function getNavigationForRole(role: UserRole): NavGroupConfig[] {
             label: 'Daily Reports',
             href: '/admin/reports',
             icon: FileText,
+          },
+          {
+            id: 'admin-monthly-reports',
+            label: 'Monthly Report',
+            href: '/admin/reports/monthly',
+            icon: CalendarDays,
           },
           {
             id: 'admin-pending-reviews',
@@ -176,6 +190,18 @@ export function getNavigationForRole(role: UserRole): NavGroupConfig[] {
             icon: Users,
           },
           {
+            id: 'manager-leaves',
+            label: 'Team Leaves',
+            href: '/manager/leaves',
+            icon: CalendarOff,
+          },
+          {
+            id: 'manager-monthly-reports',
+            label: 'Monthly Report',
+            href: '/admin/reports/monthly',
+            icon: CalendarDays,
+          },
+          {
             id: 'manager-analytics',
             label: 'Department Analytics',
             href: '/manager/analytics',
@@ -210,6 +236,18 @@ export function getNavigationForRole(role: UserRole): NavGroupConfig[] {
           label: 'My Reports',
           href: '/staff/report-history',
           icon: History,
+        },
+        {
+          id: 'staff-leaves',
+          label: 'My Leaves',
+          href: '/staff/leaves',
+          icon: CalendarOff,
+        },
+        {
+          id: 'staff-monthly-report',
+          label: 'Monthly Report',
+          href: '/staff/reports/monthly',
+          icon: CalendarDays,
         },
         {
           id: 'staff-corrections',

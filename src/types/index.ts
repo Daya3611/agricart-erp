@@ -128,6 +128,8 @@ export interface DailyReport {
   attachments: ReportAttachment[];
   status: ReportStatus;
   isLate?: boolean;
+  hasLeaveConflict?: boolean;
+  conflictDetails?: string;
   submittedAt?: string;
   reviewerUid?: string;
   reviewerName?: string;
@@ -164,17 +166,107 @@ export interface Holiday {
   createdAt: string;
 }
 
+export type LeaveType =
+  | 'casual'
+  | 'sick'
+  | 'earned'
+  | 'unpaid'
+  | 'half_day'
+  | 'maternity'
+  | 'paternity'
+  | 'compensatory'
+  | 'other';
+
+export type LeaveStatus = 'pending' | 'approved' | 'rejected' | 'draft' | 'cancelled';
+
+export interface LeaveAuditEntry {
+  status: LeaveStatus;
+  actorUid: string;
+  actorName: string;
+  actorRole: UserRole;
+  timestamp: string;
+  note?: string;
+}
+
 export interface LeaveRecord {
   id: string;
   staffUid: string;
+  employeeId: string;
   staffName: string;
+  staffEmail?: string;
+  departmentId: string;
+  departmentName?: string;
+  centerId: string;
+  centerName?: string;
   startDate: string; // YYYY-MM-DD
   endDate: string; // YYYY-MM-DD
-  leaveType: 'casual' | 'sick' | 'earned' | 'unpaid' | 'other';
-  approvalStatus: 'pending' | 'approved' | 'rejected';
+  daysCount: number;
+  isHalfDay?: boolean;
+  halfDayType?: 'first_half' | 'second_half';
+  leaveType: LeaveType;
+  approvalStatus: LeaveStatus;
+  reason: string;
+  attachmentUrl?: string;
+  enteredByUid: string;
+  enteredByName: string;
+  enteredByRole: UserRole;
   approvedByUid?: string;
-  reason?: string;
+  approvedByName?: string;
+  approvedAt?: string;
+  rejectedByUid?: string;
+  rejectedByName?: string;
+  rejectedAt?: string;
+  rejectionReason?: string;
+  auditHistory?: LeaveAuditEntry[];
   createdAt: string;
+  updatedAt: string;
+}
+
+export interface MonthlyReportDay {
+  date: string; // YYYY-MM-DD
+  dayNumber: number; // 1-31
+  dayOfWeek: string; // e.g. "Monday"
+  dailyActivity: string;
+  reportStatus: 'Submitted' | 'Approved' | 'Under Review' | 'Correction Requested' | 'On Leave' | 'Missing';
+  submissionTime: string;
+  reviewStatus: string;
+  remarks: string;
+  reportId?: string;
+  leaveId?: string;
+  leaveType?: LeaveType;
+  farmersVisited?: number;
+  meetingsConducted?: number;
+  hasConflict?: boolean;
+  conflictDetails?: string;
+}
+
+export interface MonthlyReportSummary {
+  employee: {
+    uid: string;
+    employeeId: string;
+    fullName: string;
+    email: string;
+    designation: string;
+    departmentName: string;
+    centerName: string;
+  };
+  year: number;
+  month: number;
+  monthName: string;
+  generatedAt: string;
+  stats: {
+    totalCalendarDays: number;
+    submittedReportDays: number;
+    approvedReportDays: number;
+    missingReportDays: number;
+    approvedLeaveDays: number;
+    pendingReviewDays: number;
+    correctionRequestedDays: number;
+    conflictDays: number;
+    totalFarmersVisited: number;
+    totalMeetingsConducted: number;
+  };
+  days: MonthlyReportDay[];
 }
 
 export type ReminderType = 'initial' | 'followup' | 'final' | 'manager_escalation';
@@ -274,6 +366,7 @@ export interface DashboardStats {
   reportsExpectedToday: number;
   reportsSubmittedToday: number;
   missingReportsToday: number;
+  onLeaveToday?: number;
   overdueReports: number;
   awaitingApprovalCount: number;
   correctionRequestedCount: number;

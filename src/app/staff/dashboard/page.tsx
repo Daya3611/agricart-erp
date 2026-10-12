@@ -18,6 +18,8 @@ import {
   Calendar,
   AlertCircle,
   RotateCcw,
+  CalendarOff,
+  CalendarDays,
 } from 'lucide-react';
 import { DailyReport, UserProfile } from '@/types';
 import { Button } from '@/components/ui/button';
@@ -28,6 +30,7 @@ import { getTodayDateString, formatReadableDate } from '@/lib/utils/date-utils';
 export default function StaffDashboardPage() {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [todayReport, setTodayReport] = useState<DailyReport | null>(null);
+  const [todayLeave, setTodayLeave] = useState<any | null>(null);
   const [reports, setReports] = useState<DailyReport[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -49,6 +52,16 @@ export default function StaffDashboardPage() {
           const foundToday = repData.reports.find((r: DailyReport) => r.reportDate === todayStr);
           if (foundToday) setTodayReport(foundToday);
         }
+
+        // Fetch leaves to see if staff is on approved leave today
+        const leavesRes = await fetch('/api/leaves');
+        const leavesData = await leavesRes.json();
+        if (leavesData.leaves) {
+          const activeLeave = leavesData.leaves.find((l: any) =>
+            l.approvalStatus === 'approved' && l.startDate <= todayStr && l.endDate >= todayStr
+          );
+          if (activeLeave) setTodayLeave(activeLeave);
+        }
       } catch (err) {
         console.error('Failed to load staff dashboard data:', err);
       } finally {
@@ -67,6 +80,36 @@ export default function StaffDashboardPage() {
 
   const getTodayStatusCard = () => {
     if (!todayReport) {
+      if (todayLeave) {
+        return (
+          <Card className="border-sky-200 bg-sky-50/60 shadow-xs">
+            <CardContent className="p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+              <div className="space-y-1">
+                <Badge className="bg-sky-100 text-sky-800 border-sky-300 font-bold mb-1">On Approved Leave Today</Badge>
+                <h2 className="text-base font-extrabold text-sky-950">
+                  You are currently on authorized {todayLeave.leaveType.toUpperCase()} leave ({todayStr})
+                </h2>
+                <p className="text-xs text-slate-600">
+                  Leave duration: <span className="font-bold">{todayLeave.daysCount} day(s)</span> ({todayLeave.startDate} to {todayLeave.endDate}). You are exempt from submitting a daily activity report today.
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <Link href="/staff/leaves">
+                  <Button variant="outline" size="sm" className="font-bold border-sky-300 text-sky-800 hover:bg-sky-100">
+                    <CalendarOff className="h-4 w-4 mr-1.5" /> View My Leaves
+                  </Button>
+                </Link>
+                <Link href="/staff/daily-report">
+                  <Button variant="ghost" size="sm" className="text-xs text-slate-500 hover:text-slate-800">
+                    Submit Report Anyway
+                  </Button>
+                </Link>
+              </div>
+            </CardContent>
+          </Card>
+        );
+      }
+
       return (
         <Card className="border-emerald-200 bg-emerald-50/50 shadow-sm">
           <CardContent className="p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
@@ -224,7 +267,7 @@ export default function StaffDashboardPage() {
       {getTodayStatusCard()}
 
       {/* Quick Action Navigation Buttons */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         <Link href="/staff/daily-report">
           <div className="p-3.5 bg-white rounded-2xl border border-slate-200/80 hover:border-emerald-300 transition-all flex items-center justify-between shadow-2xs group">
             <div className="flex items-center gap-2.5">
@@ -246,6 +289,30 @@ export default function StaffDashboardPage() {
               <span className="text-xs font-bold text-slate-800">My Reports</span>
             </div>
             <ArrowRight className="h-3.5 w-3.5 text-slate-400 group-hover:text-sky-600 group-hover:translate-x-0.5 transition-all" />
+          </div>
+        </Link>
+
+        <Link href="/staff/leaves">
+          <div className="p-3.5 bg-white rounded-2xl border border-slate-200/80 hover:border-teal-300 transition-all flex items-center justify-between shadow-2xs group">
+            <div className="flex items-center gap-2.5">
+              <div className="p-2 bg-teal-50 text-teal-700 rounded-full group-hover:bg-teal-100 transition-colors">
+                <CalendarOff className="h-4 w-4" />
+              </div>
+              <span className="text-xs font-bold text-slate-800">My Leaves</span>
+            </div>
+            <ArrowRight className="h-3.5 w-3.5 text-slate-400 group-hover:text-teal-600 group-hover:translate-x-0.5 transition-all" />
+          </div>
+        </Link>
+
+        <Link href="/staff/reports/monthly">
+          <div className="p-3.5 bg-white rounded-2xl border border-slate-200/80 hover:border-emerald-300 transition-all flex items-center justify-between shadow-2xs group">
+            <div className="flex items-center gap-2.5">
+              <div className="p-2 bg-emerald-50 text-emerald-700 rounded-full group-hover:bg-emerald-100 transition-colors">
+                <CalendarDays className="h-4 w-4" />
+              </div>
+              <span className="text-xs font-bold text-slate-800">Monthly Report</span>
+            </div>
+            <ArrowRight className="h-3.5 w-3.5 text-slate-400 group-hover:text-emerald-600 group-hover:translate-x-0.5 transition-all" />
           </div>
         </Link>
 
