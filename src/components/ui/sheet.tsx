@@ -192,14 +192,14 @@ export function SheetContent({
         {...props}
       >
         {/* Top-right accessible close button */}
-        <button
+        {/* <button
           type="button"
           onClick={() => setOpen(false)}
           className="absolute right-3.5 top-3.5 z-20 h-8 w-8 min-h-[36px] min-w-[36px] flex items-center justify-center rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-100 active:bg-slate-200 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
           aria-label="Close"
         >
           <X className="h-4 w-4" />
-        </button>
+        </button> */}
 
         {showGrabHandle && (
           <button
