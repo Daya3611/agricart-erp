@@ -171,8 +171,12 @@ export function SheetContent({
     >
       {/* Backdrop */}
       <div
-        className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs transition-opacity animate-in fade-in duration-200 pointer-events-auto"
+        className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs transition-opacity animate-in fade-in duration-200 pointer-events-auto cursor-pointer"
         onClick={() => setOpen(false)}
+        onTouchEnd={(e) => {
+          e.preventDefault();
+          setOpen(false);
+        }}
         aria-hidden="true"
       />
 
@@ -187,10 +191,25 @@ export function SheetContent({
         )}
         {...props}
       >
+        {/* Top-right accessible close button */}
+        <button
+          type="button"
+          onClick={() => setOpen(false)}
+          className="absolute right-3.5 top-3.5 z-20 h-8 w-8 min-h-[36px] min-w-[36px] flex items-center justify-center rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-100 active:bg-slate-200 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+          aria-label="Close"
+        >
+          <X className="h-4 w-4" />
+        </button>
+
         {showGrabHandle && (
-          <div className="w-full flex justify-center pt-3 pb-1 shrink-0">
-            <div className="w-10 h-1.5 rounded-full bg-slate-300" />
-          </div>
+          <button
+            type="button"
+            onClick={() => setOpen(false)}
+            className="w-full flex justify-center pt-3 pb-1 shrink-0 cursor-pointer group focus-visible:outline-none"
+            aria-label="Close drawer"
+          >
+            <div className="w-10 h-1.5 rounded-full bg-slate-300 group-hover:bg-slate-400 transition-colors" />
+          </button>
         )}
         <div className="relative flex-1 overflow-y-auto px-4 sm:px-6 py-2 pb-4">
           {children}

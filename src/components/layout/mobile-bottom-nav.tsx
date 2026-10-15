@@ -174,27 +174,22 @@ export function MobileBottomNav({ user }: MobileBottomNavProps) {
               <Link
                 key={item.href}
                 href={item.href}
-                className="flex-1 min-w-0 flex flex-col items-center justify-center h-full px-0.5 group touch-manipulation"
+                className="flex-1 min-w-0 flex flex-col items-center justify-center h-full py-1.5 px-0.5 group touch-manipulation select-none"
               >
-                <div
-                  className={cn(
-                    'w-full max-w-[64px] flex flex-col items-center justify-center py-1 px-1 rounded-xl transition-all duration-150',
-                    isActive
-                      ? 'bg-emerald-50 text-emerald-800'
-                      : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50 active:bg-slate-100'
-                  )}
-                >
+                <div className="flex flex-col items-center justify-center gap-1 w-full">
                   <Icon
                     className={cn(
-                      'h-5 w-5 mb-0.5 transition-colors shrink-0',
-                      isActive ? 'text-emerald-700' : 'text-slate-500'
+                      'h-5 w-5 shrink-0 transition-colors',
+                      isActive ? 'text-emerald-700' : 'text-slate-400 group-hover:text-slate-600'
                     )}
-                    strokeWidth={2}
+                    strokeWidth={isActive ? 2.25 : 1.75}
                   />
                   <span
                     className={cn(
-                      'text-[10px] leading-tight tracking-tight truncate max-w-full text-center',
-                      isActive ? 'font-bold text-emerald-900' : 'font-medium text-slate-600'
+                      'text-[10px] sm:text-[11px] leading-none tracking-tight truncate max-w-full text-center transition-colors',
+                      isActive
+                        ? 'font-bold text-emerald-800'
+                        : 'font-medium text-slate-500 group-hover:text-slate-700'
                     )}
                   >
                     {item.label}
@@ -208,28 +203,23 @@ export function MobileBottomNav({ user }: MobileBottomNavProps) {
           <button
             type="button"
             onClick={() => setMoreSheetOpen(true)}
-            className="flex-1 min-w-0 flex flex-col items-center justify-center h-full px-0.5 group touch-manipulation"
+            className="flex-1 min-w-0 flex flex-col items-center justify-center h-full py-1.5 px-0.5 group touch-manipulation select-none"
             aria-label="More navigation destinations"
           >
-            <div
-              className={cn(
-                'w-full max-w-[64px] flex flex-col items-center justify-center py-1 px-1 rounded-xl transition-all duration-150',
-                isMoreActive
-                  ? 'bg-emerald-50 text-emerald-800'
-                  : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50 active:bg-slate-100'
-              )}
-            >
+            <div className="flex flex-col items-center justify-center gap-1 w-full">
               <Menu
                 className={cn(
-                  'h-5 w-5 mb-0.5 transition-colors shrink-0',
-                  isMoreActive ? 'text-emerald-700' : 'text-slate-500'
+                  'h-5 w-5 shrink-0 transition-colors',
+                  isMoreActive ? 'text-emerald-700' : 'text-slate-400 group-hover:text-slate-600'
                 )}
-                strokeWidth={2}
+                strokeWidth={isMoreActive ? 2.25 : 1.75}
               />
               <span
                 className={cn(
-                  'text-[10px] leading-tight tracking-tight truncate max-w-full text-center',
-                  isMoreActive ? 'font-bold text-emerald-900' : 'font-medium text-slate-600'
+                  'text-[10px] sm:text-[11px] leading-none tracking-tight truncate max-w-full text-center transition-colors',
+                  isMoreActive
+                    ? 'font-bold text-emerald-800'
+                    : 'font-medium text-slate-500 group-hover:text-slate-700'
                 )}
               >
                 More
@@ -243,8 +233,8 @@ export function MobileBottomNav({ user }: MobileBottomNavProps) {
       <Sheet open={moreSheetOpen} onOpenChange={setMoreSheetOpen}>
         <SheetContent side="bottom" className="max-h-[85vh]">
           <SheetHeader>
-            <div className="flex items-center gap-3">
-              <div className="h-9 w-9 rounded-xl bg-emerald-700 text-white font-bold flex items-center justify-center text-xs shrink-0">
+            <div className="flex items-center gap-3 pr-10">
+              <div className="h-9 w-9 rounded-full bg-emerald-700 text-white font-bold flex items-center justify-center text-xs shrink-0">
                 {user.fullName ? user.fullName.substring(0, 2).toUpperCase() : 'AG'}
               </div>
               <div className="min-w-0 flex-1">
@@ -254,9 +244,9 @@ export function MobileBottomNav({ user }: MobileBottomNavProps) {
                   <span className="capitalize">{role.replace('_', ' ')}</span>
                 </SheetDescription>
               </div>
-              <Badge variant="outline" className="text-[10px] uppercase font-bold shrink-0">
+              {/* <Badge variant="outline" className="text-[10px] uppercase font-bold shrink-0">
                 {user.departmentName || 'Agricart'}
-              </Badge>
+              </Badge> */}
             </div>
           </SheetHeader>
 
@@ -300,7 +290,7 @@ export function MobileBottomNav({ user }: MobileBottomNavProps) {
             ))}
 
             {/* Logout Action in Sheet */}
-            <div className="pt-2 border-t border-slate-100">
+            <div className="pt-2 border-t border-slate-100 space-y-2">
               <button
                 type="button"
                 onClick={handleLogout}
@@ -311,6 +301,15 @@ export function MobileBottomNav({ user }: MobileBottomNavProps) {
                   <span>Sign Out of Account</span>
                 </div>
                 <ChevronRight className="h-4 w-4 text-rose-400" />
+              </button>
+
+              {/* Close Button */}
+              <button
+                type="button"
+                onClick={() => setMoreSheetOpen(false)}
+                className="w-full flex items-center justify-center p-2.5 rounded-xl text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 transition-colors min-h-[44px]"
+              >
+                Close Menu
               </button>
             </div>
           </div>
