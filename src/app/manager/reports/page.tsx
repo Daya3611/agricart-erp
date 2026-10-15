@@ -9,6 +9,15 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ReportReviewModal } from '@/components/reports/ReportReviewModal';
+import {
+  RecordCard,
+  RecordCardHeader,
+  RecordCardTitle,
+  RecordCardSubtitle,
+  RecordCardContent,
+  RecordCardRow,
+  RecordCardActions,
+} from '@/components/ui/record-card';
 import { formatReadableDate } from '@/lib/utils/date-utils';
 import { exportReportsToCSV, exportReportsToPDF } from '@/lib/utils/export-utils';
 
@@ -87,20 +96,20 @@ export default function ManagerReportsPage() {
       {/* Filter Bar */}
       <Card>
         <CardContent className="p-4 flex flex-wrap items-center justify-between gap-4">
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full sm:w-auto">
             <Input
               type="text"
               pill
               placeholder="Search staff, ID, activities..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-64 text-xs"
+              className="w-full sm:w-64 text-xs"
             />
 
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="h-10 rounded-full border border-slate-200/90 bg-white px-4 text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              className="h-10 rounded-full border border-slate-200/90 bg-white px-4 text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-purple-500 w-full sm:w-auto"
             >
               <option value="all">All Statuses</option>
               <option value="submitted">Submitted (Awaiting Review)</option>
@@ -113,7 +122,7 @@ export default function ManagerReportsPage() {
             </select>
           </div>
 
-          <Badge variant="outline" className="text-xs font-bold">
+          <Badge variant="outline" className="text-xs font-bold self-start sm:self-auto">
             {filteredReports.length} Reports Found
           </Badge>
         </CardContent>
@@ -131,71 +140,153 @@ export default function ManagerReportsPage() {
           ) : filteredReports.length === 0 ? (
             <div className="p-8 text-center text-xs text-slate-500">No reports found matching criteria.</div>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Staff</TableHead>
-                  <TableHead>Work Location</TableHead>
-                  <TableHead>Farmers / Meetings</TableHead>
-                  <TableHead>Evidence</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Action</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
+            <>
+              {/* Desktop Table View */}
+              <div className="hidden md:block">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Date</TableHead>
+                      <TableHead>Staff</TableHead>
+                      <TableHead>Work Location</TableHead>
+                      <TableHead>Farmers / Meetings</TableHead>
+                      <TableHead>Evidence</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="text-right">Action</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredReports.map((r) => (
+                      <TableRow key={r.id}>
+                        <TableCell className="font-bold text-slate-900 whitespace-nowrap">
+                          {formatReadableDate(r.reportDate)}
+                          {r.isLate && <Badge variant="warning" className="ml-1 text-[10px]">Late</Badge>}
+                        </TableCell>
+                        <TableCell>
+                          <p className="font-bold text-slate-900">{r.staffName}</p>
+                          <p className="text-[11px] text-slate-500">{r.employeeId}</p>
+                        </TableCell>
+                        <TableCell className="text-xs font-medium text-slate-700">{r.workLocation}</TableCell>
+                        <TableCell className="text-xs font-bold text-emerald-800">
+                          {r.farmersVisited || 0} farmers | {r.meetingsConducted || 0} meetings
+                        </TableCell>
+                        <TableCell className="text-xs font-bold text-slate-700">
+                          {r.attachments?.length || 0} Files
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant={statusBadges[r.status]?.variant || 'secondary'}>
+                            {statusBadges[r.status]?.label || r.status}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => setSelectedReport(r)}
+                            className="rounded-lg px-3.5 text-xs font-bold"
+                          >
+                            {r.status === 'approved' ? (
+                              <>
+                                <Eye className="h-3.5 w-3.5 mr-1 text-emerald-600" /> View Report
+                              </>
+                            ) : r.status === 'edit_requested' || r.status === 'correction_requested' ? (
+                              <>
+                                <FileEdit className="h-3.5 w-3.5 mr-1 text-amber-600" /> View Request
+                              </>
+                            ) : r.status === 'resubmitted' ? (
+                              <>
+                                <RotateCcw className="h-3.5 w-3.5 mr-1 text-purple-600" /> Review Revision
+                              </>
+                            ) : (
+                              <>
+                                <Eye className="h-3.5 w-3.5 mr-1 text-slate-700" /> Review
+                              </>
+                            )}
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+
+              {/* Mobile Record Cards (< 768px) */}
+              <div className="md:hidden space-y-3">
                 {filteredReports.map((r) => (
-                  <TableRow key={r.id}>
-                    <TableCell className="font-bold text-slate-900 whitespace-nowrap">
-                      {formatReadableDate(r.reportDate)}
-                      {r.isLate && <Badge variant="warning" className="ml-1 text-[10px]">Late</Badge>}
-                    </TableCell>
-                    <TableCell>
-                      <p className="font-bold text-slate-900">{r.staffName}</p>
-                      <p className="text-[11px] text-slate-500">{r.employeeId}</p>
-                    </TableCell>
-                    <TableCell className="text-xs font-medium text-slate-700">{r.workLocation}</TableCell>
-                    <TableCell className="text-xs font-bold text-emerald-800">
-                      👨‍🌾 {r.farmersVisited || 0} visited | 🤝 {r.meetingsConducted || 0} meetings
-                    </TableCell>
-                    <TableCell className="text-xs font-bold text-emerald-700">
-                      📷 {r.attachments?.length || 0} Files
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={statusBadges[r.status]?.variant || 'secondary'}>
+                  <RecordCard key={r.id}>
+                    <RecordCardHeader>
+                      <div className="min-w-0 flex-1">
+                        <RecordCardTitle className="truncate">{r.staffName}</RecordCardTitle>
+                        <RecordCardSubtitle>
+                          {r.employeeId} • {formatReadableDate(r.reportDate)}
+                        </RecordCardSubtitle>
+                      </div>
+                      <Badge
+                        variant={statusBadges[r.status]?.variant || 'secondary'}
+                        className="text-[10px] shrink-0"
+                      >
                         {statusBadges[r.status]?.label || r.status}
                       </Badge>
-                    </TableCell>
-                    <TableCell className="text-right">
+                    </RecordCardHeader>
+
+                    <RecordCardContent>
+                      <RecordCardRow
+                        label="Location"
+                        value={r.workLocation || 'Field'}
+                      />
+                      <RecordCardRow
+                        label="Outreach"
+                        value={
+                          <span className="text-emerald-800 font-semibold text-xs">
+                            {r.farmersVisited || 0} farmers • {r.meetingsConducted || 0} meetings
+                          </span>
+                        }
+                      />
+                      <RecordCardRow
+                        label="Attachments"
+                        value={
+                          <span className="text-slate-700 text-xs font-medium">
+                            {r.attachments?.length || 0} files
+                          </span>
+                        }
+                      />
+                      {r.activities && (
+                        <p className="text-xs text-slate-600 line-clamp-2 mt-1 bg-slate-50 p-2 rounded border border-slate-100">
+                          {r.activities}
+                        </p>
+                      )}
+                    </RecordCardContent>
+
+                    <RecordCardActions>
                       <Button
                         size="sm"
                         variant="outline"
                         onClick={() => setSelectedReport(r)}
-                        className="rounded-full px-3.5 text-xs font-bold shadow-2xs"
+                        className="w-full text-xs font-bold h-10 rounded-lg"
                       >
                         {r.status === 'approved' ? (
                           <>
-                            <Eye className="h-3.5 w-3.5 mr-1 text-emerald-600" /> View Report
+                            <Eye className="h-3.5 w-3.5 mr-1.5 text-emerald-600" /> View Report
                           </>
                         ) : r.status === 'edit_requested' || r.status === 'correction_requested' ? (
                           <>
-                            <FileEdit className="h-3.5 w-3.5 mr-1 text-amber-600" /> View Request
+                            <FileEdit className="h-3.5 w-3.5 mr-1.5 text-amber-600" /> View Edit Request
                           </>
                         ) : r.status === 'resubmitted' ? (
                           <>
-                            <RotateCcw className="h-3.5 w-3.5 mr-1 text-purple-600" /> Review Revision
+                            <RotateCcw className="h-3.5 w-3.5 mr-1.5 text-purple-600" /> Review Revision
                           </>
                         ) : (
                           <>
-                            <Eye className="h-3.5 w-3.5 mr-1 text-slate-700" /> Review
+                            <Eye className="h-3.5 w-3.5 mr-1.5" /> Review Report
                           </>
                         )}
                       </Button>
-                    </TableCell>
-                  </TableRow>
+                    </RecordCardActions>
+                  </RecordCard>
                 ))}
-              </TableBody>
-            </Table>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>

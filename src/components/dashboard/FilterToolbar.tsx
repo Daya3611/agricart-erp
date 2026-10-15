@@ -1,11 +1,13 @@
 'use client';
 
-import React from 'react';
-import { Search, Filter, Calendar, RefreshCw, Download, FileSpreadsheet, FileText } from 'lucide-react';
+import React, { useState } from 'react';
+import { Search, Filter, RefreshCw, FileSpreadsheet, FileText, ChevronDown, ChevronUp } from 'lucide-react';
 import { FilterParams, Department, Center } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
+import { Badge } from '@/components/ui/badge';
+import { cn } from '@/lib/utils/cn';
 
 interface FilterToolbarProps {
   filters: FilterParams;
@@ -24,6 +26,8 @@ export function FilterToolbar({
   onExportCSV,
   onExportPDF,
 }: FilterToolbarProps) {
+  const [mobileExpanded, setMobileExpanded] = useState(false);
+
   const handleChange = (key: keyof FilterParams, value: string) => {
     onFilterChange({ ...filters, [key]: value });
   };
@@ -38,16 +42,71 @@ export function FilterToolbar({
     });
   };
 
+  // Calculate how many non-default filters are active
+  const activeFiltersCount = [
+    filters.datePreset && filters.datePreset !== 'today',
+    Boolean(filters.departmentId),
+    Boolean(filters.centerId),
+    filters.status && filters.status !== 'all',
+  ].filter(Boolean).length;
+
   return (
-    <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-2xs space-y-3">
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+    <div className="bg-white p-3.5 sm:p-4 rounded-xl sm:rounded-2xl border border-slate-200/80 shadow-2xs space-y-3">
+      {/* Mobile Top Controls: Search + Filter Toggle Button */}
+      <div className="lg:hidden flex items-center gap-2">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
+          <Input
+            type="search"
+            placeholder="Search staff, ID, task..."
+            value={filters.searchQuery || ''}
+            onChange={(e) => handleChange('searchQuery', e.target.value)}
+            className="pl-9 h-10 text-xs rounded-xl"
+          />
+        </div>
+        <button
+          type="button"
+          onClick={() => setMobileExpanded((prev) => !prev)}
+          className={cn(
+            'flex items-center gap-1.5 px-3 h-10 rounded-xl text-xs font-semibold border transition-colors shrink-0 touch-manipulation',
+            activeFiltersCount > 0 || mobileExpanded
+              ? 'bg-emerald-50 border-emerald-300 text-emerald-800 font-bold'
+              : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+          )}
+          aria-expanded={mobileExpanded}
+          aria-label="Toggle filters"
+        >
+          <Filter className="h-4 w-4" />
+          <span>Filters</span>
+          {activeFiltersCount > 0 && (
+            <Badge variant="default" className="text-[10px] px-1.5 py-0 h-4 min-w-[16px] justify-center">
+              {activeFiltersCount}
+            </Badge>
+          )}
+          {mobileExpanded ? (
+            <ChevronUp className="h-3.5 w-3.5 ml-0.5 text-slate-500" />
+          ) : (
+            <ChevronDown className="h-3.5 w-3.5 ml-0.5 text-slate-500" />
+          )}
+        </button>
+      </div>
+
+      {/* Filter Selects: Collapsible on Mobile, Full Grid on Desktop */}
+      <div
+        className={cn(
+          'gap-3',
+          mobileExpanded ? 'grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6' : 'hidden lg:grid lg:grid-cols-6'
+        )}
+      >
         {/* Date Preset Selector */}
         <div>
-          <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Date Range</label>
+          <label className="text-[10px] sm:text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
+            Date Range
+          </label>
           <Select
-            pill
             value={filters.datePreset || 'today'}
             onChange={(e) => handleChange('datePreset', e.target.value)}
+            className="rounded-xl text-xs"
           >
             <option value="today">Today</option>
             <option value="yesterday">Yesterday</option>
@@ -60,11 +119,13 @@ export function FilterToolbar({
 
         {/* Department Filter */}
         <div>
-          <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Department</label>
+          <label className="text-[10px] sm:text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
+            Department
+          </label>
           <Select
-            pill
             value={filters.departmentId || ''}
             onChange={(e) => handleChange('departmentId', e.target.value)}
+            className="rounded-xl text-xs"
           >
             <option value="">All Departments</option>
             {departments.map((d) => (
@@ -77,11 +138,13 @@ export function FilterToolbar({
 
         {/* Center Filter */}
         <div>
-          <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Center / Location</label>
+          <label className="text-[10px] sm:text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
+            Center / Location
+          </label>
           <Select
-            pill
             value={filters.centerId || ''}
             onChange={(e) => handleChange('centerId', e.target.value)}
+            className="rounded-xl text-xs"
           >
             <option value="">All Centers</option>
             {centers.map((c) => (
@@ -94,11 +157,13 @@ export function FilterToolbar({
 
         {/* Status Filter */}
         <div>
-          <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Report Status</label>
+          <label className="text-[10px] sm:text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
+            Report Status
+          </label>
           <Select
-            pill
             value={filters.status || 'all'}
             onChange={(e) => handleChange('status', e.target.value)}
+            className="rounded-xl text-xs"
           >
             <option value="all">All Statuses</option>
             <option value="submitted">Submitted</option>
@@ -112,38 +177,54 @@ export function FilterToolbar({
           </Select>
         </div>
 
-        {/* Search Query */}
-        <div className="lg:col-span-2">
-          <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Search Staff / Task</label>
+        {/* Search Query (Desktop only in grid) */}
+        <div className="hidden lg:block lg:col-span-2">
+          <label className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
+            Search Staff / Task
+          </label>
           <div className="relative">
             <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
             <Input
               type="text"
-              pill
-              placeholder="Search by staff name, employee ID, or activity..."
+              placeholder="Search by staff name, ID, or activity..."
               value={filters.searchQuery || ''}
               onChange={(e) => handleChange('searchQuery', e.target.value)}
-              className="pl-9"
+              className="pl-9 rounded-xl text-xs"
             />
           </div>
         </div>
       </div>
 
       {/* Toolbar Footer Actions */}
-      <div className="flex items-center justify-between pt-2 border-t border-slate-100 text-xs">
-        <Button variant="ghost" size="sm" onClick={resetFilters} className="text-slate-500">
-          <RefreshCw className="h-3.5 w-3.5 mr-1" /> Reset Filters
+      <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100 text-xs">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={resetFilters}
+          className="text-slate-600 hover:text-slate-900 h-9 px-2.5 text-xs font-semibold"
+        >
+          <RefreshCw className="h-3.5 w-3.5 mr-1 text-slate-500" /> Reset Filters
         </Button>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 sm:gap-2">
           {onExportCSV && (
-            <Button variant="outline" size="sm" onClick={onExportCSV}>
-              <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-600 mr-1" /> Export CSV
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onExportCSV}
+              className="h-9 px-3 text-xs font-semibold border-slate-200"
+            >
+              <FileSpreadsheet className="h-3.5 w-3.5 text-emerald-700 mr-1" /> Export CSV
             </Button>
           )}
           {onExportPDF && (
-            <Button variant="outline" size="sm" onClick={onExportPDF}>
-              <FileText className="h-3.5 w-3.5 text-rose-600 mr-1" /> Export PDF
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onExportPDF}
+              className="h-9 px-3 text-xs font-semibold border-slate-200"
+            >
+              <FileText className="h-3.5 w-3.5 text-rose-700 mr-1" /> Export PDF
             </Button>
           )}
         </div>

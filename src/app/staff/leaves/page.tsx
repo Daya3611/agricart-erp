@@ -7,6 +7,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/com
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { RecordCard, RecordCardHeader, RecordCardTitle, RecordCardSubtitle, RecordCardContent, RecordCardRow, RecordCardActions } from '@/components/ui/record-card';
 import { LeaveModal } from '@/components/leaves/LeaveModal';
 import { LeaveDetailsModal } from '@/components/leaves/LeaveDetailsModal';
 
@@ -132,58 +133,122 @@ export default function StaffLeavesPage() {
               No leave records found. Click "Request Leave" above to submit an absence request.
             </div>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Leave Type</TableHead>
-                  <TableHead>Dates</TableHead>
-                  <TableHead>Duration</TableHead>
-                  <TableHead>Reason</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Reviewed By</TableHead>
-                  <TableHead className="text-right">Action</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
+            <>
+              {/* Desktop Table (>= 768px) */}
+              <div className="hidden md:block">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Leave Type</TableHead>
+                      <TableHead>Dates</TableHead>
+                      <TableHead>Duration</TableHead>
+                      <TableHead>Reason</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Reviewed By</TableHead>
+                      <TableHead className="text-right">Action</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {leaves.map((l) => (
+                      <TableRow key={l.id}>
+                        <TableCell>
+                          <Badge variant="purple" className="capitalize text-[10px]">
+                            {l.leaveType.replace('_', ' ')}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-xs font-semibold text-slate-800 whitespace-nowrap">
+                          {l.startDate} {l.startDate !== l.endDate ? `to ${l.endDate}` : ''}
+                        </TableCell>
+                        <TableCell className="text-xs font-bold text-emerald-800">
+                          {l.daysCount} {l.daysCount === 1 ? 'day' : 'days'}
+                          {l.isHalfDay && ' (Half)'}
+                        </TableCell>
+                        <TableCell className="text-xs text-slate-700 max-w-xs truncate">
+                          {l.reason}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant={statusBadges[l.approvalStatus]?.variant || 'secondary'}>
+                            {statusBadges[l.approvalStatus]?.label || l.approvalStatus}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-xs text-slate-600">
+                          {l.approvedByName ? `Approved by ${l.approvedByName}` : l.rejectedByName ? `Rejected by ${l.rejectedByName}` : 'Awaiting Review'}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => setViewingLeave(l)}
+                            className="text-xs font-bold rounded-lg h-9"
+                          >
+                            <Eye className="h-3.5 w-3.5 mr-1" /> View Details
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+
+              {/* Mobile Card View (< 768px) */}
+              <div className="md:hidden space-y-3">
                 {leaves.map((l) => (
-                  <TableRow key={l.id}>
-                    <TableCell>
-                      <Badge variant="purple" className="capitalize text-[10px]">
-                        {l.leaveType.replace('_', ' ')}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-xs font-semibold text-slate-800 whitespace-nowrap">
-                      {l.startDate} {l.startDate !== l.endDate ? `to ${l.endDate}` : ''}
-                    </TableCell>
-                    <TableCell className="text-xs font-bold text-emerald-800">
-                      {l.daysCount} {l.daysCount === 1 ? 'day' : 'days'}
-                      {l.isHalfDay && ' (Half)'}
-                    </TableCell>
-                    <TableCell className="text-xs text-slate-700 max-w-xs truncate">
-                      {l.reason}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={statusBadges[l.approvalStatus]?.variant || 'secondary'}>
+                  <RecordCard key={l.id}>
+                    <RecordCardHeader>
+                      <div className="min-w-0 flex-1">
+                        <RecordCardTitle className="capitalize">
+                          {l.leaveType.replace('_', ' ')} Leave
+                        </RecordCardTitle>
+                        <RecordCardSubtitle>
+                          {l.startDate} {l.startDate !== l.endDate ? `to ${l.endDate}` : ''}
+                        </RecordCardSubtitle>
+                      </div>
+                      <Badge variant={statusBadges[l.approvalStatus]?.variant || 'secondary'} className="text-[10px] shrink-0">
                         {statusBadges[l.approvalStatus]?.label || l.approvalStatus}
                       </Badge>
-                    </TableCell>
-                    <TableCell className="text-xs text-slate-600">
-                      {l.approvedByName ? `Approved by ${l.approvedByName}` : l.rejectedByName ? `Rejected by ${l.rejectedByName}` : 'Awaiting Review'}
-                    </TableCell>
-                    <TableCell className="text-right">
+                    </RecordCardHeader>
+
+                    <RecordCardContent>
+                      <RecordCardRow
+                        label="Duration"
+                        value={
+                          <span className="text-emerald-800 font-bold">
+                            {l.daysCount} {l.daysCount === 1 ? 'day' : 'days'}
+                            {l.isHalfDay ? ' (Half Day)' : ''}
+                          </span>
+                        }
+                      />
+                      <RecordCardRow
+                        label="Review Status"
+                        value={
+                          l.approvedByName
+                            ? `Approved by ${l.approvedByName}`
+                            : l.rejectedByName
+                            ? `Rejected by ${l.rejectedByName}`
+                            : 'Pending Manager Approval'
+                        }
+                      />
+                      {l.reason && (
+                        <div className="p-2.5 bg-slate-50 rounded-lg text-slate-600 italic text-[11px] mt-1">
+                          "{l.reason}"
+                        </div>
+                      )}
+                    </RecordCardContent>
+
+                    <RecordCardActions>
                       <Button
                         size="sm"
                         variant="outline"
                         onClick={() => setViewingLeave(l)}
-                        className="text-xs font-bold"
+                        className="w-full h-10 min-h-[44px] justify-center text-xs font-bold border-slate-300 hover:border-emerald-500 hover:text-emerald-700 rounded-lg"
                       >
-                        <Eye className="h-3.5 w-3.5 mr-1" /> View Details
+                        <Eye className="h-4 w-4 mr-1.5" /> View Leave Details
                       </Button>
-                    </TableCell>
-                  </TableRow>
+                    </RecordCardActions>
+                  </RecordCard>
                 ))}
-              </TableBody>
-            </Table>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>

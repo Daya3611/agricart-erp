@@ -108,7 +108,7 @@ export function DropdownMenuContent({
     <div
       role="menu"
       className={cn(
-        'absolute z-50 mt-2 min-w-[220px] rounded-2xl border border-slate-200/80 bg-white p-1.5 shadow-xl animate-in fade-in-0 zoom-in-95 duration-150',
+        'absolute z-50 mt-2 min-w-[220px] max-w-[calc(100vw-1.5rem)] rounded-2xl border border-slate-200/80 bg-white p-1.5 shadow-xl animate-in fade-in-0 zoom-in-95 duration-150',
         alignClasses[align],
         className
       )}

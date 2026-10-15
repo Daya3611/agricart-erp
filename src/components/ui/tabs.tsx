@@ -43,14 +43,16 @@ export function Tabs({
 
 export function TabsList({ className, children, ...props }: React.ComponentProps<'div'>) {
   return (
-    <div
-      className={cn(
-        'inline-flex h-11 items-center justify-center rounded-full bg-slate-100 p-1 text-slate-500 border border-slate-200/80',
-        className
-      )}
-      {...props}
-    >
-      {children}
+    <div className="w-full overflow-x-auto no-scrollbar py-0.5">
+      <div
+        className={cn(
+          'inline-flex min-h-[44px] items-center justify-start sm:justify-center rounded-xl sm:rounded-full bg-slate-100 p-1 text-slate-500 border border-slate-200/80 gap-1 min-w-full sm:min-w-0',
+          className
+        )}
+        {...props}
+      >
+        {children}
+      </div>
     </div>
   );
 }

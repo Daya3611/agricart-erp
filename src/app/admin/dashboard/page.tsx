@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Sprout, RefreshCw, Eye, ArrowRight, Activity, Plus, Shield, Users, Building2, MapPin, AlertTriangle, Clock, FileEdit, RotateCcw } from 'lucide-react';
+import { Sprout, RefreshCw, Eye, ArrowRight, Activity, Plus, Shield, Users, Building2, MapPin, AlertTriangle, Clock, FileEdit, RotateCcw, Paperclip } from 'lucide-react';
 import { DashboardStats, DailyReport, FilterParams, Department, Center, UserProfile } from '@/types';
 import { StatsGrid } from '@/components/dashboard/StatsGrid';
 import { AnalyticsCharts } from '@/components/dashboard/AnalyticsCharts';
@@ -11,6 +11,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/com
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { RecordCard, RecordCardHeader, RecordCardTitle, RecordCardSubtitle, RecordCardContent, RecordCardRow, RecordCardActions } from '@/components/ui/record-card';
 import { ReportReviewModal } from '@/components/reports/ReportReviewModal';
 import { exportReportsToCSV, exportReportsToPDF } from '@/lib/utils/export-utils';
 
@@ -101,26 +102,26 @@ export default function AdminDashboardPage() {
 
   return (
     <div className="space-y-6">
-      {/* Welcome Banner */}
-      <div className="bg-gradient-to-r from-emerald-800 to-emerald-900 text-white p-6 rounded-2xl shadow-md flex flex-wrap items-center justify-between gap-4">
+      {/* Welcome Banner (Solid Brand Color - No Gradients) */}
+      <div className="bg-emerald-800 text-white p-4 sm:p-6 rounded-xl sm:rounded-2xl shadow-sm flex flex-wrap items-center justify-between gap-3 sm:gap-4">
         <div className="space-y-1">
           <div className="flex items-center gap-2">
-            <Sprout className="h-6 w-6 text-emerald-400" />
-            <span className="text-xs font-bold uppercase tracking-widest text-emerald-300">
-              Agricart FPC Ltd • Administrative Center
+            <Sprout className="h-5 w-5 text-emerald-300" />
+            <span className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-emerald-200">
+              Agricart FPC • Administrative Center
             </span>
           </div>
-          <h1 className="text-2xl font-black tracking-tight">
-            Welcome back, {user?.fullName || 'Administrator'}! 👋
+          <h1 className="text-xl sm:text-2xl font-black tracking-tight leading-tight">
+            Welcome back, {user?.fullName || 'Administrator'}!
           </h1>
-          <p className="text-xs text-emerald-100/90 font-medium max-w-2xl">
-            Real-time field staff supervision, daily activity compliance, photo/video verification, and department operations.
+          <p className="text-xs text-emerald-100 font-normal max-w-2xl">
+            Real-time field staff supervision, daily activity compliance, and photo/video verification.
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
-          <Link href="/admin/staff">
-            <Button size="sm" className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold border-0 shadow-sm">
+        <div className="flex items-center gap-2 w-full sm:w-auto pt-1 sm:pt-0">
+          <Link href="/admin/staff" className="flex-1 sm:flex-initial">
+            <Button size="sm" className="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-500 text-white font-bold border-0 shadow-xs h-9 min-h-[36px]">
               <Plus className="h-4 w-4 mr-1" /> Add Staff
             </Button>
           </Link>
@@ -128,7 +129,7 @@ export default function AdminDashboardPage() {
             onClick={loadData}
             variant="secondary"
             size="sm"
-            className="bg-white/10 hover:bg-white/20 text-white border-white/20 font-bold"
+            className="flex-1 sm:flex-initial bg-emerald-900/60 hover:bg-emerald-900 text-white border-emerald-700/60 font-bold h-9 min-h-[36px]"
           >
             <RefreshCw className={`h-4 w-4 mr-1.5 ${loading ? 'animate-spin' : ''}`} /> Refresh
           </Button>
@@ -235,85 +236,165 @@ export default function AdminDashboardPage() {
           ) : filteredReports.length === 0 ? (
             <div className="p-8 text-center text-xs text-slate-500">No reports found matching selected filters.</div>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Staff</TableHead>
-                  <TableHead>Department</TableHead>
-                  <TableHead>Center / Location</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Evidence</TableHead>
-                  <TableHead className="text-right">Action</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
+            <>
+              {/* Desktop Table View (>= 768px) */}
+              <div className="hidden md:block">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Date</TableHead>
+                      <TableHead>Staff</TableHead>
+                      <TableHead>Department</TableHead>
+                      <TableHead>Center / Location</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Evidence</TableHead>
+                      <TableHead className="text-right">Action</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredReports.slice(0, 10).map((report) => (
+                      <TableRow key={report.id}>
+                        <TableCell className="font-bold text-slate-900 whitespace-nowrap">
+                          {report.reportDate}
+                          {report.isLate && (
+                            <span className="ml-1 text-[10px] text-amber-700 font-bold bg-amber-100 px-1.5 py-0.5 rounded-md">
+                              Late
+                            </span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <div>
+                            <p className="font-bold text-slate-900 leading-tight">{report.staffName}</p>
+                            <p className="text-[11px] text-slate-500 font-medium">{report.employeeId}</p>
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-xs font-medium text-slate-700">
+                          {report.departmentName}
+                        </TableCell>
+                        <TableCell className="text-xs font-medium text-slate-700">
+                          {report.centerName}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant={statusBadges[report.status]?.variant || 'secondary'}>
+                            {statusBadges[report.status]?.label || report.status}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-xs font-semibold text-slate-600">
+                          {report.attachments && report.attachments.length > 0 ? (
+                            <span className="inline-flex items-center gap-1 text-emerald-700 font-bold">
+                              <Paperclip className="h-3.5 w-3.5" /> {report.attachments.length} files
+                            </span>
+                          ) : (
+                            <span className="text-slate-400">None</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => setSelectedReport(report)}
+                            className="rounded-lg px-3.5 text-xs font-bold border-slate-300 hover:border-emerald-500 hover:text-emerald-700 h-9"
+                          >
+                            {report.status === 'approved' ? (
+                              <>
+                                <Eye className="h-3.5 w-3.5 mr-1 text-emerald-600" /> View Report
+                              </>
+                            ) : report.status === 'edit_requested' || report.status === 'correction_requested' ? (
+                              <>
+                                <FileEdit className="h-3.5 w-3.5 mr-1 text-amber-600" /> View Request
+                              </>
+                            ) : report.status === 'resubmitted' ? (
+                              <>
+                                <RotateCcw className="h-3.5 w-3.5 mr-1 text-purple-600" /> Review Revision
+                              </>
+                            ) : (
+                              <>
+                                <Eye className="h-3.5 w-3.5 mr-1" /> View / Review
+                              </>
+                            )}
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+
+              {/* Mobile Card View (< 768px) */}
+              <div className="md:hidden space-y-3">
                 {filteredReports.slice(0, 10).map((report) => (
-                  <TableRow key={report.id}>
-                    <TableCell className="font-bold text-slate-900 whitespace-nowrap">
-                      {report.reportDate}
-                      {report.isLate && (
-                        <span className="ml-1 text-[10px] text-amber-700 font-bold bg-amber-100 px-1.5 py-0.5 rounded-md">
-                          Late
-                        </span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <div>
-                        <p className="font-bold text-slate-900 leading-tight">{report.staffName}</p>
-                        <p className="text-[11px] text-slate-500 font-medium">{report.employeeId}</p>
+                  <RecordCard key={report.id}>
+                    <RecordCardHeader>
+                      <div className="min-w-0 flex-1">
+                        <RecordCardTitle>{report.staffName}</RecordCardTitle>
+                        <RecordCardSubtitle>
+                          {report.employeeId} • {report.departmentName}
+                        </RecordCardSubtitle>
                       </div>
-                    </TableCell>
-                    <TableCell className="text-xs font-medium text-slate-700">
-                      {report.departmentName}
-                    </TableCell>
-                    <TableCell className="text-xs font-medium text-slate-700">
-                      {report.centerName}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={statusBadges[report.status]?.variant || 'secondary'}>
+                      <Badge variant={statusBadges[report.status]?.variant || 'secondary'} className="text-[10px] shrink-0">
                         {statusBadges[report.status]?.label || report.status}
                       </Badge>
-                    </TableCell>
-                    <TableCell className="text-xs font-semibold text-slate-600">
-                      {report.attachments && report.attachments.length > 0 ? (
-                        <span className="inline-flex items-center gap-1 text-emerald-700 font-bold">
-                          📷 {report.attachments.length} files
-                        </span>
-                      ) : (
-                        <span className="text-slate-400">None</span>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-right">
+                    </RecordCardHeader>
+
+                    <RecordCardContent>
+                      <RecordCardRow
+                        label="Report Date"
+                        value={
+                          <span className="flex items-center gap-1">
+                            {report.reportDate}
+                            {report.isLate && (
+                              <span className="text-[9px] text-amber-700 font-bold bg-amber-100 px-1 py-0.2 rounded">
+                                Late
+                              </span>
+                            )}
+                          </span>
+                        }
+                      />
+                      <RecordCardRow label="Center / Hub" value={report.centerName} />
+                      <RecordCardRow
+                        label="Evidence"
+                        value={
+                          report.attachments && report.attachments.length > 0 ? (
+                            <span className="inline-flex items-center gap-1 text-emerald-700 font-bold">
+                              <Paperclip className="h-3.5 w-3.5" /> {report.attachments.length} files
+                            </span>
+                          ) : (
+                            <span className="text-slate-400">None</span>
+                          )
+                        }
+                      />
+                    </RecordCardContent>
+
+                    <RecordCardActions>
                       <Button
                         size="sm"
                         variant="outline"
                         onClick={() => setSelectedReport(report)}
-                        className="rounded-full px-3.5 text-xs font-bold border-slate-300 hover:border-emerald-500 hover:text-emerald-700"
+                        className="w-full h-10 min-h-[44px] justify-center text-xs font-bold border-slate-300 hover:border-emerald-500 hover:text-emerald-700 rounded-lg"
                       >
                         {report.status === 'approved' ? (
                           <>
-                            <Eye className="h-3.5 w-3.5 mr-1 text-emerald-600" /> View Report
+                            <Eye className="h-4 w-4 mr-1.5 text-emerald-600" /> View Report Details
                           </>
                         ) : report.status === 'edit_requested' || report.status === 'correction_requested' ? (
                           <>
-                            <FileEdit className="h-3.5 w-3.5 mr-1 text-amber-600" /> View Request
+                            <FileEdit className="h-4 w-4 mr-1.5 text-amber-600" /> View Supervisor Request
                           </>
                         ) : report.status === 'resubmitted' ? (
                           <>
-                            <RotateCcw className="h-3.5 w-3.5 mr-1 text-purple-600" /> Review Revision
+                            <RotateCcw className="h-4 w-4 mr-1.5 text-purple-600" /> Review Resubmission
                           </>
                         ) : (
                           <>
-                            <Eye className="h-3.5 w-3.5 mr-1" /> View / Review
+                            <Eye className="h-4 w-4 mr-1.5" /> View & Review Report
                           </>
                         )}
                       </Button>
-                    </TableCell>
-                  </TableRow>
+                    </RecordCardActions>
+                  </RecordCard>
                 ))}
-              </TableBody>
-            </Table>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>

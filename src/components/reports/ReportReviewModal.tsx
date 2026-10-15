@@ -14,6 +14,7 @@ import {
   FileEdit,
   ShieldCheck,
   RotateCcw,
+  Calendar,
 } from 'lucide-react';
 import { DailyReport, UserProfile } from '@/types';
 import { Dialog } from '@/components/ui/dialog';
@@ -203,14 +204,18 @@ export function ReportReviewModal({
 
             {report.challenges && (
               <div className="p-3.5 bg-amber-50/60 rounded-xl border border-amber-200">
-                <span className="text-xs font-bold text-amber-900 block mb-1">⚠️ Challenges & Issues Faced</span>
+                <span className="text-xs font-bold text-amber-900 flex items-center gap-1.5 mb-1">
+                  <AlertTriangle className="h-3.5 w-3.5 text-amber-600 shrink-0" /> Challenges & Issues Faced
+                </span>
                 <p className="text-xs text-amber-900 whitespace-pre-wrap">{report.challenges}</p>
               </div>
             )}
 
             {report.nextDayPlan && (
               <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200">
-                <span className="text-xs font-bold text-slate-700 block mb-1">📋 Plan for Next Working Day</span>
+                <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5 mb-1">
+                  <Calendar className="h-3.5 w-3.5 text-emerald-600 shrink-0" /> Plan for Next Working Day
+                </span>
                 <p className="text-xs text-slate-800 whitespace-pre-wrap">{report.nextDayPlan}</p>
               </div>
             )}

@@ -2,7 +2,6 @@ import React from 'react';
 import { redirect } from 'next/navigation';
 import { getServerSession } from '@/lib/auth/session';
 import { AppShell } from '@/components/layout/app-shell';
-import { StaffBottomNav } from '@/components/layout/StaffBottomNav';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,18 +27,13 @@ export default async function StaffLayout({ children }: { children: React.ReactN
   }
 
   return (
-    <>
-      <AppShell
-        user={sessionUser}
-        title="Agricart Field Staff Portal"
-        subtitle={`Welcome, ${sessionUser.fullName} (${sessionUser.employeeId})`}
-        maxWidth="max-w-5xl"
-      >
-        <div className="pb-16 lg:pb-0">
-          {children}
-        </div>
-      </AppShell>
-      <StaffBottomNav />
-    </>
+    <AppShell
+      user={sessionUser}
+      title="Agricart Field Staff Portal"
+      subtitle={`Welcome, ${sessionUser.fullName} (${sessionUser.employeeId})`}
+      maxWidth="max-w-5xl"
+    >
+      {children}
+    </AppShell>
   );
 }

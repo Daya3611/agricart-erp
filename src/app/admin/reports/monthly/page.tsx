@@ -12,9 +12,10 @@ import {
   AlertTriangle,
   CheckCircle2,
   Clock,
-  Filter,
   RefreshCw,
   Search,
+  ImageIcon,
+  Video,
 } from 'lucide-react';
 import { MonthlyReportSummary, UserProfile, Department } from '@/types';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
@@ -372,16 +373,16 @@ export default function AdminMonthlyReportPage() {
                         </span>
                         {day.hasConflict && (
                           <span className="block text-[10px] text-amber-700 font-bold mt-0.5">
-                            ⚠️ Note: Report submitted on approved leave date
+                            <AlertTriangle className="h-3 w-3 inline mr-1 text-amber-600" /> Note: Report submitted on approved leave date
                           </span>
                         )}
                         {day.attachments && day.attachments.length > 0 && (
                           <div className="flex items-center gap-1.5 mt-1">
                             <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                              📷 {day.attachments.filter((a) => !a.mimeType?.startsWith('video/')).length} photos
+                              <ImageIcon className="h-3 w-3 inline" /> {day.attachments.filter((a) => !a.mimeType?.startsWith('video/')).length} photos
                               {day.attachments.some((a) => a.mimeType?.startsWith('video/')) && (
-                                <span className="ml-1 text-purple-700">
-                                  🎥 {day.attachments.filter((a) => a.mimeType?.startsWith('video/')).length} videos
+                                <span className="ml-1 text-purple-700 inline-flex items-center gap-0.5">
+                                  <Video className="h-3 w-3 inline ml-1" /> {day.attachments.filter((a) => a.mimeType?.startsWith('video/')).length} videos
                                 </span>
                               )}
                             </span>

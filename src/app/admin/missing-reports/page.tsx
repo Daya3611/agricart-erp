@@ -7,6 +7,15 @@ import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
+import {
+  RecordCard,
+  RecordCardHeader,
+  RecordCardTitle,
+  RecordCardSubtitle,
+  RecordCardContent,
+  RecordCardRow,
+  RecordCardActions,
+} from '@/components/ui/record-card';
 
 export default function AdminMissingReportsPage() {
   const [missingStaff, setMissingStaff] = useState<UserProfile[]>([]);
@@ -132,48 +141,89 @@ export default function AdminMissingReportsPage() {
           {loading ? (
             <div className="p-8 text-center text-xs text-slate-500">Checking missing reports...</div>
           ) : missingStaff.length === 0 ? (
-            <div className="p-8 text-center text-xs font-bold text-emerald-800 bg-emerald-50 rounded-2xl border border-emerald-100">
-              🎉 All active field staff have submitted their daily activity reports for today!
+            <div className="p-8 text-center text-xs font-bold text-emerald-800 bg-emerald-50 rounded-2xl border border-emerald-100 flex items-center justify-center gap-2">
+              <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+              <span>All active field staff have submitted their daily activity reports for today!</span>
             </div>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Employee ID</TableHead>
-                  <TableHead>Staff Name</TableHead>
-                  <TableHead>Department</TableHead>
-                  <TableHead>Center / Location</TableHead>
-                  <TableHead>Deadline Status</TableHead>
-                  <TableHead className="text-right">Action</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
+            <>
+              {/* Desktop Table View */}
+              <div className="hidden md:block">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Employee ID</TableHead>
+                      <TableHead>Staff Name</TableHead>
+                      <TableHead>Department</TableHead>
+                      <TableHead>Center / Location</TableHead>
+                      <TableHead>Deadline Status</TableHead>
+                      <TableHead className="text-right">Action</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {missingStaff.map((staff) => (
+                      <TableRow key={staff.uid}>
+                        <TableCell className="font-bold text-slate-900">{staff.employeeId}</TableCell>
+                        <TableCell>
+                          <p className="font-bold text-slate-900">{staff.fullName}</p>
+                          <p className="text-[11px] text-slate-500">{staff.email}</p>
+                        </TableCell>
+                        <TableCell className="text-xs font-medium text-slate-700">{staff.departmentName || 'Field Operations'}</TableCell>
+                        <TableCell className="text-xs font-medium text-slate-700">{staff.assignedCenterNames?.[0] || 'Nashik Center'}</TableCell>
+                        <TableCell>
+                          <Badge variant="warning">OVERDUE (Missing)</Badge>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={handleRunRemindersCron}
+                            className="text-xs font-bold text-amber-700 border-amber-300 hover:bg-amber-50"
+                          >
+                            <Mail className="h-3.5 w-3.5 mr-1" /> Send Reminder Email
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+
+              {/* Mobile Record Cards (< 768px) */}
+              <div className="md:hidden space-y-3">
                 {missingStaff.map((staff) => (
-                  <TableRow key={staff.uid}>
-                    <TableCell className="font-bold text-slate-900">{staff.employeeId}</TableCell>
-                    <TableCell>
-                      <p className="font-bold text-slate-900">{staff.fullName}</p>
-                      <p className="text-[11px] text-slate-500">{staff.email}</p>
-                    </TableCell>
-                    <TableCell className="text-xs font-medium text-slate-700">{staff.departmentName || 'Field Operations'}</TableCell>
-                    <TableCell className="text-xs font-medium text-slate-700">{staff.assignedCenterNames?.[0] || 'Nashik Center'}</TableCell>
-                    <TableCell>
-                      <Badge variant="warning">OVERDUE (Missing)</Badge>
-                    </TableCell>
-                    <TableCell className="text-right">
+                  <RecordCard key={staff.uid}>
+                    <RecordCardHeader>
+                      <div className="min-w-0 flex-1">
+                        <RecordCardTitle className="truncate">{staff.fullName}</RecordCardTitle>
+                        <RecordCardSubtitle>
+                          {staff.employeeId} • {staff.email}
+                        </RecordCardSubtitle>
+                      </div>
+                      <Badge variant="warning" className="text-[10px] shrink-0">
+                        OVERDUE
+                      </Badge>
+                    </RecordCardHeader>
+
+                    <RecordCardContent>
+                      <RecordCardRow label="Department" value={staff.departmentName || 'Field Operations'} />
+                      <RecordCardRow label="Center" value={staff.assignedCenterNames?.[0] || 'Nashik Center'} />
+                    </RecordCardContent>
+
+                    <RecordCardActions>
                       <Button
                         size="sm"
                         variant="outline"
                         onClick={handleRunRemindersCron}
-                        className="text-xs font-bold text-amber-700 border-amber-300 hover:bg-amber-50"
+                        className="w-full text-xs font-bold text-amber-800 border-amber-300 hover:bg-amber-50 h-10 rounded-lg"
                       >
-                        <Mail className="h-3.5 w-3.5 mr-1" /> Send Reminder Email
+                        <Mail className="h-3.5 w-3.5 mr-1.5" /> Send Reminder Email
                       </Button>
-                    </TableCell>
-                  </TableRow>
+                    </RecordCardActions>
+                  </RecordCard>
                 ))}
-              </TableBody>
-            </Table>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>
@@ -190,37 +240,65 @@ export default function AdminMissingReportsPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Employee ID</TableHead>
-                  <TableHead>Staff Name</TableHead>
-                  <TableHead>Department</TableHead>
-                  <TableHead>Center / Location</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Approved Leave Details</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {onLeaveStaff.map(({ user: staff, leaveDetails }) => (
-                  <TableRow key={staff.uid}>
-                    <TableCell className="font-bold text-slate-900">{staff.employeeId}</TableCell>
-                    <TableCell>
-                      <p className="font-bold text-slate-900">{staff.fullName}</p>
-                      <p className="text-[11px] text-slate-500">{staff.email}</p>
-                    </TableCell>
-                    <TableCell className="text-xs font-medium text-slate-700">{staff.departmentName || 'Field Operations'}</TableCell>
-                    <TableCell className="text-xs font-medium text-slate-700">{staff.assignedCenterNames?.[0] || 'Nashik Center'}</TableCell>
-                    <TableCell>
-                      <Badge className="bg-sky-100 text-sky-800 border-sky-300 font-bold">On Leave</Badge>
-                    </TableCell>
-                    <TableCell className="text-xs text-slate-600 font-medium">
-                      {leaveDetails}
-                    </TableCell>
+            {/* Desktop Table View */}
+            <div className="hidden md:block">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Employee ID</TableHead>
+                    <TableHead>Staff Name</TableHead>
+                    <TableHead>Department</TableHead>
+                    <TableHead>Center / Location</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Approved Leave Details</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {onLeaveStaff.map(({ user: staff, leaveDetails }) => (
+                    <TableRow key={staff.uid}>
+                      <TableCell className="font-bold text-slate-900">{staff.employeeId}</TableCell>
+                      <TableCell>
+                        <p className="font-bold text-slate-900">{staff.fullName}</p>
+                        <p className="text-[11px] text-slate-500">{staff.email}</p>
+                      </TableCell>
+                      <TableCell className="text-xs font-medium text-slate-700">{staff.departmentName || 'Field Operations'}</TableCell>
+                      <TableCell className="text-xs font-medium text-slate-700">{staff.assignedCenterNames?.[0] || 'Nashik Center'}</TableCell>
+                      <TableCell>
+                        <Badge className="bg-sky-100 text-sky-800 border-sky-300 font-bold">On Leave</Badge>
+                      </TableCell>
+                      <TableCell className="text-xs text-slate-600 font-medium">
+                        {leaveDetails}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+
+            {/* Mobile Record Cards (< 768px) */}
+            <div className="md:hidden space-y-3">
+              {onLeaveStaff.map(({ user: staff, leaveDetails }) => (
+                <RecordCard key={staff.uid}>
+                  <RecordCardHeader>
+                    <div className="min-w-0 flex-1">
+                      <RecordCardTitle className="truncate">{staff.fullName}</RecordCardTitle>
+                      <RecordCardSubtitle>
+                        {staff.employeeId} • {staff.email}
+                      </RecordCardSubtitle>
+                    </div>
+                    <Badge className="bg-sky-100 text-sky-800 border-sky-300 font-bold text-[10px] shrink-0">
+                      On Leave
+                    </Badge>
+                  </RecordCardHeader>
+
+                  <RecordCardContent>
+                    <RecordCardRow label="Department" value={staff.departmentName || 'Field Operations'} />
+                    <RecordCardRow label="Center" value={staff.assignedCenterNames?.[0] || 'Nashik Center'} />
+                    <RecordCardRow label="Leave Details" value={leaveDetails} />
+                  </RecordCardContent>
+                </RecordCard>
+              ))}
+            </div>
           </CardContent>
         </Card>
       )}

@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { AlertTriangle, FileEdit, CheckCircle2, Clock, AlertCircle } from 'lucide-react';
+import { AlertTriangle, FileEdit, CheckCircle2, Clock, AlertCircle, Paperclip } from 'lucide-react';
 import { DailyReport } from '@/types';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -114,13 +114,13 @@ export default function StaffCorrectionsPage() {
                     </div>
                   </div>
 
-                  <div className="pt-2 flex items-center justify-between border-t border-rose-100">
-                    <span className="text-xs font-bold text-emerald-700">
-                      📷 {r.attachments?.length || 0} attachments uploaded
+                  <div className="pt-2 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-t border-rose-100">
+                    <span className="text-xs font-bold text-emerald-700 inline-flex items-center gap-1">
+                      <Paperclip className="h-3.5 w-3.5" /> {r.attachments?.length || 0} attachments uploaded
                     </span>
 
-                    <Link href={`/staff/daily-report?id=${r.id}`}>
-                      <Button className="rounded-full bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs shadow-sm">
+                    <Link href={`/staff/daily-report?id=${r.id}`} className="w-full sm:w-auto">
+                      <Button className="w-full sm:w-auto rounded-xl bg-rose-700 hover:bg-rose-800 text-white font-bold text-xs h-10 shadow-sm">
                         <FileEdit className="h-3.5 w-3.5 mr-1.5" /> Edit & Resubmit Report
                       </Button>
                     </Link>

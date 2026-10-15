@@ -1,13 +1,22 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { FileText, Eye, FileEdit, RotateCcw } from 'lucide-react';
+import { FileText, Eye, FileEdit, RotateCcw, Users } from 'lucide-react';
 import { DailyReport, FilterParams, Department, Center, UserProfile } from '@/types';
 import { FilterToolbar } from '@/components/dashboard/FilterToolbar';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import {
+  RecordCard,
+  RecordCardHeader,
+  RecordCardTitle,
+  RecordCardSubtitle,
+  RecordCardContent,
+  RecordCardRow,
+  RecordCardActions,
+} from '@/components/ui/record-card';
 import { ReportReviewModal } from '@/components/reports/ReportReviewModal';
 import { exportReportsToCSV, exportReportsToPDF } from '@/lib/utils/export-utils';
 
@@ -118,75 +127,161 @@ export default function AdminReportsPage() {
           ) : filteredReports.length === 0 ? (
             <div className="p-8 text-center text-xs text-slate-500">No reports found matching selected filters.</div>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Staff</TableHead>
-                  <TableHead>Department</TableHead>
-                  <TableHead>Center</TableHead>
-                  <TableHead>Farmers / Meetings</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Action</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
+            <>
+              {/* Desktop Table View */}
+              <div className="hidden md:block">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Date</TableHead>
+                      <TableHead>Staff</TableHead>
+                      <TableHead>Department</TableHead>
+                      <TableHead>Center</TableHead>
+                      <TableHead>Farmers / Meetings</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="text-right">Action</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredReports.map((r) => (
+                      <TableRow key={r.id}>
+                        <TableCell className="font-bold text-slate-900 whitespace-nowrap">
+                          {r.reportDate}
+                          {r.isLate && (
+                            <span className="ml-1 text-[10px] text-amber-700 font-bold bg-amber-100 px-2 py-0.5 rounded-full">
+                              Late
+                            </span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <div>
+                            <p className="font-bold text-slate-900">{r.staffName}</p>
+                            <p className="text-[11px] text-slate-500">{r.employeeId}</p>
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-xs font-medium text-slate-700">{r.departmentName}</TableCell>
+                        <TableCell className="text-xs font-medium text-slate-700">{r.centerName}</TableCell>
+                        <TableCell className="text-xs font-bold text-emerald-800">
+                          {r.farmersVisited || 0} farmers | {r.meetingsConducted || 0} meetings
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant={statusBadges[r.status]?.variant || 'secondary'}>
+                            {statusBadges[r.status]?.label || r.status}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => setSelectedReport(r)}
+                            className="rounded-lg px-3.5 text-xs font-bold"
+                          >
+                            {r.status === 'approved' ? (
+                              <>
+                                <Eye className="h-3.5 w-3.5 mr-1 text-emerald-600" /> View Report
+                              </>
+                            ) : r.status === 'edit_requested' || r.status === 'correction_requested' ? (
+                              <>
+                                <FileEdit className="h-3.5 w-3.5 mr-1 text-amber-600" /> View Request
+                              </>
+                            ) : r.status === 'resubmitted' ? (
+                              <>
+                                <RotateCcw className="h-3.5 w-3.5 mr-1 text-purple-600" /> Review Revision
+                              </>
+                            ) : (
+                              <>
+                                <Eye className="h-3.5 w-3.5 mr-1" /> View / Review
+                              </>
+                            )}
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+
+              {/* Mobile Record Cards (< 768px) */}
+              <div className="md:hidden space-y-3">
                 {filteredReports.map((r) => (
-                  <TableRow key={r.id}>
-                    <TableCell className="font-bold text-slate-900 whitespace-nowrap">
-                      {r.reportDate}
-                      {r.isLate && (
-                        <span className="ml-1 text-[10px] text-amber-700 font-bold bg-amber-100 px-2 py-0.5 rounded-full">
-                          Late
-                        </span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <div>
-                        <p className="font-bold text-slate-900">{r.staffName}</p>
-                        <p className="text-[11px] text-slate-500">{r.employeeId}</p>
+                  <RecordCard key={r.id}>
+                    <RecordCardHeader>
+                      <div className="min-w-0 flex-1">
+                        <RecordCardTitle className="truncate">{r.staffName}</RecordCardTitle>
+                        <RecordCardSubtitle>
+                          {r.employeeId} • {r.departmentName || 'Field Operations'}
+                        </RecordCardSubtitle>
                       </div>
-                    </TableCell>
-                    <TableCell className="text-xs font-medium text-slate-700">{r.departmentName}</TableCell>
-                    <TableCell className="text-xs font-medium text-slate-700">{r.centerName}</TableCell>
-                    <TableCell className="text-xs font-bold text-emerald-800">
-                      👨‍🌾 {r.farmersVisited || 0} visited | 🤝 {r.meetingsConducted || 0} meetings
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={statusBadges[r.status]?.variant || 'secondary'}>
+                      <Badge
+                        variant={statusBadges[r.status]?.variant || 'secondary'}
+                        className="text-[10px] shrink-0"
+                      >
                         {statusBadges[r.status]?.label || r.status}
                       </Badge>
-                    </TableCell>
-                    <TableCell className="text-right">
+                    </RecordCardHeader>
+
+                    <RecordCardContent>
+                      <RecordCardRow
+                        label="Report Date"
+                        value={
+                          <span className="font-bold text-slate-900">
+                            {r.reportDate}
+                            {r.isLate && (
+                              <span className="ml-1.5 text-[10px] text-amber-700 font-bold bg-amber-100 px-1.5 py-0.5 rounded">
+                                Late
+                              </span>
+                            )}
+                          </span>
+                        }
+                      />
+                      <RecordCardRow
+                        label="Field Metrics"
+                        value={
+                          <span className="text-emerald-800 font-semibold text-xs">
+                            {r.farmersVisited || 0} farmers • {r.meetingsConducted || 0} meetings
+                          </span>
+                        }
+                      />
+                      {r.centerName && (
+                        <RecordCardRow label="Center" value={r.centerName} />
+                      )}
+                      {r.activities && (
+                        <p className="text-xs text-slate-600 line-clamp-2 mt-1 bg-slate-50 p-2 rounded border border-slate-100">
+                          {r.activities}
+                        </p>
+                      )}
+                    </RecordCardContent>
+
+                    <RecordCardActions>
                       <Button
                         size="sm"
                         variant="outline"
                         onClick={() => setSelectedReport(r)}
-                        className="rounded-full px-3.5 text-xs font-bold"
+                        className="w-full text-xs font-bold h-10 rounded-lg"
                       >
                         {r.status === 'approved' ? (
                           <>
-                            <Eye className="h-3.5 w-3.5 mr-1 text-emerald-600" /> View Report
+                            <Eye className="h-3.5 w-3.5 mr-1.5 text-emerald-600" /> View Report
                           </>
                         ) : r.status === 'edit_requested' || r.status === 'correction_requested' ? (
                           <>
-                            <FileEdit className="h-3.5 w-3.5 mr-1 text-amber-600" /> View Request
+                            <FileEdit className="h-3.5 w-3.5 mr-1.5 text-amber-600" /> View Edit Request
                           </>
                         ) : r.status === 'resubmitted' ? (
                           <>
-                            <RotateCcw className="h-3.5 w-3.5 mr-1 text-purple-600" /> Review Revision
+                            <RotateCcw className="h-3.5 w-3.5 mr-1.5 text-purple-600" /> Review Revision
                           </>
                         ) : (
                           <>
-                            <Eye className="h-3.5 w-3.5 mr-1" /> View / Review
+                            <Eye className="h-3.5 w-3.5 mr-1.5" /> View / Review Report
                           </>
                         )}
                       </Button>
-                    </TableCell>
-                  </TableRow>
+                    </RecordCardActions>
+                  </RecordCard>
                 ))}
-              </TableBody>
-            </Table>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>

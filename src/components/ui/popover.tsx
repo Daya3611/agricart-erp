@@ -108,7 +108,7 @@ export function PopoverContent({
     <div
       role="dialog"
       className={cn(
-        'absolute z-50 mt-2 w-80 rounded-2xl border border-slate-200/80 bg-white p-4 shadow-xl animate-in fade-in-0 zoom-in-95 duration-150',
+        'absolute z-50 mt-2 w-80 max-w-[calc(100vw-1.5rem)] rounded-2xl border border-slate-200/80 bg-white p-4 shadow-xl animate-in fade-in-0 zoom-in-95 duration-150',
         alignClasses[align],
         className
       )}

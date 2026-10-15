@@ -9,6 +9,15 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import {
+  RecordCard,
+  RecordCardHeader,
+  RecordCardTitle,
+  RecordCardSubtitle,
+  RecordCardContent,
+  RecordCardRow,
+  RecordCardActions,
+} from '@/components/ui/record-card';
 import { LeaveModal } from '@/components/leaves/LeaveModal';
 import { LeaveReviewModal } from '@/components/leaves/LeaveReviewModal';
 import { LeaveDetailsModal } from '@/components/leaves/LeaveDetailsModal';
@@ -167,64 +176,136 @@ export default function ManagerLeavesPage() {
               No leave records found.
             </div>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Staff</TableHead>
-                  <TableHead>Leave Type</TableHead>
-                  <TableHead>Dates</TableHead>
-                  <TableHead>Duration</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
+            <>
+              {/* Desktop Table View */}
+              <div className="hidden md:block">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Staff</TableHead>
+                      <TableHead>Leave Type</TableHead>
+                      <TableHead>Dates</TableHead>
+                      <TableHead>Duration</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredLeaves.map((l) => (
+                      <TableRow key={l.id}>
+                        <TableCell>
+                          <p className="font-bold text-slate-900">{l.staffName}</p>
+                          <p className="text-[11px] text-slate-500">{l.employeeId}</p>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="purple" className="capitalize text-[10px]">
+                            {l.leaveType.replace('_', ' ')}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-xs font-semibold text-slate-800 whitespace-nowrap">
+                          {l.startDate} {l.startDate !== l.endDate ? `to ${l.endDate}` : ''}
+                        </TableCell>
+                        <TableCell className="text-xs font-bold text-emerald-800">
+                          {l.daysCount} {l.daysCount === 1 ? 'day' : 'days'}
+                          {l.isHalfDay && ' (Half)'}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant={statusBadges[l.approvalStatus]?.variant || 'secondary'}>
+                            {statusBadges[l.approvalStatus]?.label || l.approvalStatus}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right space-x-1.5 whitespace-nowrap">
+                          {l.approvalStatus === 'pending' && currentUser && currentUser.uid !== l.staffUid && (
+                            <Button
+                              size="sm"
+                              onClick={() => setReviewingLeave(l)}
+                              className="bg-purple-700 hover:bg-purple-800 text-white font-bold text-xs"
+                            >
+                              <UserCheck className="h-3.5 w-3.5 mr-1" /> Review
+                            </Button>
+                          )}
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => setViewingLeave(l)}
+                            className="text-xs font-bold"
+                          >
+                            <Eye className="h-3.5 w-3.5 mr-1" /> Details
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+
+              {/* Mobile Record Cards (< 768px) */}
+              <div className="md:hidden space-y-3">
                 {filteredLeaves.map((l) => (
-                  <TableRow key={l.id}>
-                    <TableCell>
-                      <p className="font-bold text-slate-900">{l.staffName}</p>
-                      <p className="text-[11px] text-slate-500">{l.employeeId}</p>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="purple" className="capitalize text-[10px]">
-                        {l.leaveType.replace('_', ' ')}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-xs font-semibold text-slate-800 whitespace-nowrap">
-                      {l.startDate} {l.startDate !== l.endDate ? `to ${l.endDate}` : ''}
-                    </TableCell>
-                    <TableCell className="text-xs font-bold text-emerald-800">
-                      {l.daysCount} {l.daysCount === 1 ? 'day' : 'days'}
-                      {l.isHalfDay && ' (Half)'}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={statusBadges[l.approvalStatus]?.variant || 'secondary'}>
+                  <RecordCard key={l.id}>
+                    <RecordCardHeader>
+                      <div className="min-w-0 flex-1">
+                        <RecordCardTitle className="truncate">{l.staffName}</RecordCardTitle>
+                        <RecordCardSubtitle>
+                          {l.employeeId} • {l.startDate} {l.startDate !== l.endDate ? `to ${l.endDate}` : ''}
+                        </RecordCardSubtitle>
+                      </div>
+                      <Badge
+                        variant={statusBadges[l.approvalStatus]?.variant || 'secondary'}
+                        className="text-[10px] shrink-0"
+                      >
                         {statusBadges[l.approvalStatus]?.label || l.approvalStatus}
                       </Badge>
-                    </TableCell>
-                    <TableCell className="text-right space-x-1.5 whitespace-nowrap">
+                    </RecordCardHeader>
+
+                    <RecordCardContent>
+                      <RecordCardRow
+                        label="Leave Type"
+                        value={
+                          <Badge variant="purple" className="capitalize text-[10px]">
+                            {l.leaveType.replace('_', ' ')}
+                          </Badge>
+                        }
+                      />
+                      <RecordCardRow
+                        label="Duration"
+                        value={
+                          <span className="text-emerald-800 font-bold">
+                            {l.daysCount} {l.daysCount === 1 ? 'day' : 'days'}
+                            {l.isHalfDay ? ' (Half Day)' : ''}
+                          </span>
+                        }
+                      />
+                      {l.reason && (
+                        <div className="p-2.5 bg-slate-50 rounded-lg text-slate-600 italic text-[11px] mt-1 border border-slate-100">
+                          &ldquo;{l.reason}&rdquo;
+                        </div>
+                      )}
+                    </RecordCardContent>
+
+                    <RecordCardActions>
                       {l.approvalStatus === 'pending' && currentUser && currentUser.uid !== l.staffUid && (
                         <Button
                           size="sm"
                           onClick={() => setReviewingLeave(l)}
-                          className="bg-purple-700 hover:bg-purple-800 text-white font-bold text-xs"
+                          className="flex-1 bg-purple-700 hover:bg-purple-800 text-white font-bold text-xs h-10"
                         >
-                          <UserCheck className="h-3.5 w-3.5 mr-1" /> Review
+                          <UserCheck className="h-3.5 w-3.5 mr-1.5" /> Review
                         </Button>
                       )}
                       <Button
                         size="sm"
                         variant="outline"
                         onClick={() => setViewingLeave(l)}
-                        className="text-xs font-bold"
+                        className={`font-bold text-xs h-10 ${l.approvalStatus === 'pending' && currentUser && currentUser.uid !== l.staffUid ? 'flex-1' : 'w-full'}`}
                       >
-                        <Eye className="h-3.5 w-3.5 mr-1" /> Details
+                        <Eye className="h-3.5 w-3.5 mr-1.5" /> View Details
                       </Button>
-                    </TableCell>
-                  </TableRow>
+                    </RecordCardActions>
+                  </RecordCard>
                 ))}
-              </TableBody>
-            </Table>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>

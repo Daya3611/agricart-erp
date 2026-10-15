@@ -196,9 +196,9 @@ function DailyReportFormContent() {
       setSuccessMsg(
         submitNow
           ? existingReport
-            ? '🎉 Revised report successfully resubmitted!'
-            : '🎉 Report successfully submitted!'
-          : '💾 Draft report saved.'
+            ? 'Revised report successfully resubmitted!'
+            : 'Report successfully submitted!'
+          : 'Draft report saved.'
       );
       setTimeout(() => {
         router.push('/staff/dashboard');
@@ -429,6 +429,8 @@ function DailyReportFormContent() {
                 <label className="font-bold text-slate-700 block mb-1">Number of Farmers Visited</label>
                 <Input
                   type="number"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
                   min="0"
                   value={farmersVisited}
                   onChange={(e) => setFarmersVisited(e.target.value)}
@@ -440,6 +442,8 @@ function DailyReportFormContent() {
                 <label className="font-bold text-slate-700 block mb-1">Number of Meetings Conducted</label>
                 <Input
                   type="number"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
                   min="0"
                   value={meetingsConducted}
                   onChange={(e) => setMeetingsConducted(e.target.value)}
@@ -608,13 +612,13 @@ function DailyReportFormContent() {
 
         {/* Action Buttons */}
         {!isLockedApproved && (
-          <div className="flex flex-wrap items-center justify-between gap-4 p-4 bg-white rounded-2xl border border-slate-200 shadow-sm">
+          <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-between gap-3 p-4 bg-white rounded-2xl border border-slate-200 shadow-sm">
             <Button
               type="button"
               variant="outline"
               disabled={submitting}
               onClick={() => handleSaveReport(false)}
-              className="rounded-full border-amber-300 text-amber-900 hover:bg-amber-50 font-bold text-xs"
+              className="w-full sm:w-auto h-11 rounded-xl border-amber-300 text-amber-900 hover:bg-amber-50 font-bold text-xs"
             >
               <Save className="h-4 w-4 mr-1.5" /> Save as Draft
             </Button>
@@ -623,7 +627,7 @@ function DailyReportFormContent() {
               type="button"
               disabled={submitting}
               onClick={() => handleSaveReport(true)}
-              className={`rounded-full font-extrabold px-8 py-2.5 h-11 text-sm shadow-md ${
+              className={`w-full sm:w-auto rounded-xl font-extrabold px-6 h-11 text-sm shadow-md ${
                 isRevisionMode
                   ? 'bg-purple-700 hover:bg-purple-800 text-white shadow-purple-700/20'
                   : 'bg-emerald-700 hover:bg-emerald-800 text-white shadow-emerald-700/20'

@@ -154,13 +154,13 @@ function LoginFormContent() {
               <div>
                 <label className="font-bold text-slate-700 block mb-1">Official Email Address</label>
                 <div className="relative">
-                  <Mail className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+                  <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
                   <Input
                     type="email"
                     placeholder="user@agricartfpc.org"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    className="pl-9"
+                    className="pl-10 h-11 text-sm rounded-xl"
                     required
                   />
                 </div>
@@ -169,13 +169,13 @@ function LoginFormContent() {
               <div>
                 <label className="font-bold text-slate-700 block mb-1">Password</label>
                 <div className="relative">
-                  <Lock className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
+                  <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
                   <Input
                     type="password"
                     placeholder="••••••••"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className="pl-9"
+                    className="pl-10 h-11 text-sm rounded-xl"
                     required
                   />
                 </div>
@@ -184,9 +184,9 @@ function LoginFormContent() {
               <Button
                 type="submit"
                 disabled={loading}
-                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold h-11"
+                className="w-full bg-emerald-700 hover:bg-emerald-800 text-white font-bold h-11 rounded-xl text-sm"
               >
-                {loading ? 'Authenticating...' : 'Sign In'} <ArrowRight className="h-4 w-4 ml-1" />
+                {loading ? 'Authenticating...' : 'Sign In'} <ArrowRight className="h-4 w-4 ml-1.5" />
               </Button>
             </form>
 

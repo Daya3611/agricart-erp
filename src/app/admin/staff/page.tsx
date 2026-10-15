@@ -24,6 +24,7 @@ import {
   UserX,
   FileText,
   Calendar,
+  MoreVertical,
 } from 'lucide-react';
 import { UserProfile, Department, Center } from '@/types';
 import { Button } from '@/components/ui/button';
@@ -32,6 +33,22 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/com
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Dialog } from '@/components/ui/dialog';
+import {
+  RecordCard,
+  RecordCardHeader,
+  RecordCardTitle,
+  RecordCardSubtitle,
+  RecordCardContent,
+  RecordCardRow,
+  RecordCardActions,
+} from '@/components/ui/record-card';
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+} from '@/components/ui/dropdown-menu';
 import { StaffFormModal } from '@/components/staff/StaffFormModal';
 
 export default function AdminStaffManagementPage() {
@@ -372,159 +389,294 @@ export default function AdminStaffManagementPage() {
           ) : staffList.length === 0 ? (
             <div className="p-8 text-center text-xs text-slate-500">No employees match the specified filters.</div>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Employee & ID</TableHead>
-                  <TableHead>Role</TableHead>
-                  <TableHead>Department</TableHead>
-                  <TableHead>Center</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Invitation</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
+            <>
+              {/* Desktop Table View */}
+              <div className="hidden md:block">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Employee & ID</TableHead>
+                      <TableHead>Role</TableHead>
+                      <TableHead>Department</TableHead>
+                      <TableHead>Center</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Invitation</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {staffList.map((staff) => {
+                      const canEditThisStaff = isSuperAdmin || (staff.role !== 'admin' && staff.role !== 'super_admin');
+                      const isDeactivated = staff.accountStatus === 'deactivated';
+                      const invitationStatus = (staff as any).invitationStatus || 'pending';
+
+                      return (
+                        <TableRow key={staff.uid} className={isDeactivated ? 'bg-slate-50 opacity-75' : ''}>
+                          <TableCell>
+                            <div>
+                              <p className="font-bold text-slate-900 leading-tight flex items-center gap-1.5">
+                                {staff.fullName}
+                                {isDeactivated && (
+                                  <Badge variant="destructive" className="text-[10px] py-0 px-1.5">
+                                    Inactive
+                                  </Badge>
+                                )}
+                              </p>
+                              <p className="text-[11px] text-slate-500 font-mono font-medium">
+                                <span className="text-emerald-700 font-bold">{staff.employeeId}</span> • {staff.email}
+                              </p>
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-xs">
+                            <Badge variant={roleBadges[staff.role]?.variant || 'secondary'}>
+                              {roleBadges[staff.role]?.label || staff.role}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-xs font-medium text-slate-700">
+                            {staff.departmentName || 'Field Operations'}
+                          </TableCell>
+                          <TableCell className="text-xs font-medium text-slate-700">
+                            {staff.assignedCenterNames?.[0] || 'Nashik Main Hub'}
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant={isDeactivated ? 'secondary' : 'default'}>
+                              {staff.accountStatus.toUpperCase()}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <Badge
+                              variant={
+                                invitationStatus === 'sent'
+                                  ? 'info'
+                                  : invitationStatus === 'accepted'
+                                    ? 'default'
+                                    : 'secondary'
+                              }
+                              className="text-[10px]"
+                            >
+                              {invitationStatus.toUpperCase()}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex items-center justify-end gap-1">
+                              {/* Compliance and Report History Button */}
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                title="View Reports & Compliance"
+                                onClick={() => handleOpenCompliance(staff)}
+                                className="h-8 w-8 p-0 text-slate-600 hover:text-emerald-600 hover:bg-emerald-50"
+                              >
+                                <FileText className="h-3.5 w-3.5" />
+                              </Button>
+
+                              {/* Resend Invitation Button */}
+                              {!isDeactivated && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  title="Resend Setup Invitation"
+                                  onClick={() => handleResendInvite(staff)}
+                                  className="h-8 w-8 p-0 text-slate-600 hover:text-blue-600 hover:bg-blue-50"
+                                >
+                                  <Send className="h-3.5 w-3.5" />
+                                </Button>
+                              )}
+
+                              {/* Reset Password Button */}
+                              {!isDeactivated && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  title="Send Password Reset Link"
+                                  onClick={() => handleResetPassword(staff)}
+                                  className="h-8 w-8 p-0 text-slate-600 hover:text-amber-600 hover:bg-amber-50"
+                                >
+                                  <KeyRound className="h-3.5 w-3.5" />
+                                </Button>
+                              )}
+
+                              {canEditThisStaff ? (
+                                <>
+                                  {/* Edit Profile Button */}
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    title="Edit Profile Details"
+                                    onClick={() => {
+                                      setStaffToEdit(staff);
+                                      setModalOpen(true);
+                                    }}
+                                    className="h-8 w-8 p-0 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50"
+                                  >
+                                    <Edit className="h-3.5 w-3.5" />
+                                  </Button>
+
+                                  {/* Reactivate or Deactivate Button */}
+                                  {isDeactivated ? (
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      title="Reactivate Account"
+                                      onClick={() => handleReactivate(staff)}
+                                      className="h-8 w-8 p-0 text-emerald-600 hover:bg-emerald-50"
+                                    >
+                                      <UserCheck className="h-3.5 w-3.5" />
+                                    </Button>
+                                  ) : (
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      title="Deactivate Account"
+                                      onClick={() => handleDeactivate(staff)}
+                                      className="h-8 w-8 p-0 text-rose-600 hover:bg-rose-50"
+                                    >
+                                      <UserX className="h-3.5 w-3.5" />
+                                    </Button>
+                                  )}
+                                </>
+                              ) : (
+                                <span className="text-[10px] text-slate-400 italic px-2">Super Admin</span>
+                              )}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+
+              {/* Mobile Record Cards (< 768px) */}
+              <div className="md:hidden space-y-3 p-4">
                 {staffList.map((staff) => {
                   const canEditThisStaff = isSuperAdmin || (staff.role !== 'admin' && staff.role !== 'super_admin');
                   const isDeactivated = staff.accountStatus === 'deactivated';
                   const invitationStatus = (staff as any).invitationStatus || 'pending';
 
                   return (
-                    <TableRow key={staff.uid} className={isDeactivated ? 'bg-slate-50 opacity-75' : ''}>
-                      <TableCell>
-                        <div>
-                          <p className="font-bold text-slate-900 leading-tight flex items-center gap-1.5">
-                            {staff.fullName}
+                    <RecordCard key={staff.uid} className={isDeactivated ? 'opacity-80 bg-slate-50/70' : ''}>
+                      <RecordCardHeader>
+                        <div className="min-w-0 flex-1">
+                          <RecordCardTitle className="flex items-center gap-1.5 truncate">
+                            <span className="truncate">{staff.fullName}</span>
                             {isDeactivated && (
-                              <Badge variant="destructive" className="text-[10px] py-0 px-1.5">
+                              <Badge variant="destructive" className="text-[10px] py-0 px-1.5 shrink-0">
                                 Inactive
                               </Badge>
                             )}
-                          </p>
-                          <p className="text-[11px] text-slate-500 font-mono font-medium">
+                          </RecordCardTitle>
+                          <RecordCardSubtitle>
                             <span className="text-emerald-700 font-bold">{staff.employeeId}</span> • {staff.email}
-                          </p>
+                          </RecordCardSubtitle>
                         </div>
-                      </TableCell>
-                      <TableCell className='text-xs'>
-                        <Badge variant={roleBadges[staff.role]?.variant || 'secondary'}>
+                        <Badge variant={roleBadges[staff.role]?.variant || 'secondary'} className="text-[10px] shrink-0">
                           {roleBadges[staff.role]?.label || staff.role}
                         </Badge>
-                      </TableCell>
-                      <TableCell className="text-xs font-medium text-slate-700">
-                        {staff.departmentName || 'Field Operations'}
-                      </TableCell>
-                      <TableCell className="text-xs font-medium text-slate-700">
-                        {staff.assignedCenterNames?.[0] || 'Nashik Main Hub'}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={isDeactivated ? 'secondary' : 'default'}>
-                          {staff.accountStatus.toUpperCase()}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <Badge
-                          variant={
-                            invitationStatus === 'sent'
-                              ? 'info'
-                              : invitationStatus === 'accepted'
-                                ? 'default'
-                                : 'secondary'
+                      </RecordCardHeader>
+
+                      <RecordCardContent>
+                        <RecordCardRow
+                          label="Department"
+                          value={staff.departmentName || 'Field Operations'}
+                        />
+                        <RecordCardRow
+                          label="Center"
+                          value={staff.assignedCenterNames?.[0] || 'Nashik Main Hub'}
+                        />
+                        <RecordCardRow
+                          label="Account Status"
+                          value={
+                            <Badge variant={isDeactivated ? 'secondary' : 'default'} className="text-[10px]">
+                              {staff.accountStatus.toUpperCase()}
+                            </Badge>
                           }
-                          className="text-[10px]"
+                        />
+                        <RecordCardRow
+                          label="Invitation"
+                          value={
+                            <Badge
+                              variant={
+                                invitationStatus === 'sent'
+                                  ? 'info'
+                                  : invitationStatus === 'accepted'
+                                    ? 'default'
+                                    : 'secondary'
+                              }
+                              className="text-[10px]"
+                            >
+                              {invitationStatus.toUpperCase()}
+                            </Badge>
+                          }
+                        />
+                      </RecordCardContent>
+
+                      <RecordCardActions>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleOpenCompliance(staff)}
+                          className="flex-1 h-10 text-xs font-semibold text-slate-700"
                         >
-                          {invitationStatus.toUpperCase()}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex items-center justify-end gap-1">
-                          {/* Compliance and Report History Button */}
+                          <FileText className="h-4 w-4 mr-1 text-emerald-600" /> Reports
+                        </Button>
+
+                        {canEditThisStaff && (
                           <Button
                             size="sm"
                             variant="outline"
-                            title="View Reports & Compliance"
-                            onClick={() => handleOpenCompliance(staff)}
-                            className="h-8 w-8 p-0 text-slate-600 hover:text-emerald-600 hover:bg-emerald-50"
+                            onClick={() => {
+                              setStaffToEdit(staff);
+                              setModalOpen(true);
+                            }}
+                            className="flex-1 h-10 text-xs font-semibold text-slate-700"
                           >
-                            <FileText className="h-3.5 w-3.5" />
+                            <Edit className="h-4 w-4 mr-1 text-indigo-600" /> Edit
                           </Button>
+                        )}
 
-                          {/* Resend Invitation Button */}
-                          {!isDeactivated && (
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
                             <Button
                               size="sm"
                               variant="outline"
-                              title="Resend Setup Invitation"
-                              onClick={() => handleResendInvite(staff)}
-                              className="h-8 w-8 p-0 text-slate-600 hover:text-blue-600 hover:bg-blue-50"
+                              className="h-10 w-10 p-0 text-slate-600 shrink-0"
+                              aria-label="More options"
                             >
-                              <Send className="h-3.5 w-3.5" />
+                              <MoreVertical className="h-4 w-4" />
                             </Button>
-                          )}
-
-                          {/* Reset Password Button */}
-                          {!isDeactivated && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              title="Send Password Reset Link"
-                              onClick={() => handleResetPassword(staff)}
-                              className="h-8 w-8 p-0 text-slate-600 hover:text-amber-600 hover:bg-amber-50"
-                            >
-                              <KeyRound className="h-3.5 w-3.5" />
-                            </Button>
-                          )}
-
-                          {canEditThisStaff ? (
-                            <>
-                              {/* Edit Profile Button */}
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                title="Edit Profile Details"
-                                onClick={() => {
-                                  setStaffToEdit(staff);
-                                  setModalOpen(true);
-                                }}
-                                className="h-8 w-8 p-0 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50"
-                              >
-                                <Edit className="h-3.5 w-3.5" />
-                              </Button>
-
-                              {/* Reactivate or Deactivate Button */}
-                              {isDeactivated ? (
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  title="Reactivate Account"
-                                  onClick={() => handleReactivate(staff)}
-                                  className="h-8 w-8 p-0 text-emerald-600 hover:bg-emerald-50"
-                                >
-                                  <UserCheck className="h-3.5 w-3.5" />
-                                </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-52">
+                            {!isDeactivated && (
+                              <>
+                                <DropdownMenuItem onClick={() => handleResendInvite(staff)}>
+                                  <Send className="h-4 w-4 mr-2 text-blue-600" /> Resend Invite
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => handleResetPassword(staff)}>
+                                  <KeyRound className="h-4 w-4 mr-2 text-amber-600" /> Reset Password
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                              </>
+                            )}
+                            {canEditThisStaff && (
+                              isDeactivated ? (
+                                <DropdownMenuItem onClick={() => handleReactivate(staff)} className="text-emerald-700">
+                                  <UserCheck className="h-4 w-4 mr-2" /> Reactivate Account
+                                </DropdownMenuItem>
                               ) : (
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  title="Deactivate Account"
-                                  onClick={() => handleDeactivate(staff)}
-                                  className="h-8 w-8 p-0 text-rose-600 hover:bg-rose-50"
-                                >
-                                  <UserX className="h-3.5 w-3.5" />
-                                </Button>
-                              )}
-                            </>
-                          ) : (
-                            <span className="text-[10px] text-slate-400 italic px-2">Super Admin</span>
-                          )}
-                        </div>
-                      </TableCell>
-                    </TableRow>
+                                <DropdownMenuItem onClick={() => handleDeactivate(staff)} className="text-rose-700">
+                                  <UserX className="h-4 w-4 mr-2" /> Deactivate Account
+                                </DropdownMenuItem>
+                              )
+                            )}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </RecordCardActions>
+                    </RecordCard>
                   );
                 })}
-              </TableBody>
-            </Table>
+              </div>
+            </>
           )}
 
           {/* Pagination Controls */}

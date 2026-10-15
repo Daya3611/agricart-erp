@@ -13,94 +13,100 @@ interface StatsGridProps {
 export function StatsGrid({ stats }: StatsGridProps) {
   const cards = [
     {
-      title: 'Total Active Staff',
+      title: 'Active Staff',
       value: stats.totalActiveStaff,
       subtext: stats.onLeaveToday && stats.onLeaveToday > 0 
-        ? `${stats.scheduledStaffToday} scheduled (${stats.onLeaveToday} on leave)`
-        : `${stats.scheduledStaffToday} scheduled working today`,
+        ? `${stats.scheduledStaffToday} working (${stats.onLeaveToday} on leave)`
+        : `${stats.scheduledStaffToday} scheduled working`,
       icon: Users,
       color: 'text-emerald-700 bg-emerald-50 border-emerald-200',
       badge: stats.onLeaveToday && stats.onLeaveToday > 0 ? `${stats.onLeaveToday} on leave` : null,
     },
     {
-      title: 'Reports Submitted Today',
+      title: 'Submitted Today',
       value: stats.reportsSubmittedToday,
-      subtext: `Out of ${stats.reportsExpectedToday} expected reports`,
+      subtext: `Target: ${stats.reportsExpectedToday} expected reports`,
       icon: FileCheck2,
       color: 'text-emerald-700 bg-emerald-50 border-emerald-200',
       badge: `${stats.dailySubmissionRate}% Rate`,
       badgeVariant: 'default' as const,
     },
     {
-      title: 'Missing Reports Today',
+      title: 'Missing Reports',
       value: stats.missingReportsToday,
-      subtext: 'Staff who have not submitted yet',
+      subtext: 'Staff not submitted yet',
       icon: AlertCircle,
       color: stats.missingReportsToday > 0 ? 'text-amber-700 bg-amber-50 border-amber-200' : 'text-slate-600 bg-slate-50 border-slate-200',
-      badge: stats.missingReportsToday > 0 ? 'Action Required' : 'All Clear',
+      badge: stats.missingReportsToday > 0 ? 'Action Req' : 'Clear',
       badgeVariant: stats.missingReportsToday > 0 ? ('warning' as const) : ('secondary' as const),
     },
     {
-      title: 'Awaiting Review / Approval',
+      title: 'Pending Review',
       value: stats.awaitingApprovalCount,
-      subtext: 'Submitted reports ready for manager review',
+      subtext: 'Awaiting manager approval',
       icon: Clock,
       color: 'text-sky-700 bg-sky-50 border-sky-200',
-      badge: 'Pending Review',
+      badge: 'Review Queue',
       badgeVariant: 'info' as const,
     },
     {
       title: 'Approved Reports',
       value: stats.approvedReportsCount ?? 0,
-      subtext: 'Reviewed and verified reports',
+      subtext: 'Reviewed and verified',
       icon: CheckCircle2,
       color: 'text-emerald-700 bg-emerald-50 border-emerald-200',
       badge: 'Verified',
       badgeVariant: 'default' as const,
     },
     {
-      title: 'Corrections Requested',
+      title: 'Corrections Req',
       value: stats.correctionRequestedCount,
-      subtext: 'Sent back to staff for modification',
+      subtext: 'Sent back for changes',
       icon: XCircle,
       color: 'text-rose-700 bg-rose-50 border-rose-200',
       badge: `${stats.correctionRequestedCount} Active`,
       badgeVariant: 'destructive' as const,
     },
     {
-      title: 'Overall Compliance Rate',
+      title: 'Compliance Rate',
       value: `${stats.dailySubmissionRate}%`,
-      subtext: 'Based on expected vs submitted reports',
+      subtext: 'Submitted vs expected',
       icon: TrendingUp,
       color: 'text-purple-700 bg-purple-50 border-purple-200',
-      badge: stats.dailySubmissionRate >= 90 ? 'Excellent' : 'Needs Followup',
+      badge: stats.dailySubmissionRate >= 90 ? 'High' : 'Followup',
       badgeVariant: stats.dailySubmissionRate >= 90 ? ('default' as const) : ('warning' as const),
     },
   ];
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+    <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2.5 sm:gap-4">
       {cards.map((card, idx) => {
         const Icon = card.icon;
         return (
           <Card key={idx} className="hover:border-emerald-300 transition-all">
-            <CardContent className="p-4 flex flex-col justify-between h-full">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">{card.title}</span>
-                <div className={`p-2 rounded-2xl border ${card.color}`}>
-                  <Icon className="h-4 w-4" />
+            <CardContent className="p-3 sm:p-4 flex flex-col justify-between h-full">
+              <div className="flex items-center justify-between gap-1">
+                <span className="text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-wider truncate">
+                  {card.title}
+                </span>
+                <div className={`p-1.5 sm:p-2 rounded-xl border shrink-0 ${card.color}`}>
+                  <Icon className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                 </div>
               </div>
-              <div className="mt-3">
-                <div className="flex items-baseline justify-between">
-                  <span className="text-2xl font-black text-slate-900 tracking-tight">{card.value}</span>
+              <div className="mt-2 sm:mt-3">
+                <div className="flex items-baseline justify-between gap-1">
+                  <span className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
+                    {card.value}
+                  </span>
                   {card.badge && (
-                    <Badge variant={card.badgeVariant} className="text-[10px] px-2">
+                    <Badge variant={card.badgeVariant} className="text-[9px] sm:text-[10px] px-1.5 py-0 shrink-0">
                       {card.badge}
                     </Badge>
                   )}
                 </div>
-                <p className="text-[11px] font-medium text-slate-500 mt-1 truncate">{card.subtext}</p>
+                <p className="text-[10px] sm:text-[11px] font-medium text-slate-500 mt-0.5 sm:mt-1 truncate">
+                  {card.subtext}
+                </p>
               </div>
             </CardContent>
           </Card>

@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { History, Eye, Clock, AlertTriangle, CheckCircle2, Filter, ChevronLeft, ChevronRight, FileEdit, X } from 'lucide-react';
+import { History, Eye, Clock, AlertTriangle, CheckCircle2, Filter, ChevronLeft, ChevronRight, FileEdit, X, Paperclip } from 'lucide-react';
 import { DailyReport, ReportAttachment } from '@/types';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog } from '@/components/ui/dialog';
+import { RecordCard, RecordCardHeader, RecordCardTitle, RecordCardSubtitle, RecordCardContent, RecordCardRow, RecordCardActions } from '@/components/ui/record-card';
 import { formatReadableDate, formatReadableDateTime } from '@/lib/utils/date-utils';
 
 export default function StaffReportHistoryPage() {
@@ -94,31 +95,29 @@ export default function StaffReportHistoryPage() {
               </select>
             </div>
 
-            <div className="flex items-center gap-1.5">
-              <span className="text-xs font-bold text-slate-600">From:</span>
+            <div className="flex flex-wrap sm:flex-nowrap items-center gap-1.5 w-full sm:w-auto">
+              <span className="text-xs font-bold text-slate-600 shrink-0">From:</span>
               <Input
                 type="date"
-                pill
                 value={startDate}
                 onChange={(e) => {
                   setStartDate(e.target.value);
                   setCurrentPage(1);
                 }}
-                className="h-9 w-36 text-xs"
+                className="h-9 w-full sm:w-36 text-xs rounded-xl"
               />
             </div>
 
-            <div className="flex items-center gap-1.5">
-              <span className="text-xs font-bold text-slate-600">To:</span>
+            <div className="flex flex-wrap sm:flex-nowrap items-center gap-1.5 w-full sm:w-auto">
+              <span className="text-xs font-bold text-slate-600 shrink-0">To:</span>
               <Input
                 type="date"
-                pill
                 value={endDate}
                 onChange={(e) => {
                   setEndDate(e.target.value);
                   setCurrentPage(1);
                 }}
-                className="h-9 w-36 text-xs"
+                className="h-9 w-full sm:w-36 text-xs rounded-xl"
               />
             </div>
 
@@ -145,7 +144,7 @@ export default function StaffReportHistoryPage() {
         </CardContent>
       </Card>
 
-      {/* Reports Table */}
+      {/* Reports Table & Mobile Card View */}
       <Card>
         <CardHeader>
           <CardTitle className="text-base font-bold text-slate-900">Submission History</CardTitle>
@@ -160,7 +159,8 @@ export default function StaffReportHistoryPage() {
             </div>
           ) : (
             <div className="space-y-4">
-              <div className="overflow-x-auto">
+              {/* Desktop Table View (>= 768px) */}
+              <div className="hidden md:block overflow-x-auto">
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -182,7 +182,9 @@ export default function StaffReportHistoryPage() {
                         </TableCell>
                         <TableCell className="text-xs font-medium text-slate-700">{r.workLocation}</TableCell>
                         <TableCell className="text-xs font-bold text-emerald-800">
-                          📷 {r.attachments?.length || 0} Files
+                          <span className="inline-flex items-center gap-1">
+                            <Paperclip className="h-3.5 w-3.5" /> {r.attachments?.length || 0} Files
+                          </span>
                         </TableCell>
                         <TableCell>
                           <Badge variant={statusBadges[r.status]?.variant || 'secondary'}>
@@ -200,14 +202,14 @@ export default function StaffReportHistoryPage() {
                             size="sm"
                             variant="outline"
                             onClick={() => setViewingReport(r)}
-                            className="text-xs font-bold"
+                            className="text-xs font-bold h-9 rounded-lg"
                           >
                             <Eye className="h-3.5 w-3.5 mr-1" /> View Report
                           </Button>
 
                           {(r.status === 'correction_requested' || r.status === 'edit_requested' || r.status === 'draft') && (
                             <Link href={`/staff/daily-report?id=${r.id}`}>
-                              <Button size="sm" className="rounded-full bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold">
+                              <Button size="sm" className="bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold h-9 rounded-lg">
                                 <FileEdit className="h-3.5 w-3.5 mr-1" /> Edit & Resubmit
                               </Button>
                             </Link>
@@ -217,6 +219,66 @@ export default function StaffReportHistoryPage() {
                     ))}
                   </TableBody>
                 </Table>
+              </div>
+
+              {/* Mobile Card View (< 768px) */}
+              <div className="md:hidden space-y-3">
+                {paginatedReports.map((r) => (
+                  <RecordCard key={r.id}>
+                    <RecordCardHeader>
+                      <div className="min-w-0 flex-1">
+                        <RecordCardTitle className="flex items-center gap-1.5">
+                          <span>{formatReadableDate(r.reportDate)}</span>
+                          {r.isLate && <Badge variant="warning" className="text-[9px]">Late</Badge>}
+                        </RecordCardTitle>
+                        <RecordCardSubtitle>Submitted: {formatReadableDateTime(r.submittedAt)}</RecordCardSubtitle>
+                      </div>
+                      <Badge variant={statusBadges[r.status]?.variant || 'secondary'} className="text-[10px] shrink-0">
+                        {statusBadges[r.status]?.label || r.status}
+                      </Badge>
+                    </RecordCardHeader>
+
+                    <RecordCardContent>
+                      <RecordCardRow label="Work Location" value={r.workLocation} />
+                      <RecordCardRow
+                        label="Evidence"
+                        value={
+                          r.attachments && r.attachments.length > 0 ? (
+                            <span className="inline-flex items-center gap-1 text-emerald-700 font-bold">
+                              <Paperclip className="h-3.5 w-3.5" /> {r.attachments.length} files
+                            </span>
+                          ) : (
+                            <span className="text-slate-400">None</span>
+                          )
+                        }
+                      />
+                      {r.reviewComments && (
+                        <div className="p-2.5 bg-slate-50 rounded-lg text-slate-600 italic text-[11px] mt-1">
+                          Reviewer: "{r.reviewComments}"
+                        </div>
+                      )}
+                    </RecordCardContent>
+
+                    <RecordCardActions className="flex-col sm:flex-row gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setViewingReport(r)}
+                        className="w-full h-10 min-h-[44px] justify-center text-xs font-bold border-slate-300 hover:border-emerald-500 hover:text-emerald-700 rounded-lg"
+                      >
+                        <Eye className="h-4 w-4 mr-1.5" /> View Report Details
+                      </Button>
+
+                      {(r.status === 'correction_requested' || r.status === 'edit_requested' || r.status === 'draft') && (
+                        <Link href={`/staff/daily-report?id=${r.id}`} className="w-full">
+                          <Button size="sm" className="w-full h-10 min-h-[44px] justify-center bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold rounded-lg">
+                            <FileEdit className="h-4 w-4 mr-1.5" /> Edit & Resubmit Report
+                          </Button>
+                        </Link>
+                      )}
+                    </RecordCardActions>
+                  </RecordCard>
+                ))}
               </div>
 
               {/* Pagination Controls */}
@@ -282,7 +344,7 @@ export default function StaffReportHistoryPage() {
               </div>
               <div>
                 <span className="text-slate-500 font-medium block">Farmers / Meetings:</span>
-                <span className="font-bold text-emerald-800">👨‍🌾 {viewingReport.farmersVisited || 0} visited | 🤝 {viewingReport.meetingsConducted || 0} meetings</span>
+                <span className="font-bold text-emerald-800">{viewingReport.farmersVisited || 0} farmers | {viewingReport.meetingsConducted || 0} meetings</span>
               </div>
             </div>
 

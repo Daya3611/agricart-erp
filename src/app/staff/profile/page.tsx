@@ -123,7 +123,8 @@ export default function StaffProfilePage() {
               <div>
                 <label className="font-bold text-slate-700 block mb-1">Mobile Phone Number</label>
                 <Input
-                  type="text"
+                  type="tel"
+                  inputMode="tel"
                   placeholder="+91 98765 43210"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
@@ -133,7 +134,8 @@ export default function StaffProfilePage() {
               <div>
                 <label className="font-bold text-slate-700 block mb-1">Emergency Contact Number</label>
                 <Input
-                  type="text"
+                  type="tel"
+                  inputMode="tel"
                   placeholder="+91 98765 00000"
                   value={emergencyContact}
                   onChange={(e) => setEmergencyContact(e.target.value)}
@@ -153,7 +155,7 @@ export default function StaffProfilePage() {
             </div>
 
             <div className="flex justify-end pt-2">
-              <Button type="submit" disabled={saving} className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold">
+              <Button type="submit" disabled={saving} className="w-full sm:w-auto h-11 bg-emerald-700 hover:bg-emerald-800 text-white font-bold">
                 <Save className="h-4 w-4 mr-1.5" /> {saving ? 'Saving...' : 'Update Contact Information'}
               </Button>
             </div>

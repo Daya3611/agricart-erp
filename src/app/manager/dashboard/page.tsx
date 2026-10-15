@@ -12,15 +12,16 @@ import {
   Eye,
   RefreshCw,
   Building2,
-  MapPin,
   ArrowRight,
   RotateCcw,
+  Paperclip,
 } from 'lucide-react';
 import { DashboardStats, DailyReport, UserProfile } from '@/types';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { RecordCard, RecordCardHeader, RecordCardTitle, RecordCardSubtitle, RecordCardContent, RecordCardRow, RecordCardActions } from '@/components/ui/record-card';
 import { ReportReviewModal } from '@/components/reports/ReportReviewModal';
 import { formatReadableDate } from '@/lib/utils/date-utils';
 
@@ -64,20 +65,20 @@ export default function ManagerDashboardPage() {
 
   return (
     <div className="space-y-6">
-      {/* Welcome Header */}
-      <div className="bg-gradient-to-r from-purple-800 to-indigo-900 text-white p-6 rounded-2xl shadow-md flex flex-wrap items-center justify-between gap-4">
+      {/* Welcome Header (Solid Color - No Gradients) */}
+      <div className="bg-slate-900 text-white p-4 sm:p-6 rounded-xl sm:rounded-2xl shadow-sm flex flex-wrap items-center justify-between gap-3 sm:gap-4">
         <div className="space-y-1">
           <div className="flex items-center gap-2">
-            <Building2 className="h-5 w-5 text-purple-300" />
-            <span className="text-xs font-bold uppercase tracking-widest text-purple-200">
+            <Building2 className="h-5 w-5 text-emerald-400" />
+            <span className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-emerald-300">
               Department Operations Management
             </span>
           </div>
-          <h1 className="text-2xl font-black tracking-tight">
-            Welcome, {user?.fullName || 'Department Head'} 👋
+          <h1 className="text-xl sm:text-2xl font-black tracking-tight leading-tight">
+            Welcome, {user?.fullName || 'Department Head'}
           </h1>
-          <p className="text-xs text-purple-100/90 font-medium">
-            Manage field activities, review daily submissions, verify evidence, and track compliance for {user?.departmentName || 'your department'}.
+          <p className="text-xs text-slate-300 font-normal">
+            Manage field activities, review daily submissions, and track compliance for {user?.departmentName || 'your department'}.
           </p>
         </div>
 
@@ -85,7 +86,7 @@ export default function ManagerDashboardPage() {
           onClick={loadManagerData}
           variant="secondary"
           size="sm"
-          className="bg-white/10 hover:bg-white/20 text-white border-white/20 font-bold"
+          className="w-full sm:w-auto bg-slate-800 hover:bg-slate-700 text-white border-slate-700 font-bold h-9 min-h-[36px]"
         >
           <RefreshCw className={`h-4 w-4 mr-1.5 ${loading ? 'animate-spin' : ''}`} /> Refresh
         </Button>
@@ -207,53 +208,117 @@ export default function ManagerDashboardPage() {
               ✅ All clear! There are no pending reviews for your department.
             </div>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Staff</TableHead>
-                  <TableHead>Work Location</TableHead>
-                  <TableHead>Farmers / Meetings</TableHead>
-                  <TableHead>Evidence</TableHead>
-                  <TableHead className="text-right">Action</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
+            <>
+              {/* Desktop Table View (>= 768px) */}
+              <div className="hidden md:block">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Date</TableHead>
+                      <TableHead>Staff</TableHead>
+                      <TableHead>Work Location</TableHead>
+                      <TableHead>Farmers / Meetings</TableHead>
+                      <TableHead>Evidence</TableHead>
+                      <TableHead className="text-right">Action</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {pendingReviews.slice(0, 5).map((r) => (
+                      <TableRow key={r.id}>
+                        <TableCell className="font-bold text-slate-900">{r.reportDate}</TableCell>
+                        <TableCell>
+                          <p className="font-bold text-slate-900">{r.staffName}</p>
+                          <p className="text-[11px] text-slate-500">{r.employeeId}</p>
+                        </TableCell>
+                        <TableCell className="text-xs font-medium text-slate-700">{r.workLocation}</TableCell>
+                        <TableCell className="text-xs font-bold text-emerald-800">
+                          {r.farmersVisited || 0} farmers | {r.meetingsConducted || 0} meetings
+                        </TableCell>
+                        <TableCell className="text-xs font-bold text-emerald-700">
+                          <span className="inline-flex items-center gap-1">
+                            <Paperclip className="h-3.5 w-3.5" /> {r.attachments?.length || 0} Files
+                          </span>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            size="sm"
+                            onClick={() => setSelectedReport(r)}
+                            className="rounded-lg px-3.5 bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs h-9"
+                          >
+                            {r.status === 'resubmitted' ? (
+                              <>
+                                <RotateCcw className="h-3.5 w-3.5 mr-1" /> Review Revision
+                              </>
+                            ) : (
+                              <>
+                                <Eye className="h-3.5 w-3.5 mr-1" /> Review
+                              </>
+                            )}
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+
+              {/* Mobile Record Cards View (< 768px) */}
+              <div className="md:hidden space-y-3">
                 {pendingReviews.slice(0, 5).map((r) => (
-                  <TableRow key={r.id}>
-                    <TableCell className="font-bold text-slate-900">{r.reportDate}</TableCell>
-                    <TableCell>
-                      <p className="font-bold text-slate-900">{r.staffName}</p>
-                      <p className="text-[11px] text-slate-500">{r.employeeId}</p>
-                    </TableCell>
-                    <TableCell className="text-xs font-medium text-slate-700">{r.workLocation}</TableCell>
-                    <TableCell className="text-xs font-bold text-emerald-800">
-                      👨‍🌾 {r.farmersVisited || 0} visited | 🤝 {r.meetingsConducted || 0} meetings
-                    </TableCell>
-                    <TableCell className="text-xs font-bold text-emerald-700">
-                      📷 {r.attachments?.length || 0} Files
-                    </TableCell>
-                    <TableCell className="text-right">
+                  <RecordCard key={r.id}>
+                    <RecordCardHeader>
+                      <div className="min-w-0 flex-1">
+                        <RecordCardTitle>{r.staffName}</RecordCardTitle>
+                        <RecordCardSubtitle>
+                          {r.employeeId} • {r.reportDate}
+                        </RecordCardSubtitle>
+                      </div>
+                      <Badge variant={r.status === 'resubmitted' ? 'purple' : 'info'} className="text-[10px] shrink-0">
+                        {r.status === 'resubmitted' ? 'Resubmitted' : 'Needs Review'}
+                      </Badge>
+                    </RecordCardHeader>
+
+                    <RecordCardContent>
+                      <RecordCardRow label="Work Location" value={r.workLocation} />
+                      <RecordCardRow
+                        label="Interactions"
+                        value={`${r.farmersVisited || 0} farmers | ${r.meetingsConducted || 0} meetings`}
+                      />
+                      <RecordCardRow
+                        label="Evidence"
+                        value={
+                          r.attachments && r.attachments.length > 0 ? (
+                            <span className="inline-flex items-center gap-1 text-emerald-700 font-bold">
+                              <Paperclip className="h-3.5 w-3.5" /> {r.attachments.length} files
+                            </span>
+                          ) : (
+                            <span className="text-slate-400">None</span>
+                          )
+                        }
+                      />
+                    </RecordCardContent>
+
+                    <RecordCardActions>
                       <Button
                         size="sm"
                         onClick={() => setSelectedReport(r)}
-                        className="rounded-full px-3.5 bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs"
+                        className="w-full h-10 min-h-[44px] justify-center bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs rounded-lg"
                       >
                         {r.status === 'resubmitted' ? (
                           <>
-                            <RotateCcw className="h-3.5 w-3.5 mr-1" /> Review Revision
+                            <RotateCcw className="h-4 w-4 mr-1.5" /> Review Resubmission
                           </>
                         ) : (
                           <>
-                            <Eye className="h-3.5 w-3.5 mr-1" /> Review
+                            <Eye className="h-4 w-4 mr-1.5" /> Review & Evaluate Report
                           </>
                         )}
                       </Button>
-                    </TableCell>
-                  </TableRow>
+                    </RecordCardActions>
+                  </RecordCard>
                 ))}
-              </TableBody>
-            </Table>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>

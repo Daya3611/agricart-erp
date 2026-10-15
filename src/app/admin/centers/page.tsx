@@ -342,8 +342,9 @@ export default function AdminCentersPage() {
                   <p className="text-slate-700 font-medium line-clamp-2 min-h-[32px]">
                     {center.address || 'Address not specified'}
                   </p>
-                  <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-100 text-slate-600">
-                    📌 <span className="font-bold">Facility:</span> {center.locationDetails || 'Procurement Hub'}
+                  <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-100 text-slate-600 flex items-center gap-1.5">
+                    <MapPin className="h-3.5 w-3.5 text-slate-500 shrink-0" />
+                    <span><span className="font-bold">Facility:</span> {center.locationDetails || 'Procurement Hub'}</span>
                   </div>
                   {deptObj && (
                     <p className="text-[11px] text-slate-500 font-semibold flex items-center gap-1 pt-1">

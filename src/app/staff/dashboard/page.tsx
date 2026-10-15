@@ -20,6 +20,7 @@ import {
   RotateCcw,
   CalendarOff,
   CalendarDays,
+  Paperclip,
 } from 'lucide-react';
 import { DailyReport, UserProfile } from '@/types';
 import { Button } from '@/components/ui/button';
@@ -209,7 +210,7 @@ export default function StaffDashboardPage() {
             <div className="space-y-1">
               <div className="flex items-center gap-2">
                 <CheckCircle2 className="h-5 w-5 text-emerald-600" />
-                <h2 className="text-base font-extrabold text-emerald-950">Daily Report Approved ✅</h2>
+                <h2 className="text-base font-extrabold text-emerald-950">Daily Report Approved</h2>
               </div>
               <p className="text-xs text-slate-600">
                 Reviewed by <span className="font-bold">{todayReport.reviewerName || 'Department Reviewer'}</span>. Thank you for completing your daily submission on time!
@@ -259,11 +260,11 @@ export default function StaffDashboardPage() {
             </span>
           </div>
           <h1 className="text-xl font-bold text-slate-900">
-            Welcome, {user?.fullName || 'Staff'} 👋
+            Welcome, {user?.fullName || 'Staff'}
           </h1>
           <div className="flex flex-wrap items-center gap-3 text-xs text-slate-500 font-medium pt-0.5">
             <span className="flex items-center gap-1 font-bold text-emerald-800">
-              🆔 {user?.employeeId}
+              ID: {user?.employeeId}
             </span>
             <span>•</span>
             <span className="flex items-center gap-1">
@@ -278,14 +279,6 @@ export default function StaffDashboardPage() {
               <Clock className="h-3.5 w-3.5" /> Deadline: 07:00 PM Daily
             </span>
           </div>
-        </div>
-
-        <div className="flex items-center gap-2 w-full sm:w-auto">
-          <Link href="/staff/daily-report" className="w-full sm:w-auto">
-            <Button className="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 text-white font-bold">
-              <PlusCircle className="h-4 w-4 mr-1.5" /> Submit Daily Report
-            </Button>
-          </Link>
         </div>
       </div>
 
@@ -551,17 +544,19 @@ export default function StaffDashboardPage() {
                     )}
                   </div>
 
-                  <div className="flex items-center gap-3 text-xs">
-                    <span className="font-bold text-emerald-700">📷 {rep.attachments?.length || 0} Files</span>
+                  <div className="flex items-center justify-between sm:justify-end gap-3 text-xs w-full sm:w-auto pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100">
+                    <span className="inline-flex items-center gap-1 font-bold text-emerald-700 shrink-0">
+                      <Paperclip className="h-3.5 w-3.5" /> {rep.attachments?.length || 0} Files
+                    </span>
                     {rep.status === 'correction_requested' || rep.status === 'edit_requested' || rep.status === 'draft' ? (
-                      <Link href={`/staff/daily-report?id=${rep.id}`}>
-                        <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-full">
+                      <Link href={`/staff/daily-report?id=${rep.id}`} className="shrink-0">
+                        <Button size="sm" className="bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold rounded-lg h-9 min-h-[36px]">
                           <FileEdit className="h-3.5 w-3.5 mr-1" /> Edit & Resubmit
                         </Button>
                       </Link>
                     ) : (
-                      <Link href="/staff/report-history">
-                        <Button size="sm" variant="outline" className="text-xs font-bold rounded-full">
+                      <Link href="/staff/report-history" className="shrink-0">
+                        <Button size="sm" variant="outline" className="text-xs font-bold rounded-lg h-9 min-h-[36px] border-slate-200">
                           <Eye className="h-3.5 w-3.5 mr-1" /> View
                         </Button>
                       </Link>

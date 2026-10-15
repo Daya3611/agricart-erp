@@ -110,7 +110,7 @@ export function AttachmentGallery({ attachments }: AttachmentGalleryProps) {
           </div>
           {selectedMedia.caption && (
             <div className="mt-3 p-3 bg-emerald-50 border border-emerald-100 rounded-xl text-xs font-semibold text-emerald-900">
-              📌 Caption: {selectedMedia.caption}
+              <span className="font-bold">Caption:</span> {selectedMedia.caption}
             </div>
           )}
         </Dialog>

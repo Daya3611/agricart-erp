@@ -185,6 +185,8 @@ export function StaffFormModal({
           <div>
             <label className="font-bold text-slate-700 block mb-1">Mobile Phone Number</label>
             <Input
+              type="tel"
+              inputMode="tel"
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
               placeholder="+91 98765 43210"
