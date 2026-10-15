@@ -1,7 +1,36 @@
 import { format, subDays, startOfMonth, endOfMonth, parseISO, isAfter } from 'date-fns';
 
+export function getOperationalDateString(date: Date = new Date(), timeZone = 'Asia/Kolkata'): string {
+  // Format as YYYY-MM-DD in the specified timezone (Agricart default: Asia/Kolkata)
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(date);
+}
+
+export function normalizeReportDate(dateStr?: string | null): string {
+  if (!dateStr || typeof dateStr !== 'string') {
+    return getOperationalDateString();
+  }
+  const trimmed = dateStr.trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    return trimmed;
+  }
+  try {
+    const d = parseISO(trimmed);
+    if (!isNaN(d.getTime())) {
+      return format(d, 'yyyy-MM-dd');
+    }
+  } catch {
+    // fallback to current operational date
+  }
+  return getOperationalDateString();
+}
+
 export function getTodayDateString(): string {
-  return format(new Date(), 'yyyy-MM-dd');
+  return getOperationalDateString();
 }
 
 export function formatReadableDate(dateStr: string): string {

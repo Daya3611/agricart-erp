@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import Link from 'next/link';
 import {
   Calendar,
   FileSpreadsheet,
@@ -11,13 +12,20 @@ import {
   RefreshCw,
   ImageIcon,
   Video,
+  CheckCircle2,
+  Clock,
+  CalendarOff,
+  AlertCircle,
+  ArrowRight,
+  FileText,
+  X,
 } from 'lucide-react';
 import { MonthlyReportSummary, UserProfile } from '@/types';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Select } from '@/components/ui/select';
+import { formatReadableDate } from '@/lib/utils/date-utils';
 
 const MONTHS = [
   { value: 1, label: 'January' },
@@ -127,33 +135,65 @@ export default function StaffMonthlyReportPage() {
     }
   };
 
-  const statusBadges: Record<string, { label: string; variant: any }> = {
-    Approved: { label: 'Approved', variant: 'default' },
-    Submitted: { label: 'Submitted', variant: 'info' },
-    'Under Review': { label: 'Under Review', variant: 'info' },
-    'Correction Requested': { label: 'Correction', variant: 'destructive' },
-    'On Leave': { label: 'On Leave', variant: 'purple' },
-    Missing: { label: 'Missing', variant: 'warning' },
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case 'Approved':
+        return (
+          <Badge className="bg-emerald-50 text-emerald-800 border-emerald-200 font-bold text-[10px]">
+            <CheckCircle2 className="h-3 w-3 mr-1" /> Approved
+          </Badge>
+        );
+      case 'Submitted':
+      case 'Under Review':
+        return (
+          <Badge className="bg-sky-50 text-sky-800 border-sky-200 font-bold text-[10px]">
+            <Clock className="h-3 w-3 mr-1" /> {status}
+          </Badge>
+        );
+      case 'Correction Requested':
+        return (
+          <Badge className="bg-rose-50 text-rose-800 border-rose-200 font-bold text-[10px]">
+            <AlertTriangle className="h-3 w-3 mr-1" /> Correction
+          </Badge>
+        );
+      case 'On Leave':
+        return (
+          <Badge className="bg-purple-50 text-purple-800 border-purple-200 font-bold text-[10px]">
+            <CalendarOff className="h-3 w-3 mr-1" /> On Leave
+          </Badge>
+        );
+      case 'Missing':
+      default:
+        return (
+          <Badge className="bg-amber-50 text-amber-800 border-amber-200 font-bold text-[10px]">
+            <AlertCircle className="h-3 w-3 mr-1" /> Missing
+          </Badge>
+        );
+    }
   };
 
   return (
-    <div className="space-y-6">
-      {/* Header & Export Actions */}
-      <div className="flex flex-wrap items-center justify-between gap-4">
+    <div className="space-y-5">
+      {/* 1. Header & Export Actions */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
         <div>
-          <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-            <Calendar className="h-6 w-6 text-emerald-600" /> My Monthly Activity & Leave Report
-          </h1>
-          <p className="text-xs text-slate-500 font-medium">
+          <div className="flex items-center gap-2">
+            <Calendar className="h-5 w-5 sm:h-6 sm:w-6 text-emerald-600 shrink-0" />
+            <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
+              My Monthly Activity & Leave Report
+            </h1>
+          </div>
+          <p className="text-xs sm:text-sm text-slate-500 font-medium mt-1 leading-relaxed">
             Review your calendar activity log for the month and export signed official PDF or Word copies.
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        {/* Action Buttons */}
+        <div className="flex items-center gap-2 w-full sm:w-auto">
           <Button
             onClick={handleDownloadPDF}
             disabled={!report || exportingPDF || loading}
-            className="bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs"
+            className="flex-1 sm:flex-initial bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs h-10 min-h-[44px] rounded-full shadow-xs"
           >
             <Download className={`h-4 w-4 mr-1.5 ${exportingPDF ? 'animate-bounce' : ''}`} />
             {exportingPDF ? 'Generating...' : 'Export PDF'}
@@ -163,7 +203,7 @@ export default function StaffMonthlyReportPage() {
             variant="outline"
             onClick={handleDownloadDOCX}
             disabled={!report || exportingDOCX || loading}
-            className="border-slate-300 text-slate-800 hover:bg-slate-50 font-bold text-xs"
+            className="flex-1 sm:flex-initial border-slate-300 text-slate-800 hover:bg-slate-50 font-bold text-xs h-10 min-h-[44px] rounded-full"
           >
             <FileSpreadsheet className={`h-4 w-4 mr-1.5 text-blue-600 ${exportingDOCX ? 'animate-bounce' : ''}`} />
             {exportingDOCX ? 'Generating...' : 'Export DOCX'}
@@ -171,50 +211,64 @@ export default function StaffMonthlyReportPage() {
         </div>
       </div>
 
-      {/* Month & Year Selectors */}
-      <Card>
-        <CardContent className="p-4 flex flex-wrap items-center justify-between gap-4">
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="flex items-center gap-1.5">
-              <span className="text-xs font-bold text-slate-600">Month:</span>
-              <Select
-                pill
+      {/* 2. Period Selector / Filter Panel */}
+      <Card className="border border-slate-200/90 shadow-2xs">
+        <CardContent className="p-3.5 sm:p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Calendar className="h-4 w-4 text-slate-500" />
+              <span className="text-xs sm:text-sm font-bold text-slate-900">Select Reporting Period</span>
+            </div>
+
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={fetchMonthlyReport}
+              disabled={loading}
+              className="text-xs font-bold text-emerald-700 hover:text-emerald-800 transition-colors flex items-center gap-1 h-8"
+            >
+              <RefreshCw className={`h-3 w-3 ${loading ? 'animate-spin' : ''}`} />
+              <span>Refresh</span>
+            </Button>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2.5">
+            {/* Month Selector */}
+            <div>
+              <label htmlFor="select-month" className="block text-[11px] font-bold text-slate-600 mb-1">
+                Month
+              </label>
+              <select
+                id="select-month"
                 value={selectedMonth}
                 onChange={(e) => setSelectedMonth(parseInt(e.target.value, 10))}
-                className="w-36 text-xs font-semibold"
+                className="w-full h-10 rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
               >
                 {MONTHS.map((m) => (
                   <option key={m.value} value={m.value}>
                     {m.label}
                   </option>
                 ))}
-              </Select>
+              </select>
             </div>
 
-            <div className="flex items-center gap-1.5">
-              <span className="text-xs font-bold text-slate-600">Year:</span>
-              <Select
-                pill
+            {/* Year Selector */}
+            <div>
+              <label htmlFor="select-year" className="block text-[11px] font-bold text-slate-600 mb-1">
+                Year
+              </label>
+              <select
+                id="select-year"
                 value={selectedYear}
                 onChange={(e) => setSelectedYear(parseInt(e.target.value, 10))}
-                className="w-28 text-xs font-semibold"
+                className="w-full h-10 rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
               >
                 <option value={2025}>2025</option>
                 <option value={2026}>2026</option>
                 <option value={2027}>2027</option>
-              </Select>
+              </select>
             </div>
           </div>
-
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={fetchMonthlyReport}
-            disabled={loading}
-            className="text-xs font-bold text-emerald-800"
-          >
-            <RefreshCw className={`h-3.5 w-3.5 mr-1 ${loading ? 'animate-spin' : ''}`} /> Refresh
-          </Button>
         </CardContent>
       </Card>
 
@@ -225,18 +279,18 @@ export default function StaffMonthlyReportPage() {
         </div>
       )}
 
-      {/* Report Summary */}
+      {/* 3. Report Performance Summary */}
       {report && (
         <>
-          <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-2xs flex flex-wrap items-center justify-between gap-4">
+          {/* <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/90 shadow-2xs flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div className="space-y-1">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-700">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-700 block">
                 {report.monthName} — Performance Record
               </span>
-              <h2 className="text-lg font-extrabold text-slate-900">
+              <h2 className="text-base sm:text-lg font-bold text-slate-900 leading-snug">
                 {report.employee.fullName} ({report.employee.employeeId})
               </h2>
-              <div className="flex flex-wrap items-center gap-3 text-xs text-slate-500 pt-0.5 font-medium">
+              <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 font-medium pt-0.5">
                 <span className="flex items-center gap-1">
                   <Building2 className="h-3.5 w-3.5 text-emerald-600" /> {report.employee.departmentName}
                 </span>
@@ -247,50 +301,80 @@ export default function StaffMonthlyReportPage() {
               </div>
             </div>
 
-            <div className="text-right text-[11px] text-slate-400 font-medium">
-              Generated: {new Date(report.generatedAt).toLocaleDateString('en-IN')}
+            <div className="text-xs text-slate-500 font-medium sm:text-right shrink-0">
+              <span className="text-slate-400 block text-[11px]">Generated</span>
+              <span className="font-bold text-slate-700">
+                {new Date(report.generatedAt).toLocaleDateString('en-IN')}
+              </span>
+            </div>
+          </div> */}
+
+          {/* 4. Stats Summary Grid */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5">
+            <div className="bg-white rounded-xl p-3 border border-slate-200/90 shadow-2xs flex items-center justify-between">
+              <div>
+                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Total Days</span>
+                <span className="text-xl sm:text-2xl font-black text-slate-900 leading-tight">{report.stats.totalCalendarDays}</span>
+              </div>
+              <div className="h-8 w-8 rounded-lg bg-slate-100 flex items-center justify-center text-slate-600">
+                <FileText className="h-4 w-4" />
+              </div>
+            </div>
+
+            <div className="bg-white rounded-xl p-3 border border-slate-200/90 shadow-2xs flex items-center justify-between">
+              <div>
+                <span className="text-[11px] font-bold text-emerald-700 uppercase tracking-wider block">Submitted</span>
+                <span className="text-xl sm:text-2xl font-black text-emerald-800 leading-tight">{report.stats.submittedReportDays}</span>
+              </div>
+              <div className="h-8 w-8 rounded-lg bg-emerald-50 flex items-center justify-center text-emerald-700">
+                <Clock className="h-4 w-4" />
+              </div>
+            </div>
+
+            <div className="bg-white rounded-xl p-3 border border-slate-200/90 shadow-2xs flex items-center justify-between">
+              <div>
+                <span className="text-[11px] font-bold text-emerald-800 uppercase tracking-wider block">Approved</span>
+                <span className="text-xl sm:text-2xl font-black text-emerald-900 leading-tight">{report.stats.approvedReportDays}</span>
+              </div>
+              <div className="h-8 w-8 rounded-lg bg-emerald-100/70 flex items-center justify-center text-emerald-800">
+                <CheckCircle2 className="h-4 w-4" />
+              </div>
+            </div>
+
+            <div className="bg-white rounded-xl p-3 border border-slate-200/90 shadow-2xs flex items-center justify-between">
+              <div>
+                <span className="text-[11px] font-bold text-purple-700 uppercase tracking-wider block">On Leave</span>
+                <span className="text-xl sm:text-2xl font-black text-purple-900 leading-tight">{report.stats.approvedLeaveDays}</span>
+              </div>
+              <div className="h-8 w-8 rounded-lg bg-purple-50 flex items-center justify-center text-purple-700">
+                <CalendarOff className="h-4 w-4" />
+              </div>
+            </div>
+
+            <div className="bg-white rounded-xl p-3 border border-slate-200/90 shadow-2xs flex items-center justify-between col-span-2 sm:col-span-1">
+              <div>
+                <span className="text-[11px] font-bold text-amber-700 uppercase tracking-wider block">Missing</span>
+                <span className="text-xl sm:text-2xl font-black text-amber-900 leading-tight">{report.stats.missingReportDays}</span>
+              </div>
+              <div className="h-8 w-8 rounded-lg bg-amber-50 flex items-center justify-center text-amber-700">
+                <AlertCircle className="h-4 w-4" />
+              </div>
             </div>
           </div>
 
-          {/* Stats Bar */}
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-            <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200 text-center">
-              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Total Days</span>
-              <span className="text-xl font-black text-slate-900 mt-0.5 block">{report.stats.totalCalendarDays}</span>
-            </div>
-
-            <div className="p-3.5 bg-emerald-50 rounded-2xl border border-emerald-200 text-center">
-              <span className="text-[10px] font-bold text-emerald-800 uppercase tracking-wider block">Submitted</span>
-              <span className="text-xl font-black text-emerald-800 mt-0.5 block">{report.stats.submittedReportDays}</span>
-            </div>
-
-            <div className="p-3.5 bg-emerald-100/70 rounded-2xl border border-emerald-300 text-center">
-              <span className="text-[10px] font-bold text-emerald-900 uppercase tracking-wider block">Approved</span>
-              <span className="text-xl font-black text-emerald-950 mt-0.5 block">{report.stats.approvedReportDays}</span>
-            </div>
-
-            <div className="p-3.5 bg-purple-50 rounded-2xl border border-purple-200 text-center">
-              <span className="text-[10px] font-bold text-purple-800 uppercase tracking-wider block">On Leave</span>
-              <span className="text-xl font-black text-purple-900 mt-0.5 block">{report.stats.approvedLeaveDays}</span>
-            </div>
-
-            <div className="p-3.5 bg-amber-50 rounded-2xl border border-amber-200 text-center">
-              <span className="text-[10px] font-bold text-amber-800 uppercase tracking-wider block">Missing</span>
-              <span className="text-xl font-black text-amber-900 mt-0.5 block">{report.stats.missingReportDays}</span>
-            </div>
-          </div>
-
-          {/* Table */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base font-bold text-slate-900">
+          {/* 5. Daily Calendar Record */}
+          <div>
+            <div className="flex items-center justify-between mb-3 px-1">
+              <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wider">
                 Daily Calendar Record ({report.days.length} Days)
-              </CardTitle>
-              <CardDescription>
-                Activity breakdown and verified approvals for {report.monthName}
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
+              </h2>
+              <span className="text-xs text-slate-500 font-medium">
+                {report.monthName}
+              </span>
+            </div>
+
+            {/* Desktop Table View (>= 768px) */}
+            <div className="hidden md:block bg-white rounded-2xl border border-slate-200/90 shadow-2xs overflow-hidden">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -307,7 +391,7 @@ export default function StaffMonthlyReportPage() {
                   {report.days.map((day) => (
                     <TableRow key={day.date} className={day.hasConflict ? 'bg-amber-50/40' : undefined}>
                       <TableCell className="font-bold text-slate-900 whitespace-nowrap text-xs">
-                        {day.date}
+                        {formatReadableDate(day.date)}
                       </TableCell>
                       <TableCell className="text-xs font-semibold text-slate-500">
                         {day.dayOfWeek.slice(0, 3)}
@@ -335,9 +419,7 @@ export default function StaffMonthlyReportPage() {
                         )}
                       </TableCell>
                       <TableCell>
-                        <Badge variant={statusBadges[day.reportStatus]?.variant || 'secondary'} className="text-[10px]">
-                          {statusBadges[day.reportStatus]?.label || day.reportStatus}
-                        </Badge>
+                        {getStatusBadge(day.reportStatus)}
                       </TableCell>
                       <TableCell className="text-xs text-slate-600 font-mono">
                         {day.submissionTime}
@@ -352,10 +434,95 @@ export default function StaffMonthlyReportPage() {
                   ))}
                 </TableBody>
               </Table>
-            </CardContent>
-          </Card>
+            </div>
+
+            {/* Mobile Daily Cards List (< 768px) */}
+            <div className="md:hidden space-y-2.5">
+              {report.days.map((day) => {
+                const isMissing = day.reportStatus === 'Missing';
+                const isOnLeave = day.reportStatus === 'On Leave';
+
+                return (
+                  <article
+                    key={day.date}
+                    className={`bg-white rounded-2xl border ${day.hasConflict ? 'border-amber-300' : 'border-slate-200/90'} p-3.5 shadow-2xs space-y-2.5`}
+                  >
+                    {/* Top Row: Date, Day & Status */}
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-baseline gap-2">
+                        <span className="font-bold text-sm text-slate-900">
+                          {formatReadableDate(day.date)}
+                        </span>
+                        <span className="text-xs font-semibold text-slate-500 uppercase">
+                          {day.dayOfWeek.slice(0, 3)}
+                        </span>
+                      </div>
+                      <div>{getStatusBadge(day.reportStatus)}</div>
+                    </div>
+
+                    {/* Activity Text */}
+                    <div className="text-xs leading-relaxed">
+                      {isMissing ? (
+                        <p className="text-slate-400 italic">No activity report submitted for this day.</p>
+                      ) : isOnLeave ? (
+                        <p className="text-purple-800 font-medium">On Authorized Leave: {day.dailyActivity || 'Scheduled Leave'}</p>
+                      ) : (
+                        <p className="text-slate-800 font-medium">{day.dailyActivity}</p>
+                      )}
+
+                      {day.hasConflict && (
+                        <div className="mt-1.5 p-2 bg-amber-50 rounded-lg border border-amber-200 text-amber-900 text-[11px] font-bold">
+                          ⚠️ Overlaps with approved leave: {day.conflictDetails || 'Conflicting schedule entry'}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Attachments Pill if any */}
+                    {day.attachments && day.attachments.length > 0 && (
+                      <div className="flex items-center gap-1.5">
+                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                          <ImageIcon className="h-3 w-3" />
+                          <span>{day.attachments.filter((a) => !a.mimeType?.startsWith('video/')).length} photos</span>
+                          {day.attachments.some((a) => a.mimeType?.startsWith('video/')) && (
+                            <span className="ml-1 text-purple-700 inline-flex items-center gap-0.5">
+                              <Video className="h-3 w-3" />
+                              <span>{day.attachments.filter((a) => a.mimeType?.startsWith('video/')).length} videos</span>
+                            </span>
+                          )}
+                        </span>
+                      </div>
+                    )}
+
+                    {/* Metadata Footer: Submission time & Review Status / Remarks */}
+                    <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500 font-medium">
+                      <div className="flex items-center gap-2">
+                        {day.submissionTime && day.submissionTime !== '—' && (
+                          <span className="flex items-center gap-1 text-slate-600">
+                            <Clock className="h-3 w-3 text-slate-400" />
+                            <span>{day.submissionTime}</span>
+                          </span>
+                        )}
+                        {day.reviewStatus && day.reviewStatus !== '—' && (
+                          <span>• {day.reviewStatus}</span>
+                        )}
+                      </div>
+
+                      {day.reportId && (
+                        <Link href="/staff/report-history">
+                          <span className="text-emerald-700 font-bold hover:underline inline-flex items-center gap-0.5">
+                            View Log <ArrowRight className="h-3 w-3" />
+                          </span>
+                        </Link>
+                      )}
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          </div>
         </>
       )}
     </div>
   );
 }
+

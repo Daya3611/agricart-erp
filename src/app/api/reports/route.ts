@@ -62,7 +62,8 @@ export async function POST(req: Request) {
     const result = await createOrUpdateReport(sessionUser, body);
 
     if (!result.success) {
-      return NextResponse.json({ success: false, error: result.error }, { status: 400 });
+      const isDuplicate = result.error?.includes('already been submitted');
+      return NextResponse.json({ success: false, error: result.error }, { status: isDuplicate ? 409 : 400 });
     }
 
     if (body.submitNow && sessionUser.email) {

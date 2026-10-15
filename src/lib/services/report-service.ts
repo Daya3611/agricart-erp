@@ -1,8 +1,60 @@
 import { fetchCollection, fetchDocument, saveDocument, updateDocument } from '@/lib/firebase/firestore';
+import { adminDb, hasValidAdminCredentials } from '@/lib/firebase/admin';
 import { ERP_COLLECTIONS } from '@/lib/firebase/collections';
 import { DailyReport, ReportStatus, DashboardStats, FilterParams, ReportRevision, UserProfile } from '@/types';
-import { checkIfLateSubmission, getTodayDateString } from '@/lib/utils/date-utils';
+import { checkIfLateSubmission, getTodayDateString, normalizeReportDate } from '@/lib/utils/date-utils';
 import { logAuditAction } from '@/lib/services/audit-service';
+
+export async function checkExistingDailyReport(
+  staffUid: string,
+  reportDateInput: string
+): Promise<{
+  exists: boolean;
+  isSubmitted: boolean;
+  isRevisionRequired: boolean;
+  isDraft: boolean;
+  report: DailyReport | null;
+}> {
+  const reportDate = normalizeReportDate(reportDateInput);
+  const deterministicDocId = `report_${staffUid}_${reportDate}`;
+
+  // 1. Check deterministic doc ID
+  let existing = (await fetchDocument(ERP_COLLECTIONS.dailyReports, deterministicDocId)) as DailyReport | null;
+
+  // 2. Check query for any report with this staffUid & date
+  if (!existing) {
+    const reports = (await fetchCollection(ERP_COLLECTIONS.dailyReports, [
+      { field: 'staffUid', op: '==', value: staffUid },
+      { field: 'reportDate', op: '==', value: reportDate },
+    ])) as DailyReport[];
+    if (reports.length > 0) {
+      existing = reports[0];
+    }
+  }
+
+  if (!existing) {
+    return {
+      exists: false,
+      isSubmitted: false,
+      isRevisionRequired: false,
+      isDraft: false,
+      report: null,
+    };
+  }
+
+  const submittedStatuses: ReportStatus[] = ['submitted', 'under_review', 'resubmitted', 'approved', 'rejected'];
+  const isSubmitted = submittedStatuses.includes(existing.status);
+  const isRevisionRequired = existing.status === 'edit_requested' || existing.status === 'correction_requested';
+  const isDraft = existing.status === 'draft';
+
+  return {
+    exists: true,
+    isSubmitted,
+    isRevisionRequired,
+    isDraft,
+    report: existing,
+  };
+}
 
 export async function createOrUpdateReport(
   staffUser: { uid: string; employeeId: string; fullName: string; email: string; departmentId: string; departmentName?: string; assignedCenterIds: string[]; assignedCenterNames?: string[] },
@@ -27,15 +79,42 @@ export async function createOrUpdateReport(
   }
 ): Promise<{ success: boolean; reportId?: string; error?: string }> {
   try {
-    const reportDate = reportData.reportDate || getTodayDateString();
-    const docId = reportData.id || `report_${staffUser.uid}_${reportDate}`;
-    const existingDoc = (await fetchDocument(ERP_COLLECTIONS.dailyReports, docId)) as DailyReport | null;
+    const reportDate = normalizeReportDate(reportData.reportDate);
+    const deterministicDocId = `report_${staffUser.uid}_${reportDate}`;
+
+    // Lookup any existing report for this staff UID and report date:
+    // 1. Try deterministic doc ID
+    let existingDoc = (await fetchDocument(ERP_COLLECTIONS.dailyReports, deterministicDocId)) as DailyReport | null;
+
+    // 2. Try reportData.id if supplied
+    if (!existingDoc && reportData.id) {
+      existingDoc = (await fetchDocument(ERP_COLLECTIONS.dailyReports, reportData.id)) as DailyReport | null;
+    }
+
+    // 3. Fallback query for any matching document
+    if (!existingDoc) {
+      const existingByQuery = (await fetchCollection(ERP_COLLECTIONS.dailyReports, [
+        { field: 'staffUid', op: '==', value: staffUser.uid },
+        { field: 'reportDate', op: '==', value: reportDate },
+      ])) as DailyReport[];
+      if (existingByQuery.length > 0) {
+        existingDoc = existingByQuery[0];
+      }
+    }
+
+    const docId = existingDoc ? existingDoc.id : (reportData.id || deterministicDocId);
 
     const now = new Date().toISOString();
     const isLate = reportData.submitNow ? checkIfLateSubmission(reportDate, now) : false;
 
     let previousData: Partial<DailyReport> | null = null;
     let revisionNumber = 1;
+
+    const submittedStatuses: ReportStatus[] = ['submitted', 'under_review', 'resubmitted', 'approved', 'rejected'];
+    const isEditResubmission = Boolean(
+      existingDoc &&
+        (existingDoc.status === 'edit_requested' || existingDoc.status === 'correction_requested')
+    );
 
     if (existingDoc) {
       // Security check: employee can only modify their own reports
@@ -46,17 +125,34 @@ export async function createOrUpdateReport(
       previousData = existingDoc;
 
       // Cannot modify approved reports directly unless reopened via edit request
-      if (previousData.status === 'approved') {
-        return { success: false, error: 'Cannot modify an approved report directly. An edit request must be issued first.' };
+      if (previousData.status === 'approved' && !isEditResubmission) {
+        return {
+          success: false,
+          error: `Report for ${reportDate} has already been approved and finalized. Modifications require an authorized supervisor edit request.`,
+        };
       }
 
-      revisionNumber = (previousData.revisionNumber || 1) + 1;
+      // Duplicate prevention: If a report is already submitted and not in active edit/correction request status, block submission
+      if (submittedStatuses.includes(previousData.status as ReportStatus) && !isEditResubmission) {
+        if (reportData.submitNow) {
+          return {
+            success: false,
+            error: `A daily activity report has already been submitted for ${reportDate} (Status: ${previousData.status?.replace('_', ' ').toUpperCase()}). Duplicate submissions are not allowed.`,
+          };
+        } else {
+          return {
+            success: false,
+            error: `Cannot save a draft because an activity report for ${reportDate} has already been submitted.`,
+          };
+        }
+      }
+
+      revisionNumber = (previousData.revisionNumber || 1) + (isEditResubmission ? 1 : 0);
     }
 
-    const isEditResubmission = existingDoc && (existingDoc.status === 'edit_requested' || existingDoc.status === 'correction_requested');
     const newStatus: ReportStatus = reportData.submitNow
       ? (isEditResubmission ? 'resubmitted' : 'submitted')
-      : (isEditResubmission ? existingDoc.status : 'draft');
+      : (isEditResubmission ? (existingDoc?.status || 'draft') : 'draft');
 
     // Check if employee has an approved leave for reportDate to flag potential conflict
     let hasLeaveConflict = false;
@@ -133,7 +229,47 @@ export async function createOrUpdateReport(
       updatedAt: now,
     };
 
-    await saveDocument(ERP_COLLECTIONS.dailyReports, docId, fullReport);
+    // Concurrency-safe write using Firestore Transaction to guarantee duplicate prevention under race conditions
+    if (hasValidAdminCredentials) {
+      const docRef = adminDb.collection(ERP_COLLECTIONS.dailyReports).doc(docId);
+      await adminDb.runTransaction(async (transaction: any) => {
+        const docSnap = await transaction.get(docRef);
+        if (docSnap.exists) {
+          const currentInTx = docSnap.data() as DailyReport;
+          // If another concurrent request managed to submit in the meantime
+          if (
+            submittedStatuses.includes(currentInTx.status) &&
+            currentInTx.status !== 'edit_requested' &&
+            currentInTx.status !== 'correction_requested'
+          ) {
+            throw new Error(
+              `A daily activity report has already been submitted for ${reportDate}. Duplicate submissions are not allowed.`
+            );
+          }
+        }
+        transaction.set(docRef, fullReport, { merge: true });
+      });
+    } else {
+      const { runTransaction: clientRunTransaction, doc: clientDoc } = await import('firebase/firestore');
+      const { db } = await import('@/lib/firebase/client');
+      const docRef = clientDoc(db, ERP_COLLECTIONS.dailyReports, docId);
+      await clientRunTransaction(db, async (transaction) => {
+        const docSnap = await transaction.get(docRef);
+        if (docSnap.exists()) {
+          const currentInTx = docSnap.data() as DailyReport;
+          if (
+            submittedStatuses.includes(currentInTx.status) &&
+            currentInTx.status !== 'edit_requested' &&
+            currentInTx.status !== 'correction_requested'
+          ) {
+            throw new Error(
+              `A daily activity report has already been submitted for ${reportDate}. Duplicate submissions are not allowed.`
+            );
+          }
+        }
+        transaction.set(docRef, fullReport, { merge: true });
+      });
+    }
 
     // Save attachment metadata to erp_report_attachments
     if (Array.isArray(reportData.attachments) && reportData.attachments.length > 0) {
