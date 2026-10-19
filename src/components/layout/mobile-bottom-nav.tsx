@@ -160,7 +160,7 @@ export function MobileBottomNav({ user }: MobileBottomNavProps) {
     <>
       <nav
         aria-label="Mobile Bottom Navigation"
-        className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-white border-t border-slate-200/90 shadow-[0_-2px_8px_rgba(0,0,0,0.04)]"
+        className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-card border-t border-border shadow-[0_-2px_8px_rgba(0,0,0,0.04)]"
         style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
       >
         <div className="flex items-center justify-between w-full h-16 max-w-md mx-auto px-1 sm:px-2">
@@ -180,7 +180,7 @@ export function MobileBottomNav({ user }: MobileBottomNavProps) {
                   <Icon
                     className={cn(
                       'h-5 w-5 shrink-0 transition-colors',
-                      isActive ? 'text-emerald-700' : 'text-slate-400 group-hover:text-slate-600'
+                      isActive ? 'text-primary' : 'text-muted-foreground group-hover:text-foreground'
                     )}
                     strokeWidth={isActive ? 2.25 : 1.75}
                   />
@@ -188,8 +188,8 @@ export function MobileBottomNav({ user }: MobileBottomNavProps) {
                     className={cn(
                       'text-[10px] sm:text-[11px] leading-none tracking-tight truncate max-w-full text-center transition-colors',
                       isActive
-                        ? 'font-bold text-emerald-800'
-                        : 'font-medium text-slate-500 group-hover:text-slate-700'
+                        ? 'font-bold text-primary'
+                        : 'font-medium text-muted-foreground group-hover:text-foreground'
                     )}
                   >
                     {item.label}
@@ -210,7 +210,7 @@ export function MobileBottomNav({ user }: MobileBottomNavProps) {
               <Menu
                 className={cn(
                   'h-5 w-5 shrink-0 transition-colors',
-                  isMoreActive ? 'text-emerald-700' : 'text-slate-400 group-hover:text-slate-600'
+                  isMoreActive ? 'text-primary' : 'text-muted-foreground group-hover:text-foreground'
                 )}
                 strokeWidth={isMoreActive ? 2.25 : 1.75}
               />
@@ -218,8 +218,8 @@ export function MobileBottomNav({ user }: MobileBottomNavProps) {
                 className={cn(
                   'text-[10px] sm:text-[11px] leading-none tracking-tight truncate max-w-full text-center transition-colors',
                   isMoreActive
-                    ? 'font-bold text-emerald-800'
-                    : 'font-medium text-slate-500 group-hover:text-slate-700'
+                    ? 'font-bold text-primary'
+                    : 'font-medium text-muted-foreground group-hover:text-foreground'
                 )}
               >
                 More
@@ -231,29 +231,26 @@ export function MobileBottomNav({ user }: MobileBottomNavProps) {
 
       {/* Secondary Destinations Sheet */}
       <Sheet open={moreSheetOpen} onOpenChange={setMoreSheetOpen}>
-        <SheetContent side="bottom" className="max-h-[85vh]">
+        <SheetContent side="bottom" className="max-h-[85vh] bg-card border-border text-foreground">
           <SheetHeader>
             <div className="flex items-center gap-3 pr-10">
-              <div className="h-9 w-9 rounded-full bg-emerald-700 text-white font-bold flex items-center justify-center text-xs shrink-0">
+              <div className="h-9 w-9 rounded-full bg-primary text-white font-bold flex items-center justify-center text-xs shrink-0">
                 {user.fullName ? user.fullName.substring(0, 2).toUpperCase() : 'AG'}
               </div>
               <div className="min-w-0 flex-1">
-                <SheetTitle className="truncate">{user.fullName}</SheetTitle>
-                <SheetDescription className="truncate">
+                <SheetTitle className="truncate text-foreground">{user.fullName}</SheetTitle>
+                <SheetDescription className="truncate text-muted-foreground">
                   {user.employeeId ? `${user.employeeId} • ` : ''}
                   <span className="capitalize">{role.replace('_', ' ')}</span>
                 </SheetDescription>
               </div>
-              {/* <Badge variant="outline" className="text-[10px] uppercase font-bold shrink-0">
-                {user.departmentName || 'Agricart'}
-              </Badge> */}
             </div>
           </SheetHeader>
 
           <div className="py-2 space-y-4">
             {getSecondaryGroups().map((group, idx) => (
               <div key={idx} className="space-y-1">
-                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider px-2">
+                <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider px-2">
                   {group.groupName}
                 </p>
                 <div className="space-y-0.5">
@@ -268,20 +265,20 @@ export function MobileBottomNav({ user }: MobileBottomNavProps) {
                         className={cn(
                           'flex items-center justify-between p-3 rounded-xl text-xs font-semibold transition-colors min-h-[44px]',
                           isActive
-                            ? 'bg-emerald-50 text-emerald-800 font-bold border border-emerald-200/80'
-                            : 'text-slate-700 hover:bg-slate-50 hover:text-slate-900 active:bg-slate-100'
+                            ? 'bg-primary/10 text-primary font-bold border border-primary/25'
+                            : 'text-foreground hover:bg-muted active:bg-muted/80'
                         )}
                       >
                         <div className="flex items-center gap-3 truncate">
                           <Icon
                             className={cn(
                               'h-4 w-4 shrink-0',
-                              isActive ? 'text-emerald-700' : 'text-slate-500'
+                              isActive ? 'text-primary' : 'text-muted-foreground'
                             )}
                           />
                           <span className="truncate">{item.label}</span>
                         </div>
-                        <ChevronRight className="h-4 w-4 text-slate-400 shrink-0" />
+                        <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
                       </Link>
                     );
                   })}
@@ -290,14 +287,14 @@ export function MobileBottomNav({ user }: MobileBottomNavProps) {
             ))}
 
             {/* Logout Action in Sheet */}
-            <div className="pt-2 border-t border-slate-100 space-y-2">
+            <div className="pt-2 border-t border-border space-y-2">
               <button
                 type="button"
                 onClick={handleLogout}
-                className="w-full flex items-center justify-between p-3 rounded-xl text-xs font-semibold text-rose-700 hover:bg-rose-50 active:bg-rose-100 transition-colors min-h-[44px]"
+                className="w-full flex items-center justify-between p-3 rounded-xl text-xs font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 active:bg-rose-100 transition-colors min-h-[44px]"
               >
                 <div className="flex items-center gap-3">
-                  <LogOut className="h-4 w-4 text-rose-600" />
+                  <LogOut className="h-4 w-4 text-rose-600 dark:text-rose-400" />
                   <span>Sign Out of Account</span>
                 </div>
                 <ChevronRight className="h-4 w-4 text-rose-400" />
@@ -307,9 +304,9 @@ export function MobileBottomNav({ user }: MobileBottomNavProps) {
               <button
                 type="button"
                 onClick={() => setMoreSheetOpen(false)}
-                className="w-full flex items-center justify-center p-2.5 rounded-xl text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 transition-colors min-h-[44px]"
+                className="w-full flex items-center justify-center p-2.5 rounded-xl text-xs font-bold text-foreground bg-muted hover:bg-muted/80 transition-colors min-h-[44px]"
               >
-                Close Menu
+                Close
               </button>
             </div>
           </div>

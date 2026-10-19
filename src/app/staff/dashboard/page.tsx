@@ -4,29 +4,29 @@ import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import {
   PlusCircle,
-  Clock,
   FileText,
+  Clock,
   CheckCircle2,
   AlertTriangle,
-  Eye,
-  ArrowRight,
-  MapPin,
-  Building2,
-  FileEdit,
-  History,
-  User,
-  Calendar,
-  AlertCircle,
   RotateCcw,
   CalendarOff,
+  User,
   CalendarDays,
-  Paperclip,
+  FileEdit,
+  ArrowRight,
+  RefreshCw,
+  AlertCircle,
+  BarChart3,
 } from 'lucide-react';
 import { DailyReport, UserProfile } from '@/types';
+import { VertixWelcomeHeader } from '@/components/dashboard/VertixWelcomeHeader';
+import { VertixBalanceCard } from '@/components/dashboard/VertixBalanceCard';
+import { VertixStatGrid } from '@/components/dashboard/VertixStatGrid';
+import { VertixIncomeChart, ChartDataPoint } from '@/components/dashboard/VertixIncomeChart';
+import { VertixRecentActivities } from '@/components/dashboard/VertixRecentActivities';
 import { Button } from '@/components/ui/button';
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { getTodayDateString, formatReadableDate } from '@/lib/utils/date-utils';
+import { ReportReviewModal } from '@/components/reports/ReportReviewModal';
+import { getTodayDateString } from '@/lib/utils/date-utils';
 
 export default function StaffDashboardPage() {
   const [user, setUser] = useState<UserProfile | null>(null);
@@ -34,540 +34,432 @@ export default function StaffDashboardPage() {
   const [todayLeave, setTodayLeave] = useState<any | null>(null);
   const [reports, setReports] = useState<DailyReport[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedReport, setSelectedReport] = useState<DailyReport | null>(null);
 
   const todayStr = getTodayDateString();
 
-  useEffect(() => {
-    const loadStaffData = async () => {
-      setLoading(true);
-      try {
-        const sessRes = await fetch('/api/auth/session');
-        const sessData = await sessRes.json();
-        if (sessData.authenticated) setUser(sessData.user);
+  const loadStaffData = async () => {
+    setLoading(true);
+    try {
+      // 1. Authenticated session user
+      const sessRes = await fetch('/api/auth/session');
+      const sessData = await sessRes.json();
+      if (sessData.authenticated) setUser(sessData.user);
 
-        // Fetch reports for this authenticated staff user only
-        const repRes = await fetch('/api/reports');
-        const repData = await repRes.json();
-        if (repData.reports) {
-          setReports(repData.reports);
-          const foundToday = repData.reports.find((r: DailyReport) => r.reportDate === todayStr);
-          if (foundToday) setTodayReport(foundToday);
-        }
-
-        // Fetch leaves to see if staff is on approved leave today
-        const leavesRes = await fetch('/api/leaves');
-        const leavesData = await leavesRes.json();
-        if (leavesData.leaves) {
-          const activeLeave = leavesData.leaves.find((l: any) =>
-            l.approvalStatus === 'approved' && l.startDate <= todayStr && l.endDate >= todayStr
-          );
-          if (activeLeave) setTodayLeave(activeLeave);
-        }
-      } catch (err) {
-        console.error('Failed to load staff dashboard data:', err);
-      } finally {
-        setLoading(false);
+      // 2. Fetch reports for this authenticated staff user only
+      const repRes = await fetch('/api/reports');
+      const repData = await repRes.json();
+      if (repData.reports) {
+        setReports(repData.reports);
+        const foundToday = repData.reports.find(
+          (r: DailyReport) => r.reportDate === todayStr
+        );
+        if (foundToday) setTodayReport(foundToday);
       }
-    };
 
+      // 3. Fetch leaves to see if staff is on approved leave today
+      const leavesRes = await fetch('/api/leaves');
+      const leavesData = await leavesRes.json();
+      if (leavesData.leaves) {
+        const activeLeave = leavesData.leaves.find(
+          (l: any) =>
+            l.approvalStatus === 'approved' &&
+            l.startDate <= todayStr &&
+            l.endDate >= todayStr
+        );
+        if (activeLeave) setTodayLeave(activeLeave);
+      }
+    } catch (err) {
+      console.error('Failed to load staff dashboard data:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
     loadStaffData();
   }, [todayStr]);
 
-  // Authenticated user summary metrics
+  // Authenticated user summary metrics (Strictly from real database records)
   const draftReports = reports.filter((r) => r.status === 'draft');
-  const awaitingReviewReports = reports.filter((r) => r.status === 'submitted' || r.status === 'under_review' || r.status === 'resubmitted');
-  const correctionsRequired = reports.filter((r) => r.status === 'correction_requested' || r.status === 'edit_requested');
+  const awaitingReviewReports = reports.filter(
+    (r) =>
+      r.status === 'submitted' ||
+      r.status === 'under_review' ||
+      r.status === 'resubmitted'
+  );
+  const correctionsRequired = reports.filter(
+    (r) =>
+      r.status === 'correction_requested' || r.status === 'edit_requested'
+  );
   const approvedReports = reports.filter((r) => r.status === 'approved');
 
-  const getTodayStatusCard = () => {
+  // Compute monthly activity trends from actual database records
+  const monthlyActivityData: ChartDataPoint[] = (() => {
+    const now = new Date();
+    const monthNames = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+    const dataPoints: ChartDataPoint[] = [];
+
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const yyyy = d.getFullYear();
+      const mm = String(d.getMonth() + 1).padStart(2, '0');
+      const prefix = `${yyyy}-${mm}`;
+      const monthLabel = monthNames[d.getMonth()];
+
+      const monthReports = reports.filter(
+        (r) => r.reportDate && r.reportDate.startsWith(prefix)
+      );
+      const approved = monthReports.filter((r) => r.status === 'approved').length;
+      const submitted = monthReports.filter(
+        (r) =>
+          r.status === 'submitted' ||
+          r.status === 'under_review' ||
+          r.status === 'resubmitted'
+      ).length;
+
+      dataPoints.push({
+        label: monthLabel,
+        series1: approved,
+        series2: submitted,
+      });
+    }
+
+    return dataPoints;
+  })();
+
+  // Today's Status Banner (Shows real status, deadline, and direct action)
+  const renderTodayActionBanner = () => {
     if (!todayReport) {
       if (todayLeave) {
         return (
-          <Card className="border-sky-200 bg-sky-50/60 shadow-xs">
-            <CardContent className="p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-              <div className="space-y-1">
-                <Badge className="bg-sky-100 text-sky-800 border-sky-300 font-bold mb-1">On Approved Leave Today</Badge>
-                <h2 className="text-base font-extrabold text-sky-950">
-                  You are currently on authorized {todayLeave.leaveType.toUpperCase()} leave ({todayStr})
-                </h2>
-                <p className="text-xs text-slate-600">
-                  Leave duration: <span className="font-bold">{todayLeave.daysCount} day(s)</span> ({todayLeave.startDate} to {todayLeave.endDate}). You are exempt from submitting a daily activity report today.
-                </p>
-              </div>
-              <div className="flex items-center gap-2">
-                <Link href="/staff/leaves">
-                  <Button variant="outline" size="sm" className="font-bold border-sky-300 text-sky-800 hover:bg-sky-100">
-                    <CalendarOff className="h-4 w-4 mr-1.5" /> View My Leaves
-                  </Button>
-                </Link>
-                <Link href="/staff/daily-report">
-                  <Button variant="ghost" size="sm" className="text-xs text-slate-500 hover:text-slate-800">
-                    Submit Report Anyway
-                  </Button>
-                </Link>
-              </div>
-            </CardContent>
-          </Card>
+          <div className="p-5 rounded-[22px] bg-[#EEF4FF] dark:bg-[#152338] border border-[#D4E4FC] dark:border-[#1D3C63] flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-2xs">
+            <div className="space-y-1">
+              <span className="inline-block px-2.5 py-0.5 rounded-full bg-[#D4E4FC] dark:bg-[#1D60C9]/25 text-[#1D60C9] dark:text-[#60A5FA] text-xs font-bold mb-1">
+                On Approved Leave Today
+              </span>
+              <h2 className="text-base font-extrabold text-foreground">
+                You are on authorized {todayLeave.leaveType.toUpperCase()} leave ({todayStr})
+              </h2>
+              <p className="text-xs text-muted-foreground">
+                Leave duration: <span className="font-bold text-foreground">{todayLeave.daysCount} day(s)</span>. Exempt from submitting a daily report today.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <Link href="/staff/leaves">
+                <Button variant="outline" size="sm" className="font-semibold text-xs rounded-full border-border text-foreground bg-card hover:bg-muted">
+                  <CalendarOff className="h-4 w-4 mr-1.5" /> View My Leaves
+                </Button>
+              </Link>
+            </div>
+          </div>
         );
       }
 
       return (
-        <Card className="border-emerald-200 bg-emerald-50/50 shadow-sm">
-          <CardContent className="p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-            <div className="space-y-1">
-              <Badge variant="warning" className="mb-1 font-bold">Today: Not Submitted Yet</Badge>
-              <h2 className="text-lg font-extrabold text-slate-900">Today's Daily Activity Report ({todayStr})</h2>
-              <p className="text-xs text-slate-600">
-                Daily reporting deadline is <span className="font-extrabold text-emerald-800">07:00 PM IST</span>.
-                Please log your daily work, visited farmers, meetings conducted, and photo evidence.
-              </p>
-            </div>
-            <Link href="/staff/daily-report" className="w-full md:w-auto">
-              <Button size="lg" className="w-full md:w-auto bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold shadow-md shadow-emerald-600/20">
-                <PlusCircle className="h-5 w-5 mr-1.5" /> Submit Daily Report
-              </Button>
-            </Link>
-          </CardContent>
-        </Card>
+        <div className="p-5 sm:p-6 rounded-[22px] bg-card border border-border flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-2xs card-saas-hover">
+          <div className="space-y-1">
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-[#FEF7E8] dark:bg-[#D99A28]/20 text-[#D99A28] dark:text-[#FBBF24] text-xs font-bold">
+              <span className="h-1.5 w-1.5 rounded-full bg-[#D99A28] dark:bg-[#FBBF24]" />
+              Today&apos;s Report Pending ({todayStr})
+            </span>
+            <h2 className="text-lg font-extrabold text-foreground">
+              Ready to submit today&apos;s field activity report?
+            </h2>
+            <p className="text-xs text-muted-foreground">
+              Daily submission deadline is <span className="font-bold text-primary">07:00 PM IST</span>. Log visited farmers, activities, and photo evidence.
+            </p>
+          </div>
+          <Link href="/staff/daily-report" className="w-full md:w-auto">
+            <Button className="w-full md:w-auto bg-[#228B4E] hover:bg-[#176638] text-white font-bold text-xs h-10 px-5 rounded-full shadow-xs">
+              <PlusCircle className="h-4 w-4 mr-1.5" /> Submit Daily Report
+            </Button>
+          </Link>
+        </div>
       );
     }
 
     if (todayReport.status === 'draft') {
       return (
-        <Card className="border-amber-200 bg-amber-50/60 shadow-xs">
-          <CardContent className="p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-            <div className="space-y-1">
-              <Badge variant="warning" className="mb-1 font-bold">Saved Draft in Progress</Badge>
-              <h2 className="text-base font-extrabold text-amber-950">You have a draft saved for today ({todayStr})</h2>
-              <p className="text-xs text-slate-600">
-                Finish entering your activities and submit before <span className="font-bold text-amber-900">07:00 PM</span>.
-              </p>
-            </div>
-            <Link href={`/staff/daily-report?id=${todayReport.id}`} className="w-full md:w-auto">
-              <Button size="lg" className="w-full md:w-auto bg-amber-600 hover:bg-amber-700 text-white font-bold shadow-sm">
-                <FileEdit className="h-5 w-5 mr-1.5" /> Continue Draft
-              </Button>
-            </Link>
-          </CardContent>
-        </Card>
-      );
-    }
-
-    if (todayReport.status === 'correction_requested' || todayReport.status === 'edit_requested') {
-      return (
-        <Card className="border-rose-200 bg-rose-50/70 shadow-xs">
-          <CardContent className="p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-            <div className="space-y-1.5 max-w-xl">
-              <Badge variant="destructive" className="mb-1 font-bold">
-                {todayReport.status === 'edit_requested' ? 'Edit Requested by Reviewer' : 'Correction Requested'}
-              </Badge>
-              <h2 className="text-base font-extrabold text-rose-950">Action Needed on Today's Report</h2>
-              {(todayReport.editRequest?.reason || todayReport.reviewComments) && (
-                <div className="p-3 bg-white/90 rounded-xl border border-rose-200 text-xs">
-                  <span className="font-bold text-slate-900 block mb-0.5">Reviewer Instructions:</span>
-                  <p className="text-slate-800 italic">"{todayReport.editRequest?.reason || todayReport.reviewComments}"</p>
-                  {todayReport.editRequest?.instructions && (
-                    <p className="text-slate-700 mt-1 font-medium">Details: {todayReport.editRequest.instructions}</p>
-                  )}
-                </div>
-              )}
-            </div>
-            <Link href={`/staff/daily-report?id=${todayReport.id}`} className="w-full md:w-auto">
-              <Button size="lg" className="w-full md:w-auto bg-rose-600 hover:bg-rose-700 text-white font-bold shadow-md shadow-rose-600/20">
-                <RotateCcw className="h-5 w-5 mr-1.5" /> Edit & Resubmit Report
-              </Button>
-            </Link>
-          </CardContent>
-        </Card>
-      );
-    }
-
-    if (todayReport.status === 'resubmitted') {
-      return (
-        <Card className="border-purple-200 bg-purple-50/60 shadow-xs">
-          <CardContent className="p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-            <div className="space-y-1">
-              <Badge variant="purple" className="mb-1 font-bold">Revision Resubmitted (Revision #{todayReport.revisionNumber})</Badge>
-              <h2 className="text-base font-extrabold text-purple-950">Revision Awaiting Supervisor Review</h2>
-              <p className="text-xs text-slate-600">
-                Your revised report was resubmitted at {todayReport.resubmittedAt ? new Date(todayReport.resubmittedAt).toLocaleTimeString('en-IN') : 'recently'}.
-              </p>
-            </div>
-            <Link href="/staff/report-history" className="w-full md:w-auto">
-              <Button variant="outline" size="sm" className="w-full md:w-auto font-bold border-purple-300 text-purple-800 hover:bg-purple-100">
-                <Eye className="h-4 w-4 mr-1.5" /> View Resubmission
-              </Button>
-            </Link>
-          </CardContent>
-        </Card>
-      );
-    }
-
-    if (todayReport.status === 'approved') {
-      return (
-        <Card className="border-emerald-200 bg-emerald-50/60 shadow-xs">
-          <CardContent className="p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-            <div className="space-y-1">
-              <div className="flex items-center gap-2">
-                <CheckCircle2 className="h-5 w-5 text-emerald-600" />
-                <h2 className="text-base font-extrabold text-emerald-950">Daily Report Approved</h2>
-              </div>
-              <p className="text-xs text-slate-600">
-                Reviewed by <span className="font-bold">{todayReport.reviewerName || 'Department Reviewer'}</span>. Thank you for completing your daily submission on time!
-              </p>
-            </div>
-            <Link href="/staff/report-history" className="w-full md:w-auto">
-              <Button variant="outline" size="sm" className="w-full md:w-auto font-bold border-emerald-300 text-emerald-800 hover:bg-emerald-100">
-                <Eye className="h-4 w-4 mr-1.5" /> View Submitted Report
-              </Button>
-            </Link>
-          </CardContent>
-        </Card>
-      );
-    }
-
-    // Default: submitted awaiting review
-    return (
-      <Card className="border-sky-200 bg-sky-50/60 shadow-xs">
-        <CardContent className="p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+        <div className="p-5 rounded-[22px] bg-[#FEF7E8] dark:bg-[#2A2315] border border-[#F6E6C4] dark:border-[#4E3D1F] flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-2xs">
           <div className="space-y-1">
-            <div className="flex items-center gap-2">
-              <Clock className="h-5 w-5 text-sky-600" />
-              <h2 className="text-base font-extrabold text-sky-950">Report Submitted (Awaiting Review)</h2>
-            </div>
-            <p className="text-xs text-slate-600">
-              Submitted at: <span className="font-bold">{todayReport.submittedAt ? new Date(todayReport.submittedAt).toLocaleTimeString('en-IN') : 'Today'}</span> | Attachments: <span className="font-bold">{todayReport.attachments?.length || 0}</span> files
+            <span className="inline-block px-2.5 py-0.5 rounded-full bg-card text-[#D99A28] dark:text-[#FBBF24] text-xs font-bold border border-border/40">
+              Draft In Progress
+            </span>
+            <h2 className="text-base font-extrabold text-foreground">
+              You have an unfinished draft for today ({todayStr})
+            </h2>
+            <p className="text-xs text-muted-foreground">
+              Finish entering your field activities and submit before 07:00 PM.
             </p>
           </div>
-          <Link href="/staff/report-history" className="w-full md:w-auto">
-            <Button variant="outline" size="sm" className="w-full md:w-auto font-bold border-sky-300 text-sky-800 hover:bg-sky-100">
-              <Eye className="h-4 w-4 mr-1.5" /> View Submitted Report
+          <Link href={`/staff/daily-report?id=${todayReport.id}`} className="w-full md:w-auto">
+            <Button className="w-full md:w-auto bg-[#D99A28] hover:bg-[#b8801d] text-white font-bold text-xs h-10 px-5 rounded-full shadow-xs">
+              <FileEdit className="h-4 w-4 mr-1.5" /> Continue Draft
             </Button>
           </Link>
-        </CardContent>
-      </Card>
+        </div>
+      );
+    }
+
+    if (
+      todayReport.status === 'correction_requested' ||
+      todayReport.status === 'edit_requested'
+    ) {
+      return (
+        <div className="p-5 rounded-[22px] bg-[#FDF1F1] dark:bg-[#2C1919] border border-[#F8D2D2] dark:border-[#4D2323] flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-2xs">
+          <div className="space-y-1">
+            <span className="inline-block px-2.5 py-0.5 rounded-full bg-card text-[#DC5252] dark:text-[#F87171] text-xs font-bold border border-border/40">
+              Action Required: Reviewer Requested Correction
+            </span>
+            <h2 className="text-base font-extrabold text-foreground">
+              Correction Requested on Today&apos;s Report
+            </h2>
+            <p className="text-xs text-muted-foreground">
+              &quot;{todayReport.editRequest?.reason || todayReport.reviewComments || 'Please review and update field evidence.'}&quot;
+            </p>
+          </div>
+          <Link href={`/staff/daily-report?id=${todayReport.id}`} className="w-full md:w-auto">
+            <Button className="w-full md:w-auto bg-[#DC5252] hover:bg-[#b93838] text-white font-bold text-xs h-10 px-5 rounded-full shadow-xs">
+              <RotateCcw className="h-4 w-4 mr-1.5" /> Edit &amp; Resubmit
+            </Button>
+          </Link>
+        </div>
+      );
+    }
+
+    // Report already submitted / approved
+    return (
+      <div className="p-5 rounded-[22px] bg-[#E8F5EC] dark:bg-[#132B1C] border border-[#CDE7D4] dark:border-[#1E4A2E] flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-2xs">
+        <div className="space-y-1">
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-card text-[#228B4E] dark:text-[#34D399] text-xs font-bold border border-border/40">
+            <CheckCircle2 className="h-3.5 w-3.5" />
+            Report {todayReport.status === 'approved' ? 'Approved & Verified' : 'Submitted Successfully'}
+          </span>
+          <h2 className="text-base font-extrabold text-foreground">
+            Today&apos;s report ({todayStr}) is on file!
+          </h2>
+          <p className="text-xs text-muted-foreground">
+            {todayReport.farmersVisited || 0} farmers visited • {todayReport.activities?.substring(0, 60)}...
+          </p>
+        </div>
+        <Button
+          onClick={() => setSelectedReport(todayReport)}
+          variant="outline"
+          className="bg-card hover:bg-muted border-[#CDE7D4] dark:border-[#1E4A2E] text-primary font-bold text-xs h-9 px-4 rounded-full"
+        >
+          View Report
+        </Button>
+      </div>
     );
   };
 
   return (
-    <div className="space-y-6">
-      {/* Staff Welcome Banner */}
-      <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-2xs flex flex-wrap items-center justify-between gap-4">
-        <div className="space-y-1">
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-bold uppercase tracking-wider text-emerald-700">
-              Agricart Field Operations
-            </span>
-          </div>
-          <h1 className="text-xl font-bold text-slate-900">
-            Welcome, {user?.fullName || 'Staff'}
-          </h1>
-          <div className="flex flex-wrap items-center gap-3 text-xs text-slate-500 font-medium pt-0.5">
-            <span className="flex items-center gap-1 font-bold text-emerald-800">
-              ID: {user?.employeeId}
-            </span>
-            <span>•</span>
-            <span className="flex items-center gap-1">
-              <Building2 className="h-3.5 w-3.5 text-emerald-600" /> {user?.departmentName || 'Field Operations'}
-            </span>
-            <span>•</span>
-            <span className="flex items-center gap-1">
-              <MapPin className="h-3.5 w-3.5 text-emerald-600" /> {user?.assignedCenterNames?.[0] || 'Nashik Center'}
-            </span>
-            <span>•</span>
-            <span className="flex items-center gap-1 font-bold text-emerald-700">
-              <Clock className="h-3.5 w-3.5" /> Deadline: 07:00 PM Daily
-            </span>
-          </div>
-        </div>
-      </div>
+    <div className="space-y-6 animate-in fade-in duration-300">
+      {/* 1. Welcome Section: Name, Employee ID, Department, Center, Submission Deadline */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <VertixWelcomeHeader
+          user={user}
+          subtitle={`Field Operations • ${user?.departmentName || 'Agricultural Operations'}`}
+          employeeId={user?.employeeId}
+          departmentName={user?.departmentName}
+          centerName={user?.assignedCenterNames?.[0]}
+          submissionDeadline="07:00 PM IST"
+        />
 
-      {/* Visible Notification Banner when Edits are Requested */}
-      {correctionsRequired.length > 0 && (
-        <div className="p-4 sm:p-5 bg-rose-50 rounded-2xl border border-rose-200 space-y-3 shadow-2xs">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <AlertCircle className="h-5 w-5 text-rose-600 shrink-0" />
-              <h2 className="text-sm font-extrabold text-rose-950">
-                Action Required: {correctionsRequired.length} Daily Report(s) Need Revisions
-              </h2>
-            </div>
-            <Link href="/staff/corrections">
-              <Button size="sm" variant="outline" className="rounded-full text-xs font-bold border-rose-300 text-rose-800 hover:bg-rose-100">
-                View All ({correctionsRequired.length})
-              </Button>
-            </Link>
-          </div>
-          <div className="space-y-2">
-            {correctionsRequired.slice(0, 3).map((r) => (
-              <div
-                key={r.id}
-                className="p-3 bg-white rounded-xl border border-rose-200/80 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs"
-              >
-                <div className="space-y-0.5">
-                  <div className="flex items-center gap-2">
-                    <span className="font-extrabold text-slate-900">Report for {formatReadableDate(r.reportDate)}</span>
-                    <Badge variant="destructive" className="text-[10px] uppercase font-bold">
-                      {r.status === 'edit_requested' ? 'Edit Requested' : 'Correction Requested'}
-                    </Badge>
-                  </div>
-                  <p className="text-slate-600 italic">
-                    Reason: "{r.editRequest?.reason || r.reviewComments || 'Revisions required by supervisor'}"
-                  </p>
-                </div>
-                <Link href={`/staff/daily-report?id=${r.id}`}>
-                  <Button size="sm" className="rounded-full text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white shrink-0">
-                    <FileEdit className="h-3.5 w-3.5 mr-1" /> Edit & Resubmit
-                  </Button>
-                </Link>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* State-aware Today's Status Banner */}
-      {getTodayStatusCard()}
-
-      {/* Quick Action Navigation Buttons */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-        <Link href="/staff/daily-report">
-          <div className="p-3.5 bg-white rounded-2xl border border-slate-200/80 hover:border-emerald-300 transition-all flex items-center justify-between shadow-2xs group">
-            <div className="flex items-center gap-2.5">
-              <div className="p-2 bg-emerald-50 text-emerald-700 rounded-full group-hover:bg-emerald-100 transition-colors">
-                <PlusCircle className="h-4 w-4" />
-              </div>
-              <span className="text-xs font-bold text-slate-800">Submit Report</span>
-            </div>
-            <ArrowRight className="h-3.5 w-3.5 text-slate-400 group-hover:text-emerald-600 group-hover:translate-x-0.5 transition-all" />
-          </div>
-        </Link>
-
-        <Link href="/staff/report-history">
-          <div className="p-3.5 bg-white rounded-2xl border border-slate-200/80 hover:border-sky-300 transition-all flex items-center justify-between shadow-2xs group">
-            <div className="flex items-center gap-2.5">
-              <div className="p-2 bg-sky-50 text-sky-700 rounded-full group-hover:bg-sky-100 transition-colors">
-                <History className="h-4 w-4" />
-              </div>
-              <span className="text-xs font-bold text-slate-800">My Reports</span>
-            </div>
-            <ArrowRight className="h-3.5 w-3.5 text-slate-400 group-hover:text-sky-600 group-hover:translate-x-0.5 transition-all" />
-          </div>
-        </Link>
-
-        <Link href="/staff/leaves">
-          <div className="p-3.5 bg-white rounded-2xl border border-slate-200/80 hover:border-teal-300 transition-all flex items-center justify-between shadow-2xs group">
-            <div className="flex items-center gap-2.5">
-              <div className="p-2 bg-teal-50 text-teal-700 rounded-full group-hover:bg-teal-100 transition-colors">
-                <CalendarOff className="h-4 w-4" />
-              </div>
-              <span className="text-xs font-bold text-slate-800">My Leaves</span>
-            </div>
-            <ArrowRight className="h-3.5 w-3.5 text-slate-400 group-hover:text-teal-600 group-hover:translate-x-0.5 transition-all" />
-          </div>
-        </Link>
-
-        <Link href="/staff/reports/monthly">
-          <div className="p-3.5 bg-white rounded-2xl border border-slate-200/80 hover:border-emerald-300 transition-all flex items-center justify-between shadow-2xs group">
-            <div className="flex items-center gap-2.5">
-              <div className="p-2 bg-emerald-50 text-emerald-700 rounded-full group-hover:bg-emerald-100 transition-colors">
-                <CalendarDays className="h-4 w-4" />
-              </div>
-              <span className="text-xs font-bold text-slate-800">Monthly Report</span>
-            </div>
-            <ArrowRight className="h-3.5 w-3.5 text-slate-400 group-hover:text-emerald-600 group-hover:translate-x-0.5 transition-all" />
-          </div>
-        </Link>
-
-        <Link href="/staff/corrections">
-          <div className="p-3.5 bg-white rounded-2xl border border-slate-200/80 hover:border-rose-300 transition-all flex items-center justify-between shadow-2xs group">
-            <div className="flex items-center gap-2.5">
-              <div className="p-2 bg-rose-50 text-rose-700 rounded-full group-hover:bg-rose-100 transition-colors">
-                <AlertCircle className="h-4 w-4" />
-              </div>
-              <div>
-                <span className="text-xs font-bold text-slate-800 block">Corrections</span>
-                <span className="text-[10px] text-rose-700 font-bold">{correctionsRequired.length} required</span>
-              </div>
-            </div>
-            <ArrowRight className="h-3.5 w-3.5 text-slate-400 group-hover:text-rose-600 group-hover:translate-x-0.5 transition-all" />
-          </div>
-        </Link>
-
-        <Link href="/staff/profile">
-          <div className="p-3.5 bg-white rounded-2xl border border-slate-200/80 hover:border-purple-300 transition-all flex items-center justify-between shadow-2xs group">
-            <div className="flex items-center gap-2.5">
-              <div className="p-2 bg-purple-50 text-purple-700 rounded-full group-hover:bg-purple-100 transition-colors">
-                <User className="h-4 w-4" />
-              </div>
-              <span className="text-xs font-bold text-slate-800">My Profile</span>
-            </div>
-            <ArrowRight className="h-3.5 w-3.5 text-slate-400 group-hover:text-purple-600 group-hover:translate-x-0.5 transition-all" />
-          </div>
-        </Link>
-      </div>
-
-      {/* Staff Personal Status Metrics */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="p-4">
-            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Draft Reports</span>
-            <div className="mt-2 flex items-baseline justify-between">
-              <span className="text-2xl font-black text-amber-700">{draftReports.length}</span>
-              <span className="text-xs text-slate-500 font-medium">Unsubmitted</span>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4">
-            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Awaiting Review</span>
-            <div className="mt-2 flex items-baseline justify-between">
-              <span className="text-2xl font-black text-sky-700">{awaitingReviewReports.length}</span>
-              <span className="text-xs text-slate-500 font-medium">In Queue</span>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4">
-            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Corrections Needed</span>
-            <div className="mt-2 flex items-baseline justify-between">
-              <span className="text-2xl font-black text-rose-700">{correctionsRequired.length}</span>
-              <span className="text-xs text-slate-500 font-medium">Actionable</span>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4">
-            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Approved Reports</span>
-            <div className="mt-2 flex items-baseline justify-between">
-              <span className="text-2xl font-black text-emerald-700">{approvedReports.length}</span>
-              <span className="text-xs text-slate-500 font-medium">Verified</span>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Pending Corrections Alert Section */}
-      {correctionsRequired.length > 0 && (
-        <Card className="border-rose-200 bg-rose-50/40">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <div>
-              <CardTitle className="text-base font-bold text-rose-900 flex items-center gap-2">
-                <AlertCircle className="h-5 w-5 text-rose-600" /> Reports Requiring Corrections ({correctionsRequired.length})
-              </CardTitle>
-              <CardDescription>Your manager has requested changes before these reports can be approved.</CardDescription>
-            </div>
-            <Link href="/staff/corrections">
-              <Button size="sm" variant="outline" className="text-xs font-bold border-rose-300 text-rose-900 hover:bg-rose-100">
-                View All Corrections
-              </Button>
-            </Link>
-          </CardHeader>
-          <CardContent className="space-y-3 pt-2">
-            {correctionsRequired.slice(0, 2).map((cr) => (
-              <div key={cr.id} className="p-3.5 bg-white rounded-xl border border-rose-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-bold text-slate-900 text-xs">{formatReadableDate(cr.reportDate)}</span>
-                    <Badge variant="destructive" className="text-[10px]">Correction Requested</Badge>
-                  </div>
-                  {cr.reviewComments && (
-                    <p className="text-xs text-slate-700 mt-1 italic">"{cr.reviewComments}"</p>
-                  )}
-                </div>
-                <Link href={`/staff/daily-report?id=${cr.id}`} className="shrink-0">
-                  <Button size="sm" className="bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs">
-                    Edit & Resubmit
-                  </Button>
-                </Link>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Recent Personal Submissions History */}
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <div>
-            <CardTitle className="text-base font-bold text-slate-900">My Recent Submissions</CardTitle>
-            <CardDescription>Track status, submission timestamps, and manager evaluation comments</CardDescription>
-          </div>
-          <Link href="/staff/report-history">
-            <Button variant="ghost" size="sm" className="text-xs font-bold text-emerald-700">
-              View All History <ArrowRight className="h-3.5 w-3.5 ml-1" />
+        <div className="flex items-center gap-2">
+          <Link href="/staff/daily-report">
+            <Button className="bg-[#228B4E] hover:bg-[#176638] text-white font-semibold text-xs h-9 px-4 rounded-full shadow-xs">
+              <PlusCircle className="h-3.5 w-3.5 mr-1.5" /> New Report
             </Button>
           </Link>
-        </CardHeader>
-        <CardContent>
-          {loading ? (
-            <div className="p-8 text-center text-xs text-slate-500">Loading reporting history...</div>
-          ) : reports.length === 0 ? (
-            <div className="p-8 text-center text-xs text-slate-500">No report submissions recorded yet.</div>
-          ) : (
-            <div className="space-y-3">
-              {reports.slice(0, 5).map((rep) => (
-                <div
-                  key={rep.id}
-                  className="p-4 bg-slate-50/80 rounded-2xl border border-slate-200/80 flex flex-wrap items-center justify-between gap-3 hover:border-emerald-300 transition-all"
-                >
-                  <div className="space-y-1 max-w-lg">
-                    <div className="flex items-center gap-2">
-                      <span className="font-bold text-slate-900 text-sm">{formatReadableDate(rep.reportDate)}</span>
-                      <Badge
-                        variant={
-                          rep.status === 'approved'
-                            ? 'default'
-                            : rep.status === 'edit_requested' || rep.status === 'correction_requested'
-                            ? 'destructive'
-                            : rep.status === 'resubmitted'
-                            ? 'purple'
-                            : rep.status === 'draft'
-                            ? 'secondary'
-                            : 'info'
-                        }
-                      >
-                        {rep.status === 'edit_requested'
-                          ? 'EDIT REQUESTED'
-                          : rep.status === 'resubmitted'
-                          ? 'RESUBMITTED'
-                          : rep.status.toUpperCase()}
-                      </Badge>
-                      {rep.isLate && <Badge variant="warning">Late</Badge>}
-                    </div>
-                    <p className="text-xs text-slate-600 line-clamp-1">{rep.activities || 'No activities described'}</p>
-                    {(rep.editRequest?.reason || rep.reviewComments) && (
-                      <p className="text-[11px] text-slate-500 italic">Reviewer: "{rep.editRequest?.reason || rep.reviewComments}"</p>
-                    )}
-                  </div>
+          <Button
+            onClick={loadStaffData}
+            variant="outline"
+            size="sm"
+            className="bg-card hover:bg-muted border-border text-foreground font-semibold text-xs h-9 px-3.5 rounded-full shadow-2xs"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${loading ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
+        </div>
+      </div>
 
-                  <div className="flex items-center justify-between sm:justify-end gap-3 text-xs w-full sm:w-auto pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100">
-                    <span className="inline-flex items-center gap-1 font-bold text-emerald-700 shrink-0">
-                      <Paperclip className="h-3.5 w-3.5" /> {rep.attachments?.length || 0} Files
-                    </span>
-                    {rep.status === 'correction_requested' || rep.status === 'edit_requested' || rep.status === 'draft' ? (
-                      <Link href={`/staff/daily-report?id=${rep.id}`} className="shrink-0">
-                        <Button size="sm" className="bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold rounded-lg h-9 min-h-[36px]">
-                          <FileEdit className="h-3.5 w-3.5 mr-1" /> Edit & Resubmit
-                        </Button>
-                      </Link>
-                    ) : (
-                      <Link href="/staff/report-history" className="shrink-0">
-                        <Button size="sm" variant="outline" className="text-xs font-bold rounded-lg h-9 min-h-[36px] border-slate-200">
-                          <Eye className="h-3.5 w-3.5 mr-1" /> View
-                        </Button>
-                      </Link>
-                    )}
-                  </div>
-                </div>
-              ))}
+      {/* 2. Today's Overview & Action Banner */}
+      {renderTodayActionBanner()}
+
+      {/* 3. Vertix 3-Column Asymmetric Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+        {/* Column 1: Today's Overview, Work Details, Deadline & Progress */}
+        <div className="lg:col-span-4 w-full">
+          <VertixBalanceCard
+            role="staff"
+            user={user}
+            reports={reports}
+            todayReport={todayReport}
+            todayLeave={todayLeave}
+            deadline="07:00 PM IST"
+          />
+        </div>
+
+        {/* Column 2: 2x2 Metric Cards (Approved, Awaiting Review, Corrections Required, Draft Reports) */}
+        <div className="lg:col-span-4 w-full">
+          <VertixStatGrid
+            role="staff"
+            approvedCount={approvedReports.length}
+            awaitingCount={awaitingReviewReports.length}
+            correctionsCount={correctionsRequired.length}
+            draftCount={draftReports.length}
+          />
+        </div>
+
+        {/* Column 3: Monthly Reporting Activity Dual-Bar Chart */}
+        <div className="lg:col-span-4 w-full">
+          <VertixIncomeChart
+            title="Monthly Reporting Activity"
+            subtitle="Your report submissions and approval history"
+            legendSeries1="Approved"
+            legendSeries2="Submitted"
+            data={monthlyActivityData}
+            loading={loading}
+          />
+        </div>
+      </div>
+
+      {/* 4. Bottom Row: Recent Activities Data Table */}
+      <VertixRecentActivities
+        reports={reports}
+        loading={loading}
+        onSelectReport={(report) => setSelectedReport(report)}
+      />
+
+      {/* 5. Existing Action Buttons / Shortcuts: Reusing existing card positions and dimensions */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3.5">
+        {/* Action 1: Submit Daily Report */}
+        <Link href="/staff/daily-report">
+          <div className="p-4 bg-card rounded-[20px] border border-border hover:border-primary/40 transition-all flex items-center justify-between shadow-2xs group card-saas-hover">
+            <div className="flex items-center gap-3">
+              <div className="h-9 w-9 rounded-full bg-[#E8F5EC] dark:bg-[#173822] text-[#228B4E] dark:text-[#34D399] flex items-center justify-center group-hover:bg-[#d2ecd9] dark:group-hover:bg-[#1E4A2E] transition-colors">
+                <FileEdit className="h-4 w-4" />
+              </div>
+              <div>
+                <span className="text-xs font-bold text-card-foreground block leading-tight">Submit Report</span>
+                <span className="text-[11px] text-muted-foreground font-medium">Daily Log</span>
+              </div>
             </div>
-          )}
-        </CardContent>
-      </Card>
+            <ArrowRight className="h-4 w-4 text-muted-foreground group-hover:text-primary group-hover:translate-x-0.5 transition-all" />
+          </div>
+        </Link>
+
+        {/* Action 2: My Reports */}
+        <Link href="/staff/report-history">
+          <div className="p-4 bg-card rounded-[20px] border border-border hover:border-primary/40 transition-all flex items-center justify-between shadow-2xs group card-saas-hover">
+            <div className="flex items-center gap-3">
+              <div className="h-9 w-9 rounded-full bg-[#EEF4FF] dark:bg-[#17253D] text-[#1D60C9] dark:text-[#60A5FA] flex items-center justify-center group-hover:bg-[#dce9fc] dark:group-hover:bg-[#1E355B] transition-colors">
+                <FileText className="h-4 w-4" />
+              </div>
+              <div>
+                <span className="text-xs font-bold text-card-foreground block leading-tight">My Reports</span>
+                <span className="text-[11px] text-muted-foreground font-medium">{reports.length} total</span>
+              </div>
+            </div>
+            <ArrowRight className="h-4 w-4 text-muted-foreground group-hover:text-primary group-hover:translate-x-0.5 transition-all" />
+          </div>
+        </Link>
+
+        {/* Action 3: My Leaves */}
+        <Link href="/staff/leaves">
+          <div className="p-4 bg-card rounded-[20px] border border-border hover:border-primary/40 transition-all flex items-center justify-between shadow-2xs group card-saas-hover">
+            <div className="flex items-center gap-3">
+              <div className="h-9 w-9 rounded-full bg-[#F5F0FF] dark:bg-[#251838] text-[#6B21A8] dark:text-[#C084FC] flex items-center justify-center group-hover:bg-[#ece2fc] dark:group-hover:bg-[#341F52] transition-colors">
+                <CalendarOff className="h-4 w-4" />
+              </div>
+              <div>
+                <span className="text-xs font-bold text-card-foreground block leading-tight">My Leaves</span>
+                <span className="text-[11px] text-muted-foreground font-medium">Requests</span>
+              </div>
+            </div>
+            <ArrowRight className="h-4 w-4 text-muted-foreground group-hover:text-primary group-hover:translate-x-0.5 transition-all" />
+          </div>
+        </Link>
+
+        {/* Action 4: Monthly Report */}
+        <Link href="/staff/reports/monthly">
+          <div className="p-4 bg-card rounded-[20px] border border-border hover:border-primary/40 transition-all flex items-center justify-between shadow-2xs group card-saas-hover">
+            <div className="flex items-center gap-3">
+              <div className="h-9 w-9 rounded-full bg-[#E8F5EC] dark:bg-[#173822] text-[#228B4E] dark:text-[#34D399] flex items-center justify-center group-hover:bg-[#d2ecd9] dark:group-hover:bg-[#1E4A2E] transition-colors">
+                <BarChart3 className="h-4 w-4" />
+              </div>
+              <div>
+                <span className="text-xs font-bold text-card-foreground block leading-tight">Monthly Report</span>
+                <span className="text-[11px] text-muted-foreground font-medium">Summary</span>
+              </div>
+            </div>
+            <ArrowRight className="h-4 w-4 text-muted-foreground group-hover:text-primary group-hover:translate-x-0.5 transition-all" />
+          </div>
+        </Link>
+
+        {/* Action 5: Corrections */}
+        <Link href="/staff/corrections">
+          <div className="p-4 bg-card rounded-[20px] border border-border hover:border-primary/40 transition-all flex items-center justify-between shadow-2xs group card-saas-hover">
+            <div className="flex items-center gap-3">
+              <div className="h-9 w-9 rounded-full bg-[#FEF7E8] dark:bg-[#2F2415] text-[#D99A28] dark:text-[#FBBF24] flex items-center justify-center group-hover:bg-[#faeccb] dark:group-hover:bg-[#43321C] transition-colors">
+                <AlertTriangle className="h-4 w-4" />
+              </div>
+              <div>
+                <span className="text-xs font-bold text-card-foreground block leading-tight">Corrections</span>
+                <span className="text-[11px] text-muted-foreground font-medium">{correctionsRequired.length} pending</span>
+              </div>
+            </div>
+            <ArrowRight className="h-4 w-4 text-muted-foreground group-hover:text-primary group-hover:translate-x-0.5 transition-all" />
+          </div>
+        </Link>
+
+        {/* Action 6: My Profile */}
+        <Link href="/staff/profile">
+          <div className="p-4 bg-card rounded-[20px] border border-border hover:border-primary/40 transition-all flex items-center justify-between shadow-2xs group card-saas-hover">
+            <div className="flex items-center gap-3">
+              <div className="h-9 w-9 rounded-full bg-muted text-muted-foreground flex items-center justify-center group-hover:bg-[#E8F5EC] dark:group-hover:bg-[#173822] group-hover:text-primary transition-colors">
+                <User className="h-4 w-4" />
+              </div>
+              <div>
+                <span className="text-xs font-bold text-card-foreground block leading-tight">My Profile</span>
+                <span className="text-[11px] text-muted-foreground font-medium">{user?.employeeId || 'Settings'}</span>
+              </div>
+            </div>
+            <ArrowRight className="h-4 w-4 text-muted-foreground group-hover:text-primary group-hover:translate-x-0.5 transition-all" />
+          </div>
+        </Link>
+      </div>
+
+      {/* 6. Report Review Modal */}
+      {selectedReport && user && (
+        <ReportReviewModal
+          report={selectedReport}
+          open={!!selectedReport}
+          onOpenChange={(open) => {
+            if (!open) {
+              setSelectedReport(null);
+              loadStaffData();
+            }
+          }}
+          currentUser={user}
+          onRefresh={loadStaffData}
+        />
+      )}
     </div>
   );
 }

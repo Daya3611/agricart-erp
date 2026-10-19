@@ -62,8 +62,8 @@ export function AppShell({
   }, [pathname]);
 
   return (
-    <div className="min-h-screen bg-[#f8faf9] flex flex-col text-slate-900 antialiased selection:bg-emerald-100 selection:text-emerald-900">
-      {/* 1. Desktop Persistent Sidebar (>= 1024px) */}
+    <div className="min-h-screen bg-background flex flex-col text-foreground antialiased selection:bg-primary-light selection:text-primary-dark">
+      {/* 1. Desktop Persistent Floating Dock (>= 1024px) */}
       <AppSidebar
         user={user}
         collapsed={collapsed}
@@ -75,19 +75,19 @@ export function AppShell({
         <div className="lg:hidden fixed inset-0 z-50 flex">
           {/* Backdrop */}
           <div
-            className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs transition-opacity animate-in fade-in duration-200"
+            className="fixed inset-0 bg-black/60 backdrop-blur-xs transition-opacity animate-in fade-in duration-200"
             onClick={() => setMobileMenuOpen(false)}
             aria-hidden="true"
           />
 
           {/* Drawer content */}
-          <div className="relative w-72 max-w-[85vw] bg-white h-full shadow-2xl flex flex-col justify-between z-10 animate-in slide-in-from-left duration-200">
-            <div className="flex items-center justify-between border-b border-slate-100 pr-2">
+          <div className="relative w-72 max-w-[85vw] bg-card h-full shadow-2xl flex flex-col justify-between z-10 animate-in slide-in-from-left duration-200">
+            <div className="flex items-center justify-between border-b border-border pr-2">
               <SidebarBrand collapsed={false} role={user.role} />
               <button
                 type="button"
                 onClick={() => setMobileMenuOpen(false)}
-                className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                className="p-2 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-xl text-muted-foreground hover:text-foreground hover:bg-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                 aria-label="Close menu"
               >
                 <X className="h-5 w-5" />
@@ -108,12 +108,7 @@ export function AppShell({
       )}
 
       {/* 3. Main Workspace Container with synchronized margin */}
-      <div
-        className={cn(
-          'flex-1 flex flex-col min-w-0 transition-[padding] duration-300 ease-in-out',
-          collapsed ? 'lg:pl-[88px]' : 'lg:pl-[276px]'
-        )}
-      >
+      <div className="flex-1 flex flex-col min-w-0 lg:pl-[84px] xl:pl-[96px]">
         {/* Compact Top Header */}
         <AppHeader
           user={user}
@@ -126,10 +121,10 @@ export function AppShell({
 
         {/* Main Content Area - padded to avoid bottom navigation overlap */}
         <main
-          className="flex-1 p-3 sm:p-4 md:p-6 lg:p-8 pb-24 lg:pb-8"
+          className="flex-1 px-4 sm:px-6 lg:px-8 py-4 sm:py-6 pb-24 lg:pb-8"
           style={{ paddingBottom: 'calc(5.5rem + env(safe-area-inset-bottom, 0px))' }}
         >
-          <div className={cn('mx-auto w-full space-y-4 sm:space-y-6', maxWidth)}>
+          <div className={cn('mx-auto w-full space-y-5 sm:space-y-6', maxWidth)}>
             {children}
           </div>
         </main>

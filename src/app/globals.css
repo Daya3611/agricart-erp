@@ -2,60 +2,70 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
-@custom-variant dark (&:is(.dark *));
+@custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *, .dark, .dark *));
 
 :root {
-  /* Agricart Brand Tokens (Strictly Solid Colors - No Gradients) */
-  --primary: oklch(0.205 0 0); /* emerald-700 */
-  --primary-dark: #166534; /* emerald-800 */
-  --primary-light: #dcfce7; /* emerald-100 */
-  --surface: #ffffff; /* slate-900 */
-  --muted: oklch(0.97 0 0); /* slate-500 */
-  --border: oklch(0.922 0 0); /* slate-200 */
+  /* Agricart Design Tokens - Pixel-Accurate SaaS Theme (Light) */
+  --background: #F4F5F2;
+  --foreground: #252923;
+  --card: #FFFFFF;
+  --card-foreground: #252923;
+  --popover: #FFFFFF;
+  --popover-foreground: #252923;
 
-  /* Semantic solid tokens */
-  --success: #15803d;
-  --warning: #b45309;
-  --destructive: oklch(0.577 0.245 27.325);
-  --info: #0369a1;
+  /* Primary Brand Green & Variations */
+  --primary: #228B4E;
+  --primary-dark: #176638;
+  --primary-light: #E8F5EC;
+  --primary-foreground: #FFFFFF;
+
+  /* Neutrals & Muted */
+  --secondary: #F4F5F2;
+  --secondary-foreground: #252923;
+  --muted: #F4F5F2;
+  --muted-foreground: #858B83;
+  --surface: #FFFFFF;
+  
+  /* Borders */
+  --border: #E7EAE5;
+  --border-subtle-green: #CDE7D4;
+  --input: #E7EAE5;
+  --ring: #228B4E;
+
+  /* Indicators */
+  --success: #228B4E;
+  --warning: #D99A28;
+  --destructive: #DC5252;
+  --info: #2B7FFF;
+
+  /* Chart & Radius Tokens */
+  --chart-1: #228B4E;
+  --chart-2: #252923;
+  --chart-3: #176638;
+  --chart-4: #858B83;
+  --chart-5: #D99A28;
+  --radius: 1.125rem;
+
+  /* Sidebar Tokens */
+  --sidebar: #FFFFFF;
+  --sidebar-foreground: #252923;
+  --sidebar-primary: #228B4E;
+  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-accent: #E8F5EC;
+  --sidebar-accent-foreground: #176638;
+  --sidebar-border: #E7EAE5;
+  --sidebar-ring: #228B4E;
 
   /* Safe Area Insets for Android TWA and Mobile Browsers */
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   --safe-left: env(safe-area-inset-left, 0px);
   --safe-right: env(safe-area-inset-right, 0px);
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
 }
 
 body {
   background-color: var(--background);
+  color: var(--foreground);
   font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
@@ -84,17 +94,6 @@ aside::-webkit-scrollbar-thumb {
 }
 aside::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-    scroll-behavior: auto !important;
-  }
 }
 
 @theme inline {
@@ -141,37 +140,119 @@ aside::-webkit-scrollbar-thumb:hover {
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --background: #141714;
+  --foreground: #F4F5F2;
+  --card: #1C201C;
+  --card-foreground: #F4F5F2;
+  --popover: #1C201C;
+  --popover-foreground: #F4F5F2;
+  --primary: #228B4E;
+  --primary-dark: #176638;
+  --primary-light: #183323;
+  --primary-foreground: #FFFFFF;
+  --secondary: #242923;
+  --secondary-foreground: #F4F5F2;
+  --muted: #242923;
+  --muted-foreground: #9EA59C;
+  --accent: #183323;
+  --accent-foreground: #F4F5F2;
+  --destructive: #DC5252;
+  --border: #2D332D;
+  --border-subtle-green: #1F3D2A;
+  --input: #2D332D;
+  --ring: #228B4E;
+  --chart-1: #228B4E;
+  --chart-2: #F4F5F2;
+  --chart-3: #176638;
+  --chart-4: #9EA59C;
+  --chart-5: #D99A28;
+  --sidebar: #1C201C;
+  --sidebar-foreground: #F4F5F2;
+  --sidebar-primary: #228B4E;
+  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-accent: #183323;
+  --sidebar-accent-foreground: #FFFFFF;
+  --sidebar-border: #2D332D;
+  --sidebar-ring: #228B4E;
+}
+
+/* Custom Highlight Gradient Card */
+.highlight-green-gradient {
+  background: linear-gradient(135deg, #228B4E 0%, #176638 100%) !important;
+  color: #FFFFFF !important;
+}
+
+/* Subtle modern SaaS card shadow */
+.card-saas-shadow {
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.04), 0 1px 2px -1px rgba(0, 0, 0, 0.02);
+}
+.dark .card-saas-shadow {
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.35), 0 1px 2px -1px rgba(0, 0, 0, 0.2);
+}
+
+.card-saas-hover {
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.card-saas-hover:hover {
+  box-shadow: 0 4px 12px 0 rgba(34, 139, 78, 0.08);
+  border-color: #CDE7D4;
+}
+.dark .card-saas-hover:hover {
+  box-shadow: 0 4px 16px 0 rgba(0, 0, 0, 0.45);
+  border-color: #228B4E;
+}
+
+/* Refined View Transition Circular Reveal */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+::view-transition-old(root) {
+  z-index: 1;
+}
+::view-transition-new(root) {
+  z-index: 9999;
+}
+.dark::view-transition-old(root) {
+  z-index: 9999;
+}
+.dark::view-transition-new(root) {
+  z-index: 1;
+}
+
+/* Smooth CSS Theme Transitions: background, border, and text colors */
+body,
+header,
+nav,
+aside,
+main,
+button,
+input,
+select,
+textarea,
+[role="dialog"],
+.card-saas-shadow,
+.card-saas-hover {
+  transition-property: background-color, border-color, color, fill, stroke, box-shadow;
+  transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  transition-duration: 250ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
+  }
 }
 
 @layer base {

@@ -112,70 +112,70 @@ function LoginFormContent() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-[#F4F5F2] flex items-center justify-center p-4">
       <div className="w-full max-w-md space-y-6">
         {/* Branding Header */}
         <div className="text-center space-y-3">
-          <div className="relative mx-auto h-24 w-24 sm:h-28 sm:w-28 drop-shadow-sm">
+          <div className="relative mx-auto h-20 w-20 drop-shadow-xs">
             <Image
               src="/logo.png"
               alt="Agricart Farmers Producer Company Limited"
-              width={112}
-              height={112}
+              width={80}
+              height={80}
               priority
               className="h-full w-full object-contain"
             />
           </div>
           <div>
-            <h1 className="text-2xl font-black tracking-tight text-slate-900">
+            <h1 className="text-2xl font-black tracking-tight text-[#252923]">
               AGRICART FPC
             </h1>
-            <p className="text-xs font-semibold uppercase tracking-wider text-emerald-700">
+            <p className="text-xs font-semibold uppercase tracking-wider text-[#228B4E]">
               Enterprise ERP & Management Portal
             </p>
           </div>
         </div>
 
         {/* Login Form Card */}
-        <Card className="border-slate-200/80 shadow-md">
-          <CardContent className="p-6 space-y-4">
-            <h2 className="text-base font-bold text-slate-900 text-center border-b border-slate-100 pb-3">
+        <Card className="border-[#E7EAE5] bg-white rounded-[22px] shadow-sm">
+          <CardContent className="p-6 sm:p-8 space-y-4">
+            <h2 className="text-base font-bold text-[#252923] text-center border-b border-[#E7EAE5] pb-3">
               Sign In to Your Account
             </h2>
 
             {error && (
-              <div className="p-3 bg-rose-50 border border-rose-200 text-rose-900 rounded-xl text-xs font-bold flex items-start gap-2">
-                <AlertTriangle className="h-4 w-4 text-rose-600 flex-shrink-0 mt-0.5" />
+              <div className="p-3 bg-[#FDF1F1] border border-[#F8D2D2] text-[#DC5252] rounded-xl text-xs font-bold flex items-start gap-2">
+                <AlertTriangle className="h-4 w-4 text-[#DC5252] flex-shrink-0 mt-0.5" />
                 <span>{error}</span>
               </div>
             )}
 
             <form onSubmit={handleLogin} className="space-y-4 text-xs">
               <div>
-                <label className="font-bold text-slate-700 block mb-1">Official Email Address</label>
+                <label className="font-bold text-[#252923] block mb-1">Official Email Address</label>
                 <div className="relative">
-                  <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                  <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-[#858B83]" />
                   <Input
                     type="email"
                     placeholder="user@agricartfpc.org"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    className="pl-10 h-11 text-sm rounded-xl"
+                    className="pl-10 h-11 text-sm rounded-full border-[#E7EAE5] focus:border-[#CDE7D4] focus:ring-[#228B4E]"
                     required
                   />
                 </div>
               </div>
 
               <div>
-                <label className="font-bold text-slate-700 block mb-1">Password</label>
+                <label className="font-bold text-[#252923] block mb-1">Password</label>
                 <div className="relative">
-                  <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                  <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-[#858B83]" />
                   <Input
                     type="password"
                     placeholder="••••••••"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className="pl-10 h-11 text-sm rounded-xl"
+                    className="pl-10 h-11 text-sm rounded-full border-[#E7EAE5] focus:border-[#CDE7D4] focus:ring-[#228B4E]"
                     required
                   />
                 </div>
@@ -184,14 +184,14 @@ function LoginFormContent() {
               <Button
                 type="submit"
                 disabled={loading}
-                className="w-full bg-emerald-700 hover:bg-emerald-800 text-white font-bold h-11 rounded-xl text-sm"
+                className="w-full bg-[#228B4E] hover:bg-[#176638] text-white font-bold h-11 rounded-full text-sm shadow-xs"
               >
                 {loading ? 'Authenticating...' : 'Sign In'} <ArrowRight className="h-4 w-4 ml-1.5" />
               </Button>
             </form>
 
-            <div className="pt-2 text-center border-t border-slate-100">
-              <p className="text-xs text-slate-500">
+            <div className="pt-2 text-center border-t border-[#E7EAE5]">
+              <p className="text-xs text-[#858B83]">
                 Accounts are provisioned by system administrators. Contact your administrator if you need access.
               </p>
             </div>
@@ -199,9 +199,8 @@ function LoginFormContent() {
         </Card>
 
         {/* Footer info */}
-        <div className="text-center text-xs text-slate-500 space-y-1">
-          <p className="font-semibold text-slate-700">Agricart Farmers Producer Company Ltd</p>
-
+        <div className="text-center text-xs text-[#858B83] space-y-1">
+          <p className="font-semibold text-[#252923]">Agricart Farmers Producer Company Ltd</p>
         </div>
       </div>
     </div>

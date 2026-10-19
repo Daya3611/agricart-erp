@@ -411,7 +411,7 @@ export interface DashboardStats {
 }
 
 export interface FilterParams {
-  datePreset?: 'today' | 'yesterday' | 'last7' | 'last30' | 'this_month' | 'fy' | 'custom';
+  datePreset?: 'all' | 'today' | 'yesterday' | 'last7' | 'last30' | 'this_month' | 'fy' | 'custom';
   startDate?: string;
   endDate?: string;
   departmentId?: string;

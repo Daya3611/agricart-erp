@@ -1,5 +1,5 @@
 // Agricart ERP Progressive Web App Service Worker
-const CACHE_NAME = 'agricart-erp-v1';
+const CACHE_NAME = 'agricart-erp-v2';
 const PRECACHE_ASSETS = [
   '/',
   '/manifest.json',
@@ -25,7 +25,7 @@ self.addEventListener('install', (event) => {
   );
 });
 
-// Activate: cleanup outdssated caches
+// Activate: cleanup outdated caches
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches
@@ -54,8 +54,12 @@ self.addEventListener('fetch', (event) => {
 
   const url = new URL(request.url);
 
-  // Never cache API routes or dynamic server actions
-  if (url.pathname.startsWith('/api/')) {
+  // Never cache API routes, Next.js HMR/Turbopack streams, or dynamic actions
+  if (
+    url.pathname.startsWith('/api/') ||
+    url.pathname.includes('webpack-hmr') ||
+    url.pathname.includes('turbopack')
+  ) {
     return;
   }
 

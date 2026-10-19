@@ -53,23 +53,23 @@ export function Dialog({
       {/* Dialog container */}
       <div
         className={cn(
-          'relative w-full rounded-2xl sm:rounded-2xl bg-white p-4 sm:p-6 shadow-2xl border border-slate-200 animate-in slide-in-from-bottom sm:zoom-in-95 duration-200 max-h-[88vh] sm:max-h-[90vh] overflow-y-auto flex flex-col z-10',
+          'relative w-full rounded-2xl sm:rounded-2xl bg-card p-4 sm:p-6 shadow-2xl border border-border animate-in slide-in-from-bottom sm:zoom-in-95 duration-200 max-h-[88vh] sm:max-h-[90vh] overflow-y-auto flex flex-col z-10',
           maxWidth
         )}
       >
         {/* Mobile Drag Handle Indicator */}
-        <div className="sm:hidden w-10 h-1.5 bg-slate-300 rounded-full mx-auto mb-3 shrink-0" />
+        <div className="sm:hidden w-10 h-1.5 bg-muted-foreground/30 rounded-full mx-auto mb-3 shrink-0" />
 
-        <div className="flex items-center justify-between pb-3 sm:pb-4 border-b border-slate-100 shrink-0">
+        <div className="flex items-center justify-between pb-3 sm:pb-4 border-b border-border shrink-0">
           <div className="pr-2 min-w-0">
-            <h2 className="text-lg sm:text-xl font-bold text-slate-900 leading-tight truncate">{title}</h2>
-            {description && <p className="text-xs text-slate-500 mt-0.5 line-clamp-2">{description}</p>}
+            <h2 className="text-lg sm:text-xl font-bold text-card-foreground leading-tight truncate">{title}</h2>
+            {description && <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{description}</p>}
           </div>
           <button
             type="button"
             onClick={() => onOpenChange(false)}
             aria-label="Close dialog"
-            className="rounded-full p-2.5 min-h-[44px] min-w-[44px] flex items-center justify-center text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+            className="rounded-full p-2.5 min-h-[44px] min-w-[44px] flex items-center justify-center text-muted-foreground hover:bg-muted hover:text-foreground transition-colors shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
           >
             <X className="h-5 w-5" />
           </button>

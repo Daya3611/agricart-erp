@@ -46,7 +46,7 @@ export function TabsList({ className, children, ...props }: React.ComponentProps
     <div className="w-full overflow-x-auto no-scrollbar py-0.5">
       <div
         className={cn(
-          'inline-flex min-h-[44px] items-center justify-start sm:justify-center rounded-xl sm:rounded-full bg-slate-100 p-1 text-slate-500 border border-slate-200/80 gap-1 min-w-full sm:min-w-0',
+          'inline-flex min-h-[44px] items-center justify-start sm:justify-center rounded-xl sm:rounded-full bg-muted p-1 text-muted-foreground border border-border gap-1 min-w-full sm:min-w-0',
           className
         )}
         {...props}
@@ -75,10 +75,10 @@ export function TabsTrigger({
       aria-selected={isActive}
       onClick={() => context.onValueChange(value)}
       className={cn(
-        'inline-flex items-center justify-center whitespace-nowrap rounded-full px-4 py-1.5 text-xs font-semibold ring-offset-white transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 select-none',
+        'inline-flex items-center justify-center whitespace-nowrap rounded-full px-4 py-1.5 text-xs font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 select-none',
         isActive
-          ? 'bg-white text-emerald-900 shadow-2xs font-bold'
-          : 'text-slate-600 hover:text-slate-900 hover:bg-white/60',
+          ? 'bg-card text-foreground shadow-2xs font-bold'
+          : 'text-muted-foreground hover:text-foreground hover:bg-card/50',
         className
       )}
       {...props}

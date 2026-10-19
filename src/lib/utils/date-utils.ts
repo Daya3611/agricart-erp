@@ -55,28 +55,31 @@ export function formatReadableDateTime(isoStr?: string): string {
 
 export function getDateRangeFromPreset(preset: string): { startDate: string; endDate: string } {
   const now = new Date();
-  const todayStr = format(now, 'yyyy-MM-dd');
+  const todayStr = getOperationalDateString(now);
 
   switch (preset) {
+    case 'all':
+    case 'all_time':
+      return { startDate: '1970-01-01', endDate: '2099-12-31' };
     case 'today':
       return { startDate: todayStr, endDate: todayStr };
     case 'yesterday': {
       const y = subDays(now, 1);
-      const yStr = format(y, 'yyyy-MM-dd');
+      const yStr = getOperationalDateString(y);
       return { startDate: yStr, endDate: yStr };
     }
     case 'last7': {
       const d = subDays(now, 6);
-      return { startDate: format(d, 'yyyy-MM-dd'), endDate: todayStr };
+      return { startDate: getOperationalDateString(d), endDate: todayStr };
     }
     case 'last30': {
       const d = subDays(now, 29);
-      return { startDate: format(d, 'yyyy-MM-dd'), endDate: todayStr };
+      return { startDate: getOperationalDateString(d), endDate: todayStr };
     }
     case 'this_month': {
       const start = startOfMonth(now);
       const end = endOfMonth(now);
-      return { startDate: format(start, 'yyyy-MM-dd'), endDate: format(end, 'yyyy-MM-dd') };
+      return { startDate: getOperationalDateString(start), endDate: getOperationalDateString(end) };
     }
     case 'fy': {
       // Indian Financial Year: April 1 to March 31
@@ -90,7 +93,7 @@ export function getDateRangeFromPreset(preset: string): { startDate: string; end
       };
     }
     default:
-      return { startDate: format(subDays(now, 30), 'yyyy-MM-dd'), endDate: todayStr };
+      return { startDate: '1970-01-01', endDate: '2099-12-31' };
   }
 }
 

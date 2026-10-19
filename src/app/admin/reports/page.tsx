@@ -19,6 +19,7 @@ import {
 } from '@/components/ui/record-card';
 import { ReportReviewModal } from '@/components/reports/ReportReviewModal';
 import { exportReportsToCSV, exportReportsToPDF } from '@/lib/utils/export-utils';
+import { getDateRangeFromPreset } from '@/lib/utils/date-utils';
 
 export default function AdminReportsPage() {
   const [user, setUser] = useState<UserProfile | null>(null);
@@ -40,28 +41,31 @@ export default function AdminReportsPage() {
   const loadData = async () => {
     setLoading(true);
     try {
-      const sessRes = await fetch('/api/auth/session');
-      const sessData = await sessRes.json();
-      if (sessData.authenticated) setUser(sessData.user);
+      const [sessRes, deptRes, centerRes, repRes] = await Promise.all([
+        fetch('/api/auth/session'),
+        fetch('/api/departments'),
+        fetch('/api/centers'),
+        fetch('/api/reports'),
+      ]);
 
-      const deptRes = await fetch('/api/departments');
-      const deptData = await deptRes.json();
-      if (deptData.departments) setDepartments(deptData.departments);
+      if (sessRes.status === 401 || repRes.status === 401) {
+        window.location.href = '/login?returnUrl=/admin/reports';
+        return;
+      }
 
-      const centerRes = await fetch('/api/centers');
-      const centerData = await centerRes.json();
-      if (centerData.centers) setCenters(centerData.centers);
+      const [sessData, deptData, centerData, repData] = await Promise.all([
+        sessRes.json(),
+        deptRes.json(),
+        centerRes.json(),
+        repRes.json(),
+      ]);
 
-      const queryParams = new URLSearchParams();
-      if (filters.departmentId) queryParams.append('departmentId', filters.departmentId);
-      if (filters.centerId) queryParams.append('centerId', filters.centerId);
-      if (filters.status && filters.status !== 'all') queryParams.append('status', filters.status);
-
-      const repRes = await fetch(`/api/reports?${queryParams.toString()}`);
-      const repData = await repRes.json();
-      if (repData.reports) setReports(repData.reports);
+      if (sessData?.authenticated) setUser(sessData.user);
+      if (deptData?.departments) setDepartments(deptData.departments);
+      if (centerData?.centers) setCenters(centerData.centers);
+      if (repData?.reports) setReports(repData.reports);
     } catch (err) {
-      console.error(err);
+      console.error('Failed to load reports master database data:', err);
     } finally {
       setLoading(false);
     }
@@ -69,17 +73,59 @@ export default function AdminReportsPage() {
 
   useEffect(() => {
     loadData();
-  }, [filters.departmentId, filters.centerId, filters.status]);
+  }, []);
 
-  const filteredReports = reports.filter((r) => {
-    if (!filters.searchQuery) return true;
-    const q = filters.searchQuery.toLowerCase();
-    return (
-      r.staffName.toLowerCase().includes(q) ||
-      r.employeeId.toLowerCase().includes(q) ||
-      r.activities.toLowerCase().includes(q)
-    );
-  });
+  const filteredReports = React.useMemo(() => {
+    return reports.filter((r) => {
+      // 1. Date Range / Preset Filter
+      if (filters.datePreset && filters.datePreset !== 'all') {
+        const { startDate, endDate } = getDateRangeFromPreset(filters.datePreset);
+        if (r.reportDate < startDate || r.reportDate > endDate) {
+          return false;
+        }
+      } else if (filters.startDate || filters.endDate) {
+        if (filters.startDate && r.reportDate < filters.startDate) return false;
+        if (filters.endDate && r.reportDate > filters.endDate) return false;
+      }
+
+      // 2. Department Filter
+      if (filters.departmentId && filters.departmentId !== 'all') {
+        if (r.departmentId !== filters.departmentId) {
+          return false;
+        }
+      }
+
+      // 3. Center Filter
+      if (filters.centerId && filters.centerId !== 'all') {
+        if (r.centerId !== filters.centerId) {
+          return false;
+        }
+      }
+
+      // 4. Status Filter
+      if (filters.status && filters.status !== 'all') {
+        if (r.status !== filters.status) {
+          return false;
+        }
+      }
+
+      // 5. Search Query
+      if (filters.searchQuery && filters.searchQuery.trim()) {
+        const q = filters.searchQuery.toLowerCase().trim();
+        const matchesStaff = r.staffName?.toLowerCase().includes(q);
+        const matchesEmpId = r.employeeId?.toLowerCase().includes(q);
+        const matchesActivities = r.activities?.toLowerCase().includes(q);
+        const matchesDept = r.departmentName?.toLowerCase().includes(q);
+        const matchesCenter = r.centerName?.toLowerCase().includes(q);
+        const matchesTasks = r.completedTasks?.toLowerCase().includes(q);
+        if (!matchesStaff && !matchesEmpId && !matchesActivities && !matchesDept && !matchesCenter && !matchesTasks) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+  }, [reports, filters]);
 
   const statusBadges: Record<string, { label: string; variant: any }> = {
     draft: { label: 'Draft', variant: 'secondary' },
@@ -96,10 +142,10 @@ export default function AdminReportsPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-            <FileText className="h-6 w-6 text-emerald-600" /> Daily Activity Reports Master Database
+          <h1 className="text-xl font-bold text-foreground flex items-center gap-2">
+            <FileText className="h-6 w-6 text-primary" /> Daily Activity Reports Master Database
           </h1>
-          <p className="text-xs text-slate-500 font-medium">
+          <p className="text-xs text-muted-foreground font-medium">
             Browse, filter, review, approve, and export all staff activity submissions and evidence attachments.
           </p>
         </div>
@@ -116,16 +162,18 @@ export default function AdminReportsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base font-bold text-slate-900">
+          <CardTitle className="text-base font-bold text-card-foreground">
             Activity Reports ({filteredReports.length})
           </CardTitle>
-          <CardDescription>Filtered records based on date, department, center, and status</CardDescription>
+          <CardDescription className="text-muted-foreground">
+            Filtered records based on date, department, center, and status
+          </CardDescription>
         </CardHeader>
         <CardContent>
           {loading ? (
-            <div className="p-8 text-center text-xs text-slate-500">Loading daily activity reports...</div>
+            <div className="p-8 text-center text-xs text-muted-foreground">Loading daily activity reports...</div>
           ) : filteredReports.length === 0 ? (
-            <div className="p-8 text-center text-xs text-slate-500">No reports found matching selected filters.</div>
+            <div className="p-8 text-center text-xs text-muted-foreground">No reports found matching selected filters.</div>
           ) : (
             <>
               {/* Desktop Table View */}
@@ -145,23 +193,23 @@ export default function AdminReportsPage() {
                   <TableBody>
                     {filteredReports.map((r) => (
                       <TableRow key={r.id}>
-                        <TableCell className="font-bold text-slate-900 whitespace-nowrap">
+                        <TableCell className="font-bold text-foreground whitespace-nowrap">
                           {r.reportDate}
                           {r.isLate && (
-                            <span className="ml-1 text-[10px] text-amber-700 font-bold bg-amber-100 px-2 py-0.5 rounded-full">
+                            <span className="ml-1 text-[10px] text-amber-800 dark:text-amber-300 font-bold bg-amber-100 dark:bg-amber-950/50 px-2 py-0.5 rounded-full border border-amber-200 dark:border-amber-900/60">
                               Late
                             </span>
                           )}
                         </TableCell>
                         <TableCell>
                           <div>
-                            <p className="font-bold text-slate-900">{r.staffName}</p>
-                            <p className="text-[11px] text-slate-500">{r.employeeId}</p>
+                            <p className="font-bold text-foreground">{r.staffName}</p>
+                            <p className="text-[11px] text-muted-foreground">{r.employeeId}</p>
                           </div>
                         </TableCell>
-                        <TableCell className="text-xs font-medium text-slate-700">{r.departmentName}</TableCell>
-                        <TableCell className="text-xs font-medium text-slate-700">{r.centerName}</TableCell>
-                        <TableCell className="text-xs font-bold text-emerald-800">
+                        <TableCell className="text-xs font-medium text-muted-foreground">{r.departmentName}</TableCell>
+                        <TableCell className="text-xs font-medium text-muted-foreground">{r.centerName}</TableCell>
+                        <TableCell className="text-xs font-bold text-primary">
                           {r.farmersVisited || 0} farmers | {r.meetingsConducted || 0} meetings
                         </TableCell>
                         <TableCell>
@@ -174,19 +222,19 @@ export default function AdminReportsPage() {
                             size="sm"
                             variant="outline"
                             onClick={() => setSelectedReport(r)}
-                            className="rounded-lg px-3.5 text-xs font-bold"
+                            className="rounded-lg px-3.5 text-xs font-bold bg-card hover:bg-muted border-border text-foreground"
                           >
                             {r.status === 'approved' ? (
                               <>
-                                <Eye className="h-3.5 w-3.5 mr-1 text-emerald-600" /> View Report
+                                <Eye className="h-3.5 w-3.5 mr-1 text-primary" /> View Report
                               </>
                             ) : r.status === 'edit_requested' || r.status === 'correction_requested' ? (
                               <>
-                                <FileEdit className="h-3.5 w-3.5 mr-1 text-amber-600" /> View Request
+                                <FileEdit className="h-3.5 w-3.5 mr-1 text-amber-600 dark:text-amber-400" /> View Request
                               </>
                             ) : r.status === 'resubmitted' ? (
                               <>
-                                <RotateCcw className="h-3.5 w-3.5 mr-1 text-purple-600" /> Review Revision
+                                <RotateCcw className="h-3.5 w-3.5 mr-1 text-purple-600 dark:text-purple-400" /> Review Revision
                               </>
                             ) : (
                               <>
@@ -224,10 +272,10 @@ export default function AdminReportsPage() {
                       <RecordCardRow
                         label="Report Date"
                         value={
-                          <span className="font-bold text-slate-900">
+                          <span className="font-bold text-foreground">
                             {r.reportDate}
                             {r.isLate && (
-                              <span className="ml-1.5 text-[10px] text-amber-700 font-bold bg-amber-100 px-1.5 py-0.5 rounded">
+                              <span className="ml-1.5 text-[10px] text-amber-800 dark:text-amber-300 font-bold bg-amber-100 dark:bg-amber-950/50 px-1.5 py-0.5 rounded border border-amber-200 dark:border-amber-900/60">
                                 Late
                               </span>
                             )}
@@ -237,7 +285,7 @@ export default function AdminReportsPage() {
                       <RecordCardRow
                         label="Field Metrics"
                         value={
-                          <span className="text-emerald-800 font-semibold text-xs">
+                          <span className="text-primary font-semibold text-xs">
                             {r.farmersVisited || 0} farmers • {r.meetingsConducted || 0} meetings
                           </span>
                         }
@@ -246,7 +294,7 @@ export default function AdminReportsPage() {
                         <RecordCardRow label="Center" value={r.centerName} />
                       )}
                       {r.activities && (
-                        <p className="text-xs text-slate-600 line-clamp-2 mt-1 bg-slate-50 p-2 rounded border border-slate-100">
+                        <p className="text-xs text-muted-foreground line-clamp-2 mt-1 bg-muted/40 p-2 rounded border border-border">
                           {r.activities}
                         </p>
                       )}
@@ -257,19 +305,19 @@ export default function AdminReportsPage() {
                         size="sm"
                         variant="outline"
                         onClick={() => setSelectedReport(r)}
-                        className="w-full text-xs font-bold h-10 rounded-lg"
+                        className="w-full text-xs font-bold h-10 rounded-lg bg-card hover:bg-muted border-border text-foreground"
                       >
                         {r.status === 'approved' ? (
                           <>
-                            <Eye className="h-3.5 w-3.5 mr-1.5 text-emerald-600" /> View Report
+                            <Eye className="h-3.5 w-3.5 mr-1.5 text-primary" /> View Report
                           </>
                         ) : r.status === 'edit_requested' || r.status === 'correction_requested' ? (
                           <>
-                            <FileEdit className="h-3.5 w-3.5 mr-1.5 text-amber-600" /> View Edit Request
+                            <FileEdit className="h-3.5 w-3.5 mr-1.5 text-amber-600 dark:text-amber-400" /> View Edit Request
                           </>
                         ) : r.status === 'resubmitted' ? (
                           <>
-                            <RotateCcw className="h-3.5 w-3.5 mr-1.5 text-purple-600" /> Review Revision
+                            <RotateCcw className="h-3.5 w-3.5 mr-1.5 text-purple-600 dark:text-purple-400" /> Review Revision
                           </>
                         ) : (
                           <>

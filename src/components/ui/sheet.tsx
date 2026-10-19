@@ -185,7 +185,7 @@ export function SheetContent({
         role="dialog"
         aria-modal="true"
         className={cn(
-          'relative z-50 pointer-events-auto bg-white flex flex-col overflow-hidden text-slate-900',
+          'relative z-50 pointer-events-auto bg-card border-border flex flex-col overflow-hidden text-foreground',
           sideClasses[side],
           className
         )}

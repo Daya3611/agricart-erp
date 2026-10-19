@@ -25,21 +25,21 @@ interface AnalyticsChartsProps {
 
 export function AnalyticsCharts({ stats }: AnalyticsChartsProps) {
   const pieData = [
-    { name: 'Submitted / Approved', value: stats.reportsSubmittedToday, color: '#16a34a' },
-    { name: 'Awaiting Review', value: stats.awaitingApprovalCount, color: '#0284c7' },
-    { name: 'Correction Requested', value: stats.correctionRequestedCount, color: '#e11d48' },
-    { name: 'Missing / Overdue', value: stats.missingReportsToday, color: '#d97706' },
+    { name: 'Submitted / Approved', value: stats.reportsSubmittedToday, color: '#228B4E' },
+    { name: 'Awaiting Review', value: stats.awaitingApprovalCount, color: '#2B7FFF' },
+    { name: 'Correction Requested', value: stats.correctionRequestedCount, color: '#DC5252' },
+    { name: 'Missing / Overdue', value: stats.missingReportsToday, color: '#D99A28' },
   ].filter((d) => d.value > 0);
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
       {/* Weekly Submission Trend Area Chart */}
-      <Card className="lg:col-span-2">
+      <Card className="lg:col-span-2 rounded-[22px] border border-[#E7EAE5]">
         <CardHeader>
-          <CardTitle className="text-base font-bold text-slate-900 flex items-center justify-between">
+          <CardTitle className="text-base font-bold text-[#252923] flex items-center justify-between">
             <span>Weekly Reporting Submission Trend</span>
-            <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-100">
-              Live Firestore Analytics
+            <span className="text-xs font-semibold text-[#228B4E] bg-[#E8F5EC] px-2.5 py-1 rounded-full border border-[#CDE7D4]">
+              Live Analytics
             </span>
           </CardTitle>
           <CardDescription>Comparison between expected daily reports and actual staff submissions</CardDescription>
@@ -48,16 +48,16 @@ export function AnalyticsCharts({ stats }: AnalyticsChartsProps) {
           <div className="h-56 sm:h-64 w-full">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={stats.weeklyTrends} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                <XAxis dataKey="date" tick={{ fontSize: 11, fill: '#64748b' }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fontSize: 11, fill: '#64748b' }} axisLine={false} tickLine={false} />
+                <CartesianGrid strokeDasharray="3 3" stroke="#F4F5F2" />
+                <XAxis dataKey="date" tick={{ fontSize: 11, fill: '#858B83' }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fontSize: 11, fill: '#858B83' }} axisLine={false} tickLine={false} />
                 <Tooltip
-                  contentStyle={{ backgroundColor: '#ffffff', borderRadius: '12px', borderColor: '#e2e8f0', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.08)' }}
+                  contentStyle={{ backgroundColor: '#ffffff', borderRadius: '14px', borderColor: '#E7EAE5', boxShadow: '0 4px 12px rgba(0,0,0,0.06)' }}
                   itemStyle={{ fontSize: '12px', fontWeight: 'bold' }}
                 />
                 <Legend iconType="circle" wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />
-                <Area type="monotone" dataKey="submitted" name="Submitted Reports" stroke="#15803d" strokeWidth={2.5} fill="#15803d" fillOpacity={0.12} />
-                <Area type="monotone" dataKey="missing" name="Missing Reports" stroke="#b45309" strokeWidth={2} strokeDasharray="4 4" fill="#b45309" fillOpacity={0.1} />
+                <Area type="monotone" dataKey="submitted" name="Submitted Reports" stroke="#228B4E" strokeWidth={2.5} fill="#228B4E" fillOpacity={0.12} />
+                <Area type="monotone" dataKey="missing" name="Missing Reports" stroke="#D99A28" strokeWidth={2} strokeDasharray="4 4" fill="#D99A28" fillOpacity={0.1} />
               </AreaChart>
             </ResponsiveContainer>
           </div>
@@ -114,7 +114,7 @@ export function AnalyticsCharts({ stats }: AnalyticsChartsProps) {
                   formatter={(value: any) => [`${value}%`, 'Completion Rate']}
                   contentStyle={{ backgroundColor: '#ffffff', borderRadius: '10px', borderColor: '#e2e8f0' }}
                 />
-                <Bar dataKey="rate" name="Completion Rate (%)" fill="#16a34a" radius={[8, 8, 0, 0]} barSize={40} />
+                <Bar dataKey="rate" name="Completion Rate (%)" fill="#228B4E" radius={[8, 8, 0, 0]} barSize={36} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -123,23 +123,23 @@ export function AnalyticsCharts({ stats }: AnalyticsChartsProps) {
 
       {/* Center Completion Bar Chart */}
       {stats.centerCompletionRates && stats.centerCompletionRates.length > 0 && (
-        <Card className="lg:col-span-3">
+        <Card className="lg:col-span-3 rounded-[22px] border border-[#E7EAE5]">
           <CardHeader>
-            <CardTitle className="text-base font-bold text-slate-900">Procurement & Storage Center Completion Rates (%)</CardTitle>
+            <CardTitle className="text-base font-bold text-[#252923]">Procurement & Storage Center Completion Rates (%)</CardTitle>
             <CardDescription>Track submission rates across physical packhouses and distribution hubs</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="h-56 w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={stats.centerCompletionRates} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
-                  <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#475569' }} axisLine={false} tickLine={false} />
-                  <YAxis domain={[0, 100]} tick={{ fontSize: 11, fill: '#475569' }} axisLine={false} tickLine={false} unit="%" />
+                  <CartesianGrid strokeDasharray="3 3" stroke="#F4F5F2" vertical={false} />
+                  <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#858B83' }} axisLine={false} tickLine={false} />
+                  <YAxis domain={[0, 100]} tick={{ fontSize: 11, fill: '#858B83' }} axisLine={false} tickLine={false} unit="%" />
                   <Tooltip
                     formatter={(value: any) => [`${value}%`, 'Completion Rate']}
-                    contentStyle={{ backgroundColor: '#ffffff', borderRadius: '10px', borderColor: '#e2e8f0' }}
+                    contentStyle={{ backgroundColor: '#ffffff', borderRadius: '14px', borderColor: '#E7EAE5' }}
                   />
-                  <Bar dataKey="rate" name="Center Completion Rate (%)" fill="#0284c7" radius={[8, 8, 0, 0]} barSize={40} />
+                  <Bar dataKey="rate" name="Center Completion Rate (%)" fill="#252923" radius={[8, 8, 0, 0]} barSize={36} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -149,22 +149,22 @@ export function AnalyticsCharts({ stats }: AnalyticsChartsProps) {
 
       {/* Monthly Reporting Trends Area/Bar Chart */}
       {stats.monthlyTrends && stats.monthlyTrends.length > 0 && (
-        <Card className="lg:col-span-3">
+        <Card className="lg:col-span-3 rounded-[22px] border border-[#E7EAE5]">
           <CardHeader>
-            <CardTitle className="text-base font-bold text-slate-900">Monthly Reporting Submission Trends</CardTitle>
+            <CardTitle className="text-base font-bold text-[#252923]">Monthly Reporting Submission Trends</CardTitle>
             <CardDescription>Historic 6-month submission performance and volume</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="h-56 w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={stats.monthlyTrends} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
-                  <XAxis dataKey="month" tick={{ fontSize: 11, fill: '#475569' }} axisLine={false} tickLine={false} />
-                  <YAxis tick={{ fontSize: 11, fill: '#475569' }} axisLine={false} tickLine={false} />
-                  <Tooltip contentStyle={{ backgroundColor: '#ffffff', borderRadius: '10px', borderColor: '#e2e8f0' }} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="#F4F5F2" vertical={false} />
+                  <XAxis dataKey="month" tick={{ fontSize: 11, fill: '#858B83' }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fontSize: 11, fill: '#858B83' }} axisLine={false} tickLine={false} />
+                  <Tooltip contentStyle={{ backgroundColor: '#ffffff', borderRadius: '14px', borderColor: '#E7EAE5' }} />
                   <Legend iconType="circle" wrapperStyle={{ fontSize: '12px', paddingTop: '10px' }} />
-                  <Bar dataKey="submitted" name="Submitted Reports" fill="#16a34a" radius={[6, 6, 0, 0]} barSize={32} />
-                  <Bar dataKey="missing" name="Missing Reports" fill="#d97706" radius={[6, 6, 0, 0]} barSize={32} />
+                  <Bar dataKey="submitted" name="Submitted Reports" fill="#228B4E" radius={[6, 6, 0, 0]} barSize={32} />
+                  <Bar dataKey="missing" name="Missing Reports" fill="#252923" radius={[6, 6, 0, 0]} barSize={32} />
                 </BarChart>
               </ResponsiveContainer>
             </div>

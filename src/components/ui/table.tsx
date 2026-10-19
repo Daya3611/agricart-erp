@@ -5,7 +5,7 @@ const Table = React.forwardRef<
   HTMLTableElement,
   React.HTMLAttributes<HTMLTableElement>
 >(({ className, ...props }, ref) => (
-  <div className="relative w-full overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-2xs">
+  <div className="relative w-full overflow-hidden rounded-2xl border border-border bg-card card-saas-shadow">
     <div className="overflow-x-auto w-full">
       <table
         ref={ref}
@@ -21,7 +21,7 @@ const TableHeader = React.forwardRef<
   HTMLTableSectionElement,
   React.HTMLAttributes<HTMLTableSectionElement>
 >(({ className, ...props }, ref) => (
-  <thead ref={ref} className={cn('bg-slate-50/80 border-b border-slate-200/80', className)} {...props} />
+  <thead ref={ref} className={cn('bg-muted/60 border-b border-border', className)} {...props} />
 ));
 TableHeader.displayName = 'TableHeader';
 
@@ -31,7 +31,7 @@ const TableBody = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <tbody
     ref={ref}
-    className={cn('[&_tr:last-child]:border-0 divide-y divide-slate-100', className)}
+    className={cn('[&_tr:last-child]:border-0 divide-y divide-border', className)}
     {...props}
   />
 ));
@@ -44,7 +44,7 @@ const TableRow = React.forwardRef<
   <tr
     ref={ref}
     className={cn(
-      'transition-colors hover:bg-emerald-50/30 data-[state=selected]:bg-slate-100',
+      'transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted',
       className
     )}
     {...props}
@@ -59,7 +59,7 @@ const TableHead = React.forwardRef<
   <th
     ref={ref}
     className={cn(
-      'h-11 px-4 text-left align-middle font-bold text-slate-700 text-xs uppercase tracking-wider [&:has([role=checkbox])]:pr-0',
+      'h-11 px-4 text-left align-middle font-bold text-muted-foreground text-[11px] uppercase tracking-wider [&:has([role=checkbox])]:pr-0',
       className
     )}
     {...props}
@@ -73,7 +73,7 @@ const TableCell = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <td
     ref={ref}
-    className={cn('p-4 align-middle text-slate-800 [&:has([role=checkbox])]:pr-0', className)}
+    className={cn('p-4 align-middle text-card-foreground [&:has([role=checkbox])]:pr-0', className)}
     {...props}
   />
 ));

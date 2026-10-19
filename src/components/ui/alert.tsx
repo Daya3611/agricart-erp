@@ -7,11 +7,11 @@ const alertVariants = cva(
   {
     variants: {
       variant: {
-        default: 'bg-white text-slate-900 border-slate-200',
-        destructive: 'border-rose-200 bg-rose-50/70 text-rose-950 [&>svg]:text-rose-600',
-        warning: 'border-amber-200 bg-amber-50/70 text-amber-950 [&>svg]:text-amber-600',
-        success: 'border-emerald-200 bg-emerald-50/70 text-emerald-950 [&>svg]:text-emerald-700',
-        info: 'border-sky-200 bg-sky-50/70 text-sky-950 [&>svg]:text-sky-700',
+        default: 'bg-card text-foreground border-border',
+        destructive: 'border-rose-200 dark:border-rose-900/60 bg-rose-50/70 dark:bg-rose-950/40 text-rose-950 dark:text-rose-200 [&>svg]:text-rose-600 dark:[&>svg]:text-rose-400',
+        warning: 'border-amber-200 dark:border-amber-900/60 bg-amber-50/70 dark:bg-amber-950/40 text-amber-950 dark:text-amber-200 [&>svg]:text-amber-600 dark:[&>svg]:text-amber-400',
+        success: 'border-emerald-200 dark:border-emerald-900/60 bg-emerald-50/70 dark:bg-emerald-950/40 text-emerald-950 dark:text-emerald-200 [&>svg]:text-emerald-700 dark:[&>svg]:text-emerald-400',
+        info: 'border-sky-200 dark:border-sky-900/60 bg-sky-50/70 dark:bg-sky-950/40 text-sky-950 dark:text-sky-200 [&>svg]:text-sky-700 dark:[&>svg]:text-sky-400',
       },
     },
     defaultVariants: {

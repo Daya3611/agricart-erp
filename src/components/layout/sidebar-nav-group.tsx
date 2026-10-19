@@ -35,7 +35,7 @@ export function SidebarNavGroup({ group, collapsed, onNavigate }: SidebarNavGrou
 
   if (collapsed) {
     return (
-      <div className="py-2 border-b border-slate-100 last:border-b-0 space-y-1">
+      <div className="py-2 border-b border-[#E7EAE5] last:border-b-0 space-y-1">
         {group.items.map((item) => (
           <SidebarNavItem
             key={item.id}
@@ -55,12 +55,12 @@ export function SidebarNavGroup({ group, collapsed, onNavigate }: SidebarNavGrou
         type="button"
         onClick={() => setIsOpen((prev) => !prev)}
         aria-expanded={isOpen}
-        className="flex items-center justify-between w-full px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-500 hover:text-slate-800 hover:bg-slate-100/60 transition-colors select-none rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+        className="flex items-center justify-between w-full px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-wider text-[#858B83] hover:text-[#252923] hover:bg-[#F4F5F2] transition-colors select-none rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#228B4E]"
       >
         <span>{group.label}</span>
         <ChevronDown
           className={cn(
-            'h-3.5 w-3.5 text-slate-400 transition-transform duration-200',
+            'h-3.5 w-3.5 text-[#858B83] transition-transform duration-200',
             isOpen ? 'rotate-0' : '-rotate-90'
           )}
         />

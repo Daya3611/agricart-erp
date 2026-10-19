@@ -1,16 +1,15 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { PanelLeftClose, PanelLeft, Calendar } from 'lucide-react';
+import { Search, Clock, Menu } from 'lucide-react';
 import { UserProfile } from '@/types';
-import { AppBreadcrumbs } from './app-breadcrumbs';
 import { NotificationMenu } from './notification-menu';
 import { ProfileDropdown } from './profile-dropdown';
+import { TopPillNavigation } from './TopPillNavigation';
+import { QuickSearchModal } from './QuickSearchModal';
 import { Tooltip } from '@/components/ui/tooltip';
-import { Badge } from '@/components/ui/badge';
-import { cn } from '@/lib/utils/cn';
 
 interface AppHeaderProps {
   user: UserProfile;
@@ -27,10 +26,13 @@ export function AppHeader({
   onToggleCollapse,
   onOpenMobileMenu,
 }: AppHeaderProps) {
+  const [searchOpen, setSearchOpen] = useState(false);
+
   const todayFormatted = new Date().toLocaleDateString('en-IN', {
     weekday: 'short',
     day: 'numeric',
     month: 'short',
+    year: 'numeric',
   });
 
   const homeHref =
@@ -40,85 +42,90 @@ export function AppHeader({
         ? '/manager/dashboard'
         : '/staff/dashboard';
 
-  const roleLabel =
-    user.role === 'super_admin'
-      ? 'Super Admin'
-      : user.role === 'admin'
-        ? 'Admin'
-        : user.role === 'manager'
-          ? 'Manager'
-          : 'Staff';
-
   return (
-    <header className="h-14 sm:h-16 bg-white border-b border-slate-200/90 px-3 sm:px-4 md:px-6 flex items-center justify-between sticky top-0 z-20 shadow-2xs">
-      {/* Left controls: Mobile brand logo, Desktop sidebar toggle & Breadcrumbs */}
-      <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-        {/* Mobile Top App Bar: Brand Logo & Title (< 1024px) */}
-        <Link
-          href={homeHref}
-          className="lg:hidden flex items-center gap-2 outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 rounded-lg py-1 truncate"
-        >
-          <div className="relative h-8 w-8 shrink-0 rounded-xl bg-white border border-slate-200 p-0.5 flex items-center justify-center shadow-2xs">
-            <Image
-              src="/logo.png"
-              alt="Agricart Logo"
-              width={28}
-              height={28}
-              priority
-              className="h-full w-full object-contain"
-            />
-          </div>
-          <div className="flex items-center gap-1.5 min-w-0">
-            <span className="font-extrabold text-sm text-slate-900 leading-tight tracking-tight truncate">
-              Agricart
-            </span>
-            <Badge
-              variant="outline"
-              className="text-[9px] px-1.5 py-0 font-bold uppercase tracking-wider text-emerald-800 bg-emerald-50 border-emerald-200 shrink-0 hidden xs:inline-flex"
+    <>
+      <header className="h-16 sm:h-20 bg-transparent px-3 sm:px-6 md:px-8 flex items-center justify-between sticky top-0 z-20 backdrop-blur-md">
+        {/* Left Section: Brand Logo & Title */}
+        <div className="flex items-center gap-3">
+          {/* Mobile hamburger menu toggle */}
+          {onOpenMobileMenu && (
+            <button
+              type="button"
+              onClick={onOpenMobileMenu}
+              className="lg:hidden h-9 w-9 rounded-full bg-card border border-border text-foreground flex items-center justify-center hover:bg-muted transition-colors shadow-2xs"
+              aria-label="Open mobile navigation"
             >
-              {roleLabel}
-            </Badge>
-          </div>
-        </Link>
+              <Menu className="h-4 w-4" />
+            </button>
+          )}
 
-        {/* Desktop sidebar toggle button (>= 1024px) */}
-        <Tooltip content={collapsed ? 'Expand sidebar' : 'Collapse sidebar'} side="bottom">
-          <button
-            type="button"
-            onClick={onToggleCollapse}
-            aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-            className="hidden lg:flex h-9 w-9 items-center justify-center rounded-xl text-slate-500 hover:bg-slate-100/90 hover:text-slate-900 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+          <Link
+            href={homeHref}
+            className="flex items-center gap-2.5 outline-none focus-visible:ring-2 focus-visible:ring-primary rounded-full group transition-all"
+            title="Agricart ERP"
           >
-            {collapsed ? (
-              <PanelLeft className="h-4 w-4" />
-            ) : (
-              <PanelLeftClose className="h-4 w-4" />
-            )}
-          </button>
-        </Tooltip>
-
-        <div className="h-4 w-[1px] bg-slate-200 hidden lg:block" />
-
-        {/* Breadcrumb Navigation (Desktop) */}
-        <AppBreadcrumbs />
-      </div>
-
-      {/* Right controls: Date badge, notifications, profile */}
-      <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
-        {/* Date Display Badge */}
-        <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-50 border border-slate-200/80 text-[11px] font-semibold text-slate-600 shadow-2xs">
-          <Calendar className="h-3.5 w-3.5 text-emerald-600" />
-          <span>{todayFormatted}</span>
+            <div className="relative h-9 w-9 sm:h-10 sm:w-10 shrink-0 rounded-2xl bg-card border border-border p-1 flex items-center justify-center shadow-2xs group-hover:border-primary/40 transition-colors">
+              <Image
+                src="/logo.png"
+                alt="Agricart Logo"
+                width={36}
+                height={36}
+                priority
+                className="h-full w-full object-contain"
+              />
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="font-extrabold text-base sm:text-lg text-foreground tracking-tight group-hover:text-primary transition-colors">
+                Agricart
+              </span>
+            </div>
+          </Link>
         </div>
 
-        {/* Notifications Popover */}
-        <NotificationMenu user={user} />
+        {/* Center Section: Top Floating Pill Navigation (Hidden on < lg) */}
+        <div className="hidden lg:flex items-center justify-center">
+          <TopPillNavigation role={user.role} />
+        </div>
 
-        <div className="h-4 w-[1px] bg-slate-200 hidden sm:block" />
+        {/* Right Section: Utilities (Search, Notification, Clock, Profile) */}
+        <div className="flex items-center gap-2 sm:gap-2.5">
+          {/* Search circle button */}
+          <Tooltip content="Quick Search" side="bottom">
+            <button
+              type="button"
+              onClick={() => setSearchOpen(true)}
+              className="h-9 w-9 rounded-full bg-card border border-border text-muted-foreground hover:text-foreground hover:border-primary/40 hover:bg-muted transition-all flex items-center justify-center shadow-2xs outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              aria-label="Search"
+            >
+              <Search className="h-4 w-4" />
+            </button>
+          </Tooltip>
 
-        {/* User Profile Dropdown */}
-        <ProfileDropdown user={user} />
-      </div>
-    </header>
+          {/* Notifications Popover Circle Button */}
+          <NotificationMenu user={user} />
+
+          {/* Time / History Quick Action Circle Button */}
+          <Tooltip content={`Today: ${todayFormatted}`} side="bottom">
+            <Link
+              href={user.role === 'super_admin' || user.role === 'admin' ? '/admin/audit-logs' : '#'}
+              className="hidden xs:flex h-9 w-9 rounded-full bg-card border border-border text-muted-foreground hover:text-foreground hover:border-primary/40 hover:bg-muted transition-all items-center justify-center shadow-2xs outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              aria-label="Audit Logs & Time"
+            >
+              <Clock className="h-4 w-4" />
+            </Link>
+          </Tooltip>
+
+          {/* User Profile Pill Dropdown */}
+          <ProfileDropdown user={user} />
+        </div>
+      </header>
+
+      {/* Quick Search Dialog */}
+      <QuickSearchModal
+        open={searchOpen}
+        onOpenChange={setSearchOpen}
+        role={user.role}
+      />
+    </>
   );
 }

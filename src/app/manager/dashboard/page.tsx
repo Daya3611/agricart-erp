@@ -7,23 +7,19 @@ import {
   FileText,
   Clock,
   AlertTriangle,
-  CheckCircle2,
-  TrendingUp,
-  Eye,
   RefreshCw,
   Building2,
   ArrowRight,
-  RotateCcw,
-  Paperclip,
+  Plus,
 } from 'lucide-react';
 import { DashboardStats, DailyReport, UserProfile } from '@/types';
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
-import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge';
+import { VertixWelcomeHeader } from '@/components/dashboard/VertixWelcomeHeader';
+import { VertixBalanceCard } from '@/components/dashboard/VertixBalanceCard';
+import { VertixStatGrid } from '@/components/dashboard/VertixStatGrid';
+import { VertixIncomeChart } from '@/components/dashboard/VertixIncomeChart';
+import { VertixRecentActivities } from '@/components/dashboard/VertixRecentActivities';
 import { Button } from '@/components/ui/button';
-import { RecordCard, RecordCardHeader, RecordCardTitle, RecordCardSubtitle, RecordCardContent, RecordCardRow, RecordCardActions } from '@/components/ui/record-card';
 import { ReportReviewModal } from '@/components/reports/ReportReviewModal';
-import { formatReadableDate } from '@/lib/utils/date-utils';
 
 export default function ManagerDashboardPage() {
   const [user, setUser] = useState<UserProfile | null>(null);
@@ -64,271 +60,150 @@ export default function ManagerDashboardPage() {
   );
 
   return (
-    <div className="space-y-6">
-      {/* Welcome Header (Solid Color - No Gradients) */}
-      <div className="bg-slate-900 text-white p-4 sm:p-6 rounded-xl sm:rounded-2xl shadow-sm flex flex-wrap items-center justify-between gap-3 sm:gap-4">
-        <div className="space-y-1">
-          <div className="flex items-center gap-2">
-            <Building2 className="h-5 w-5 text-emerald-400" />
-            <span className="text-[10px] sm:text-xs font-bold uppercase tracking-wider text-emerald-300">
-              Department Operations Management
-            </span>
-          </div>
-          <h1 className="text-xl sm:text-2xl font-black tracking-tight leading-tight">
-            Welcome, {user?.fullName || 'Department Head'}
-          </h1>
-          <p className="text-xs text-slate-300 font-normal">
-            Manage field activities, review daily submissions, and track compliance for {user?.departmentName || 'your department'}.
-          </p>
+    <div className="space-y-6 animate-in fade-in duration-300">
+      {/* 1. Vertix-Style Welcome Header */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <VertixWelcomeHeader
+          user={user}
+          subtitle={`Department Operations & Team Supervision for ${user?.departmentName || 'Field Operations'}`}
+        />
+
+        <div className="flex items-center gap-2">
+          <Link href="/manager/reports">
+            <Button
+              size="sm"
+              className="bg-[#228B4E] hover:bg-[#176638] text-white font-semibold text-xs h-9 px-4 rounded-full shadow-xs"
+            >
+              <FileText className="h-3.5 w-3.5 mr-1.5" /> Review Queue ({pendingReviews.length})
+            </Button>
+          </Link>
+          <Button
+            onClick={loadManagerData}
+            variant="outline"
+            size="sm"
+            className="bg-card hover:bg-muted border-border text-foreground font-semibold text-xs h-9 px-3.5 rounded-full shadow-2xs"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${loading ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
+        </div>
+      </div>
+
+      {/* 2. Vertix 3-Column / Asymmetric Dashboard Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+        {/* Column 1: Department Output & Targets (4 cols) */}
+        <div className="lg:col-span-4 w-full">
+          <VertixBalanceCard
+            role="manager"
+            user={user}
+            stats={stats}
+            reports={teamReports}
+          />
         </div>
 
-        <Button
-          onClick={loadManagerData}
-          variant="secondary"
-          size="sm"
-          className="w-full sm:w-auto bg-slate-800 hover:bg-slate-700 text-white border-slate-700 font-bold h-9 min-h-[36px]"
-        >
-          <RefreshCw className={`h-4 w-4 mr-1.5 ${loading ? 'animate-spin' : ''}`} /> Refresh
-        </Button>
+        {/* Column 2: 2x2 Metric Cards (Highlight Gradient + 3 White) (4 cols) */}
+        <div className="lg:col-span-4 w-full">
+          <VertixStatGrid role="admin" stats={stats} />
+        </div>
+
+        {/* Column 3: Department Reporting Analytics Dual-Bar Chart (4 cols) */}
+        <div className="lg:col-span-4 w-full">
+          <VertixIncomeChart
+            title="Team Activity"
+            subtitle="Weekly report submissions vs missing reports"
+            legendSeries1="Submitted"
+            legendSeries2="Missing"
+            data={(stats?.weeklyTrends || []).map((w) => ({
+              label: w.date,
+              series1: w.submitted,
+              series2: w.missing,
+            }))}
+            loading={loading}
+          />
+        </div>
       </div>
 
-      {/* Scoped KPI Grid */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <Card className="border-purple-200">
-          <CardContent className="p-4">
-            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Assigned Staff</span>
-            <div className="mt-2 flex items-baseline justify-between">
-              <span className="text-2xl font-black text-purple-800">{stats?.totalActiveStaff ?? 0}</span>
-              <span className="text-xs text-slate-500 font-medium">In Department</span>
-            </div>
-          </CardContent>
-        </Card>
+      {/* 3. Bottom Row: Recent Team Activities Data Table */}
+      <VertixRecentActivities
+        reports={teamReports}
+        loading={loading}
+        onSelectReport={(report) => setSelectedReport(report)}
+      />
 
-        <Card className="border-sky-200">
-          <CardContent className="p-4">
-            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Pending Reviews</span>
-            <div className="mt-2 flex items-baseline justify-between">
-              <span className="text-2xl font-black text-sky-700">{pendingReviews.length}</span>
-              <span className="text-xs text-sky-600 font-bold">Action Needed</span>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-amber-200">
-          <CardContent className="p-4">
-            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Missing Reports Today</span>
-            <div className="mt-2 flex items-baseline justify-between">
-              <span className="text-2xl font-black text-amber-700">{stats?.missingReportsToday ?? 0}</span>
-              <span className="text-xs text-slate-500 font-medium">Overdue</span>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-emerald-200">
-          <CardContent className="p-4">
-            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Department Rate</span>
-            <div className="mt-2 flex items-baseline justify-between">
-              <span className="text-2xl font-black text-emerald-700">{stats?.dailySubmissionRate ?? 0}%</span>
-              <span className="text-xs text-emerald-600 font-bold">Completion</span>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Quick Links */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      {/* 4. Manager Quick Action Navigation Cards */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
         <Link href="/manager/reports">
-          <div className="p-4 bg-white rounded-2xl border border-slate-200/80 hover:border-purple-300 transition-all flex items-center justify-between shadow-2xs group">
+          <div className="p-4 bg-card rounded-[20px] border border-border hover:border-primary/40 transition-all flex items-center justify-between shadow-2xs group card-saas-hover">
             <div className="flex items-center gap-3">
-              <div className="p-2.5 bg-purple-50 text-purple-700 rounded-full group-hover:bg-purple-100 transition-colors">
-                <FileText className="h-5 w-5" />
+              <div className="h-9 w-9 rounded-full bg-[#EEF4FF] dark:bg-[#17253D] text-[#1D60C9] dark:text-[#60A5FA] flex items-center justify-center group-hover:bg-[#dce9fc] dark:group-hover:bg-[#1E355B] transition-colors">
+                <Clock className="h-4 w-4" />
               </div>
               <div>
-                <span className="text-xs font-bold text-slate-900 block">Team Reports</span>
-                <span className="text-[11px] text-slate-500 font-semibold">{teamReports.length} reports logged</span>
+                <span className="text-xs font-bold text-card-foreground block leading-tight">Pending Reviews</span>
+                <span className="text-[11px] text-muted-foreground font-medium">{pendingReviews.length} to inspect</span>
               </div>
             </div>
-            <ArrowRight className="h-4 w-4 text-slate-400 group-hover:text-purple-600 group-hover:translate-x-0.5 transition-all" />
+            <ArrowRight className="h-4 w-4 text-muted-foreground group-hover:text-primary group-hover:translate-x-0.5 transition-all" />
           </div>
         </Link>
 
         <Link href="/manager/staff">
-          <div className="p-4 bg-white rounded-2xl border border-slate-200/80 hover:border-purple-300 transition-all flex items-center justify-between shadow-2xs group">
+          <div className="p-4 bg-card rounded-[20px] border border-border hover:border-primary/40 transition-all flex items-center justify-between shadow-2xs group card-saas-hover">
             <div className="flex items-center gap-3">
-              <div className="p-2.5 bg-purple-50 text-purple-700 rounded-full group-hover:bg-purple-100 transition-colors">
-                <Users className="h-5 w-5" />
+              <div className="h-9 w-9 rounded-full bg-[#E8F5EC] dark:bg-[#173822] text-[#228B4E] dark:text-[#34D399] flex items-center justify-center group-hover:bg-[#d2ecd9] dark:group-hover:bg-[#1E4A2E] transition-colors">
+                <Users className="h-4 w-4" />
               </div>
               <div>
-                <span className="text-xs font-bold text-slate-900 block">Assigned Staff Directory</span>
-                <span className="text-[11px] text-slate-500 font-semibold">{stats?.totalActiveStaff ?? 0} members</span>
+                <span className="text-xs font-bold text-card-foreground block leading-tight">Assigned Staff</span>
+                <span className="text-[11px] text-muted-foreground font-medium">{stats?.totalActiveStaff ?? 0} members</span>
               </div>
             </div>
-            <ArrowRight className="h-4 w-4 text-slate-400 group-hover:text-purple-600 group-hover:translate-x-0.5 transition-all" />
+            <ArrowRight className="h-4 w-4 text-muted-foreground group-hover:text-primary group-hover:translate-x-0.5 transition-all" />
           </div>
         </Link>
 
-        <Link href="/manager/analytics">
-          <div className="p-4 bg-white rounded-2xl border border-slate-200/80 hover:border-purple-300 transition-all flex items-center justify-between shadow-2xs group">
+        <Link href="/manager/leaves">
+          <div className="p-4 bg-card rounded-[20px] border border-border hover:border-primary/40 transition-all flex items-center justify-between shadow-2xs group card-saas-hover">
             <div className="flex items-center gap-3">
-              <div className="p-2.5 bg-purple-50 text-purple-700 rounded-full group-hover:bg-purple-100 transition-colors">
-                <TrendingUp className="h-5 w-5" />
+              <div className="h-9 w-9 rounded-full bg-[#FEF7E8] dark:bg-[#2F2415] text-[#D99A28] dark:text-[#FBBF24] flex items-center justify-center group-hover:bg-[#faeccb] dark:group-hover:bg-[#43321C] transition-colors">
+                <AlertTriangle className="h-4 w-4" />
               </div>
               <div>
-                <span className="text-xs font-bold text-slate-900 block">Department Analytics</span>
-                <span className="text-[11px] text-slate-500 font-semibold">Weekly compliance trends</span>
+                <span className="text-xs font-bold text-card-foreground block leading-tight">Team Leaves</span>
+                <span className="text-[11px] text-muted-foreground font-medium">{stats?.onLeaveToday ?? 0} on leave</span>
               </div>
             </div>
-            <ArrowRight className="h-4 w-4 text-slate-400 group-hover:text-purple-600 group-hover:translate-x-0.5 transition-all" />
+            <ArrowRight className="h-4 w-4 text-muted-foreground group-hover:text-primary group-hover:translate-x-0.5 transition-all" />
+          </div>
+        </Link>
+
+        <Link href="/admin/reports/monthly">
+          <div className="p-4 bg-card rounded-[20px] border border-border hover:border-primary/40 transition-all flex items-center justify-between shadow-2xs group card-saas-hover">
+            <div className="flex items-center gap-3">
+              <div className="h-9 w-9 rounded-full bg-[#F5F0FF] dark:bg-[#251838] text-[#6B21A8] dark:text-[#C084FC] flex items-center justify-center group-hover:bg-[#ece2fc] dark:group-hover:bg-[#341F52] transition-colors">
+                <Building2 className="h-4 w-4" />
+              </div>
+              <div>
+                <span className="text-xs font-bold text-card-foreground block leading-tight">Monthly Report</span>
+                <span className="text-[11px] text-muted-foreground font-medium">Monthly Summary</span>
+              </div>
+            </div>
+            <ArrowRight className="h-4 w-4 text-muted-foreground group-hover:text-primary group-hover:translate-x-0.5 transition-all" />
           </div>
         </Link>
       </div>
 
-      {/* Pending Reviews Queue Table */}
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <div>
-            <CardTitle className="text-base font-bold text-slate-900">
-              Department Reports Awaiting Review ({pendingReviews.length})
-            </CardTitle>
-            <CardDescription>
-              Review submissions from your department, inspect photo/video evidence, and approve or request corrections.
-            </CardDescription>
-          </div>
-          <Link href="/manager/reports">
-            <Button variant="ghost" size="sm" className="text-xs font-bold text-purple-700">
-              View All <ArrowRight className="h-3.5 w-3.5 ml-1" />
-            </Button>
-          </Link>
-        </CardHeader>
-        <CardContent>
-          {loading ? (
-            <div className="p-8 text-center text-xs text-slate-500">Loading pending reviews...</div>
-          ) : pendingReviews.length === 0 ? (
-            <div className="p-8 text-center text-xs text-emerald-800 font-bold bg-emerald-50 rounded-xl">
-              ✅ All clear! There are no pending reviews for your department.
-            </div>
-          ) : (
-            <>
-              {/* Desktop Table View (>= 768px) */}
-              <div className="hidden md:block">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Date</TableHead>
-                      <TableHead>Staff</TableHead>
-                      <TableHead>Work Location</TableHead>
-                      <TableHead>Farmers / Meetings</TableHead>
-                      <TableHead>Evidence</TableHead>
-                      <TableHead className="text-right">Action</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {pendingReviews.slice(0, 5).map((r) => (
-                      <TableRow key={r.id}>
-                        <TableCell className="font-bold text-slate-900">{r.reportDate}</TableCell>
-                        <TableCell>
-                          <p className="font-bold text-slate-900">{r.staffName}</p>
-                          <p className="text-[11px] text-slate-500">{r.employeeId}</p>
-                        </TableCell>
-                        <TableCell className="text-xs font-medium text-slate-700">{r.workLocation}</TableCell>
-                        <TableCell className="text-xs font-bold text-emerald-800">
-                          {r.farmersVisited || 0} farmers | {r.meetingsConducted || 0} meetings
-                        </TableCell>
-                        <TableCell className="text-xs font-bold text-emerald-700">
-                          <span className="inline-flex items-center gap-1">
-                            <Paperclip className="h-3.5 w-3.5" /> {r.attachments?.length || 0} Files
-                          </span>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <Button
-                            size="sm"
-                            onClick={() => setSelectedReport(r)}
-                            className="rounded-lg px-3.5 bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs h-9"
-                          >
-                            {r.status === 'resubmitted' ? (
-                              <>
-                                <RotateCcw className="h-3.5 w-3.5 mr-1" /> Review Revision
-                              </>
-                            ) : (
-                              <>
-                                <Eye className="h-3.5 w-3.5 mr-1" /> Review
-                              </>
-                            )}
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-
-              {/* Mobile Record Cards View (< 768px) */}
-              <div className="md:hidden space-y-3">
-                {pendingReviews.slice(0, 5).map((r) => (
-                  <RecordCard key={r.id}>
-                    <RecordCardHeader>
-                      <div className="min-w-0 flex-1">
-                        <RecordCardTitle>{r.staffName}</RecordCardTitle>
-                        <RecordCardSubtitle>
-                          {r.employeeId} • {r.reportDate}
-                        </RecordCardSubtitle>
-                      </div>
-                      <Badge variant={r.status === 'resubmitted' ? 'purple' : 'info'} className="text-[10px] shrink-0">
-                        {r.status === 'resubmitted' ? 'Resubmitted' : 'Needs Review'}
-                      </Badge>
-                    </RecordCardHeader>
-
-                    <RecordCardContent>
-                      <RecordCardRow label="Work Location" value={r.workLocation} />
-                      <RecordCardRow
-                        label="Interactions"
-                        value={`${r.farmersVisited || 0} farmers | ${r.meetingsConducted || 0} meetings`}
-                      />
-                      <RecordCardRow
-                        label="Evidence"
-                        value={
-                          r.attachments && r.attachments.length > 0 ? (
-                            <span className="inline-flex items-center gap-1 text-emerald-700 font-bold">
-                              <Paperclip className="h-3.5 w-3.5" /> {r.attachments.length} files
-                            </span>
-                          ) : (
-                            <span className="text-slate-400">None</span>
-                          )
-                        }
-                      />
-                    </RecordCardContent>
-
-                    <RecordCardActions>
-                      <Button
-                        size="sm"
-                        onClick={() => setSelectedReport(r)}
-                        className="w-full h-10 min-h-[44px] justify-center bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs rounded-lg"
-                      >
-                        {r.status === 'resubmitted' ? (
-                          <>
-                            <RotateCcw className="h-4 w-4 mr-1.5" /> Review Resubmission
-                          </>
-                        ) : (
-                          <>
-                            <Eye className="h-4 w-4 mr-1.5" /> Review & Evaluate Report
-                          </>
-                        )}
-                      </Button>
-                    </RecordCardActions>
-                  </RecordCard>
-                ))}
-              </div>
-            </>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Review Modal */}
+      {/* 5. Report Review Modal */}
       {selectedReport && user && (
         <ReportReviewModal
           report={selectedReport}
-          open={Boolean(selectedReport)}
-          onOpenChange={() => setSelectedReport(null)}
+          open={!!selectedReport}
+          onOpenChange={(open) => {
+            if (!open) {
+              setSelectedReport(null);
+              loadManagerData();
+            }
+          }}
           currentUser={user}
           onRefresh={loadManagerData}
         />

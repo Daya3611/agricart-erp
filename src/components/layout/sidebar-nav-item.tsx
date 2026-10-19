@@ -31,17 +31,17 @@ export function SidebarNavItem({ item, collapsed, onNavigate }: SidebarNavItemPr
           aria-label={item.label}
           aria-current={isActive ? 'page' : undefined}
           className={cn(
-            'group relative flex h-11 w-11 mx-auto items-center justify-center rounded-full transition-all duration-200 outline-none select-none',
-            'focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-2',
+            'group relative flex h-10 w-10 mx-auto items-center justify-center rounded-xl transition-all duration-200 outline-none select-none',
+            'focus-visible:ring-2 focus-visible:ring-[#228B4E]',
             isActive
-              ? 'bg-emerald-100 text-emerald-950 font-semibold ring-1 ring-emerald-300/50 shadow-xs'
-              : 'text-slate-600 hover:bg-emerald-50/70 hover:text-emerald-900 active:scale-95'
+              ? 'bg-[#252923] text-white shadow-xs'
+              : 'text-[#858B83] hover:bg-[#F4F5F2] hover:text-[#252923] active:scale-95'
           )}
         >
           <Icon
             className={cn(
               'h-[19px] w-[19px] shrink-0 transition-colors duration-150',
-              isActive ? 'text-emerald-800' : 'text-slate-400 group-hover:text-emerald-700'
+              isActive ? 'text-white' : 'text-[#858B83] group-hover:text-[#252923]'
             )}
           />
         </Link>
@@ -56,17 +56,17 @@ export function SidebarNavItem({ item, collapsed, onNavigate }: SidebarNavItemPr
       aria-label={item.label}
       aria-current={isActive ? 'page' : undefined}
       className={cn(
-        'group relative flex h-11 w-full items-center gap-3 rounded-full px-4 text-sm font-medium transition-colors duration-200 outline-none select-none',
-        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-600 focus-visible:ring-offset-2',
+        'group relative flex h-10 w-full items-center gap-3 rounded-full px-4 text-xs font-semibold transition-colors duration-200 outline-none select-none',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#228B4E]',
         isActive
-          ? 'bg-emerald-100 text-emerald-950 font-semibold ring-1 ring-emerald-300/50 shadow-xs'
-          : 'text-slate-600 hover:bg-emerald-50/70 hover:text-emerald-900 active:scale-[0.99]'
+          ? 'bg-[#252923] text-white shadow-xs'
+          : 'text-[#858B83] hover:bg-[#F4F5F2] hover:text-[#252923] active:scale-[0.99]'
       )}
     >
       <Icon
         className={cn(
-          'h-[19px] w-[19px] shrink-0 transition-colors duration-150',
-          isActive ? 'text-emerald-800' : 'text-slate-400 group-hover:text-emerald-700'
+          'h-[18px] w-[18px] shrink-0 transition-colors duration-150',
+          isActive ? 'text-white' : 'text-[#858B83] group-hover:text-[#252923]'
         )}
       />
       <span className="truncate">{item.label}</span>
@@ -76,8 +76,8 @@ export function SidebarNavItem({ item, collapsed, onNavigate }: SidebarNavItemPr
           className={cn(
             'ml-auto text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0',
             isActive
-              ? 'bg-emerald-200/80 text-emerald-950'
-              : 'bg-slate-100 text-slate-600 group-hover:bg-emerald-100 group-hover:text-emerald-900'
+              ? 'bg-white/20 text-white'
+              : 'bg-[#E8F5EC] text-[#176638]'
           )}
         >
           {item.badge}
