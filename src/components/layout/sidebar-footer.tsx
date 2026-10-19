@@ -4,6 +4,7 @@ import React from 'react';
 import { LogOut } from 'lucide-react';
 import { UserProfile, UserRole } from '@/types';
 import { Tooltip } from '@/components/ui/tooltip';
+import { ThemeToggleSegmented, ThemeToggleButton } from './ThemeToggleCapsule';
 import { cn } from '@/lib/utils/cn';
 
 interface SidebarFooterProps {
@@ -24,6 +25,8 @@ export function SidebarFooter({ user, collapsed }: SidebarFooterProps) {
   if (collapsed) {
     return (
       <div className="p-2 border-t border-border bg-card flex flex-col items-center gap-2">
+        <ThemeToggleButton />
+
         <Tooltip content={`${user.fullName} (${badgeInfo.label})`} side="right">
           <div className="h-9 w-9 rounded-full bg-[#228B4E] text-white font-bold flex items-center justify-center text-xs shadow-2xs select-none">
             {user.fullName ? user.fullName.substring(0, 2).toUpperCase() : 'AG'}
@@ -44,7 +47,12 @@ export function SidebarFooter({ user, collapsed }: SidebarFooterProps) {
   }
 
   return (
-    <div className="p-3 border-t border-border bg-card sticky bottom-0">
+    <div className="p-3 border-t border-border bg-card sticky bottom-0 space-y-2.5">
+      <div className="flex items-center justify-between px-1">
+        <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Appearance</span>
+        <ThemeToggleSegmented />
+      </div>
+
       <div className="p-2.5 rounded-2xl bg-muted/50 border border-border flex items-center justify-between gap-2.5">
         <div className="flex items-center gap-2.5 min-w-0">
           <div className="h-9 w-9 shrink-0 rounded-full bg-[#228B4E] text-white font-bold flex items-center justify-center text-xs shadow-2xs select-none">

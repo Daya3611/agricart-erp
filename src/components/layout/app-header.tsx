@@ -9,6 +9,7 @@ import { NotificationMenu } from './notification-menu';
 import { ProfileDropdown } from './profile-dropdown';
 import { TopPillNavigation } from './TopPillNavigation';
 import { QuickSearchModal } from './QuickSearchModal';
+import { ThemeToggleButton } from './ThemeToggleCapsule';
 import { Tooltip } from '@/components/ui/tooltip';
 
 interface AppHeaderProps {
@@ -87,8 +88,13 @@ export function AppHeader({
           <TopPillNavigation role={user.role} />
         </div>
 
-        {/* Right Section: Utilities (Search, Notification, Clock, Profile) */}
+        {/* Right Section: Utilities (Theme, Search, Notification, Clock, Profile) */}
         <div className="flex items-center gap-2 sm:gap-2.5">
+          {/* Mobile Theme Mode Toggle Button (< lg) */}
+          <div className="lg:hidden">
+            <ThemeToggleButton />
+          </div>
+
           {/* Search circle button */}
           <Tooltip content="Quick Search" side="bottom">
             <button
