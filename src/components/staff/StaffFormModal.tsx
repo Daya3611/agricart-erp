@@ -123,7 +123,7 @@ export function StaffFormModal({
       description={
         isEditing
           ? 'Update employee profile details, assignments, and reporting settings.'
-          : 'Creates Firebase Auth account, assigns unique employee ID, stores in erp_emp, and sends email invitation.'
+          : 'Creates Firebase Auth account, assigns unique employee ID, stores in system, and sends email invitation.'
       }
       maxWidth="max-w-2xl"
     >
@@ -249,7 +249,7 @@ export function StaffFormModal({
           </div>
 
           <div>
-            <label className="font-bold text-slate-700 block mb-1">Work Schedule (erp_work_schedules)</label>
+            <label className="font-bold text-slate-700 block mb-1">Work Schedule </label>
             <Select value={workScheduleId} onChange={(e) => setWorkScheduleId(e.target.value)}>
               <option value="sched_standard">Standard Operations (Mon-Sat, 7:00 PM Cutoff)</option>
               {workSchedules

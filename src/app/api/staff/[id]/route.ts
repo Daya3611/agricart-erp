@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireAdmin, requireAuthenticatedUser } from '@/lib/auth/permissions';
 import { fetchDocument, updateDocument } from '@/lib/firebase/firestore';
-import { adminAuth } from '@/lib/firebase/admin';
+import { adminAuth, hasValidAdminCredentials } from '@/lib/firebase/admin';
 import { ERP_COLLECTIONS } from '@/lib/firebase/collections';
 import { logAuditAction } from '@/lib/services/audit-service';
 import { UserProfile } from '@/types';
@@ -30,7 +30,38 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       }
     }
 
-    return NextResponse.json({ success: true, user: userDoc });
+    let lastLogin: string | null = (userDoc as any).lastLogin || null;
+    let authCreatedAt: string | null = (userDoc as any).authCreatedAt || userDoc.createdAt || null;
+    let photoURL: string | null = (userDoc as any).photoURL || null;
+
+    if (hasValidAdminCredentials) {
+      try {
+        const authUser = await adminAuth.getUser(id);
+        if (authUser) {
+          if (authUser.metadata?.lastSignInTime) {
+            lastLogin = authUser.metadata.lastSignInTime;
+          }
+          if (authUser.metadata?.creationTime) {
+            authCreatedAt = authUser.metadata.creationTime;
+          }
+          if (authUser.photoURL) {
+            photoURL = authUser.photoURL;
+          }
+        }
+      } catch {
+        // Fallback to Firestore document fields
+      }
+    }
+
+    return NextResponse.json({
+      success: true,
+      user: {
+        ...userDoc,
+        lastLogin,
+        authCreatedAt,
+        photoURL,
+      },
+    });
   } catch (err: any) {
     const status = err.message.startsWith('UNAUTHORIZED') ? 401 : err.message.startsWith('FORBIDDEN') ? 403 : 500;
     return NextResponse.json({ success: false, error: err.message }, { status });

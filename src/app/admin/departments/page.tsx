@@ -438,7 +438,7 @@ export default function AdminDepartmentsPage() {
                 <AlertTriangle className="h-4 w-4 text-amber-700" /> Confirm Deletion: {deptToDelete.name} ({deptToDelete.code})
               </div>
               <p className="text-amber-800">
-                Removing this department will delete its configuration record from Firestore collection <code className="font-mono bg-amber-100 px-1 py-0.5 rounded">erp_departments</code>.
+                Removing this department will delete its configuration record from Firestore collection.
               </p>
               <p className="text-amber-700 text-[11px]">
                 Tip: If Staffs are still assigned to this department, you can deactivate it instead to keep past records intact.

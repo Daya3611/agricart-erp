@@ -475,7 +475,7 @@ export default function AdminCentersPage() {
                 <AlertTriangle className="h-4 w-4 text-amber-700" /> Confirm Deletion: {centerToDelete.name} ({centerToDelete.code})
               </div>
               <p className="text-amber-800">
-                Removing this center will delete its record from Firestore collection <code className="font-mono bg-amber-100 px-1 py-0.5 rounded">erp_centers</code>.
+                Removing this center will delete its record from Firestore collection .
               </p>
               <p className="text-amber-700 text-[11px]">
                 Tip: If Staffs are assigned here, deactivating the center preserves their historical assignment.

@@ -39,14 +39,14 @@ export function ProfileDropdown({ user }: ProfileDropdownProps) {
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger className="flex items-center gap-2.5 px-3 py-1.5 rounded-full bg-card border border-border hover:border-primary/40 hover:bg-muted/50 transition-all outline-none focus-visible:ring-2 focus-visible:ring-primary shadow-2xs">
+      <DropdownMenuTrigger className="flex items-center gap-2.5 md:px-3 md:py-1.5 rounded-full bg-card border border-border hover:border-primary/40 hover:bg-muted/50 transition-all outline-none focus-visible:ring-2 focus-visible:ring-primary shadow-2xs">
         <Avatar size="sm" className="h-7 w-7 bg-[#228B4E] text-white font-bold text-xs">
           <AvatarFallback>{initials}</AvatarFallback>
         </Avatar>
 
         <div className="hidden sm:flex flex-col items-start pr-1 text-left">
           <span className="text-xs font-bold text-foreground leading-tight truncate max-w-[120px]">
-            {user.fullName || 'Code XR'}
+            {user.fullName || 'User agricart'}
           </span>
           <span className="text-[10px] text-muted-foreground font-medium leading-none truncate max-w-[120px]">
             {user.email || badgeInfo.label}

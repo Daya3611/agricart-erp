@@ -25,6 +25,7 @@ import {
   FileText,
   Calendar,
   MoreVertical,
+  BarChart3,
 } from 'lucide-react';
 import { UserProfile, Department, Center } from '@/types';
 import { Button } from '@/components/ui/button';
@@ -50,6 +51,7 @@ import {
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu';
 import { StaffFormModal } from '@/components/staff/StaffFormModal';
+import { EmployeeInfoModal } from '@/components/staff/EmployeeInfoModal';
 
 export default function AdminStaffManagementPage() {
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
@@ -74,6 +76,10 @@ export default function AdminStaffManagementPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [staffToEdit, setStaffToEdit] = useState<UserProfile | null>(null);
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
+  // Employee Information Modal
+  const [infoModalOpen, setInfoModalOpen] = useState(false);
+  const [selectedStaffForInfo, setSelectedStaffForInfo] = useState<UserProfile | null>(null);
 
   // Compliance & History View Modal
   const [complianceModalOpen, setComplianceModalOpen] = useState(false);
@@ -228,6 +234,11 @@ export default function AdminStaffManagementPage() {
     }
   };
 
+  const handleOpenInfo = (staff: UserProfile) => {
+    setSelectedStaffForInfo(staff);
+    setInfoModalOpen(true);
+  };
+
   const roleBadges: Record<string, { label: string; variant: any }> = {
     super_admin: { label: 'Super Admin', variant: 'default' },
     admin: { label: 'Admin', variant: 'info' },
@@ -375,7 +386,7 @@ export default function AdminStaffManagementPage() {
                 Employee Directory ({totalCount})
               </CardTitle>
               <CardDescription className="text-xs">
-                Synchronized with Firebase Auth and stored in collection `erp_emp`
+                {loading ? 'Loading employee records...' : `Showing ${staffList.length} of ${totalCount} employees.`}
               </CardDescription>
             </div>
             <div className="text-xs text-slate-500 font-medium">
@@ -463,11 +474,22 @@ export default function AdminStaffManagementPage() {
                               <Button
                                 size="sm"
                                 variant="outline"
-                                title="View Reports & Compliance"
-                                onClick={() => handleOpenCompliance(staff)}
+                                title="View Employee Information"
+                                onClick={() => handleOpenInfo(staff)}
                                 className="h-8 w-8 p-0 text-slate-600 hover:text-emerald-600 hover:bg-emerald-50"
                               >
                                 <FileText className="h-3.5 w-3.5" />
+                              </Button>
+
+                              {/* Reports & Compliance Button */}
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                title="View Reports & Compliance"
+                                onClick={() => handleOpenCompliance(staff)}
+                                className="h-8 w-8 p-0 text-slate-600 hover:text-blue-600 hover:bg-blue-50"
+                              >
+                                <BarChart3 className="h-3.5 w-3.5" />
                               </Button>
 
                               {/* Resend Invitation Button */}
@@ -615,10 +637,10 @@ export default function AdminStaffManagementPage() {
                         <Button
                           size="sm"
                           variant="outline"
-                          onClick={() => handleOpenCompliance(staff)}
+                          onClick={() => handleOpenInfo(staff)}
                           className="flex-1 h-10 text-xs font-semibold text-slate-700"
                         >
-                          <FileText className="h-4 w-4 mr-1 text-emerald-600" /> Reports
+                          <FileText className="h-4 w-4 mr-1 text-emerald-600" /> Details
                         </Button>
 
                         {canEditThisStaff && (
@@ -737,7 +759,7 @@ export default function AdminStaffManagementPage() {
         >
           {complianceLoading ? (
             <div className="p-8 text-center text-xs text-slate-500">
-              Loading compliance data from erp_daily_reports...
+              Loading compliance data from Database
             </div>
           ) : !complianceData ? (
             <div className="p-8 text-center text-xs text-slate-500">No report records found.</div>
@@ -777,7 +799,7 @@ export default function AdminStaffManagementPage() {
               {/* Reports History Table */}
               <div>
                 <h4 className="font-bold text-slate-900 mb-2 flex items-center gap-1.5">
-                  <Clock className="h-4 w-4 text-slate-500" /> Recent Report History (erp_daily_reports)
+                  <Clock className="h-4 w-4 text-slate-500" /> Recent Report History 
                 </h4>
                 {complianceData.reports.length === 0 ? (
                   <div className="p-6 text-center text-slate-400 bg-slate-50 rounded-xl border border-slate-100">

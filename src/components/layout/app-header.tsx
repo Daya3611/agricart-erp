@@ -48,7 +48,7 @@ export function AppHeader({
         {/* Left Section: Brand Logo & Title */}
         <div className="flex items-center gap-3">
           {/* Mobile hamburger menu toggle */}
-          {onOpenMobileMenu && (
+          {/* {onOpenMobileMenu && (
             <button
               type="button"
               onClick={onOpenMobileMenu}
@@ -57,7 +57,7 @@ export function AppHeader({
             >
               <Menu className="h-4 w-4" />
             </button>
-          )}
+          )} */}
 
           <Link
             href={homeHref}
