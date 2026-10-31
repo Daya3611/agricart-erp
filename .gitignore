@@ -46,3 +46,11 @@ next-env.d.ts
 .dev.vars*
 !.dev.vars.example
 
+# other
+.agent
+.agents
+.aider-desk
+.gemini
+.gsd
+.open-next
+
