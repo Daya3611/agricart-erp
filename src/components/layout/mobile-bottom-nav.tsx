@@ -25,11 +25,8 @@ import {
   Menu,
   ChevronRight,
   LogOut,
-  Sun,
-  Moon,
   type LucideIcon,
 } from 'lucide-react';
-import { ThemeToggleSegmented, useThemeTransition } from './ThemeToggleCapsule';
 import { UserProfile, UserRole } from '@/types';
 import { cn } from '@/lib/utils/cn';
 import {
@@ -55,7 +52,6 @@ interface NavDestination {
 export function MobileBottomNav({ user }: MobileBottomNavProps) {
   const pathname = usePathname();
   const [moreSheetOpen, setMoreSheetOpen] = useState(false);
-  const { isDark } = useThemeTransition();
 
   const role = user.role;
   const isSuperAdmin = role === 'super_admin';
@@ -252,26 +248,6 @@ export function MobileBottomNav({ user }: MobileBottomNavProps) {
           </SheetHeader>
 
           <div className="py-2 space-y-4">
-            {/* Appearance / Theme Toggle in Sheet */}
-            <div className="p-3 rounded-2xl bg-muted/40 border border-border flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <div className="h-8 w-8 rounded-xl bg-card border border-border flex items-center justify-center text-foreground shadow-2xs">
-                  {isDark ? (
-                    <Moon className="h-4 w-4 text-primary" />
-                  ) : (
-                    <Sun className="h-4 w-4 text-amber-500" />
-                  )}
-                </div>
-                <div>
-                  <p className="text-xs font-bold text-foreground">Appearance</p>
-                  <p className="text-[11px] text-muted-foreground">
-                    {isDark ? 'Dark Mode' : 'Light Mode'}
-                  </p>
-                </div>
-              </div>
-              <ThemeToggleSegmented />
-            </div>
-
             {getSecondaryGroups().map((group, idx) => (
               <div key={idx} className="space-y-1">
                 <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider px-2">

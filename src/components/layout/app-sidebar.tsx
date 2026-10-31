@@ -17,7 +17,6 @@ import {
   CalendarOff,
 } from 'lucide-react';
 import { UserProfile, UserRole } from '@/types';
-import { ThemeToggleCapsule } from './ThemeToggleCapsule';
 import { Tooltip } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils/cn';
 
@@ -73,13 +72,9 @@ export function AppSidebar({ user, onNavigate, className }: AppSidebarProps) {
         className
       )}
     >
-      {/* 1. Top Capsule: Theme Mode Toggle */}
-      <div className="pointer-events-auto">
-        <ThemeToggleCapsule />
-      </div>
-
-      {/* 2. Center Dock: Primary Module Icons */}
-      <div className="pointer-events-auto bg-card border border-border rounded-[22px] p-2 flex flex-col items-center gap-2 shadow-2xs card-saas-shadow">
+      <div className="flex-1 flex flex-col items-center justify-center">
+        {/* Center Dock: Primary Module Icons */}
+        <div className="pointer-events-auto bg-card border border-border rounded-[22px] p-2 flex flex-col items-center gap-2 shadow-2xs card-saas-shadow">
         {dockItems.map((item) => {
           const Icon = item.icon;
           const isActive = item.exact
@@ -105,6 +100,7 @@ export function AppSidebar({ user, onNavigate, className }: AppSidebarProps) {
             </Tooltip>
           );
         })}
+        </div>
       </div>
 
       {/* 3. Bottom Dock: Audit Logs / History & Logout */}

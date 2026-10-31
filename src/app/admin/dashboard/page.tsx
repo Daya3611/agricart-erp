@@ -171,10 +171,10 @@ export default function AdminDashboardPage() {
       />
 
       {/* 4. Relevant Admin Operations: 6 Action Shortcuts */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3.5">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5">
         {/* Action 1: Manage Employees */}
         <Link href="/admin/staff">
-          <div className="p-4 bg-card rounded-[20px] border border-border hover:border-primary/40 transition-all flex items-center justify-between shadow-2xs group card-saas-hover">
+          <div className="p-4 bg-card rounded-full border border-border hover:border-primary/40 transition-all flex items-center justify-between shadow-2xs group card-saas-hover">
             <div className="flex items-center gap-3">
               <div className="h-9 w-9 rounded-full bg-primary-light text-primary flex items-center justify-center group-hover:bg-[#d2ecd9] dark:group-hover:bg-[#1f3d2a] transition-colors">
                 <Users className="h-4 w-4" />
@@ -190,7 +190,7 @@ export default function AdminDashboardPage() {
 
         {/* Action 2: Review Reports */}
         <Link href="/admin/pending-reviews">
-          <div className="p-4 bg-card rounded-[20px] border border-border hover:border-primary/40 transition-all flex items-center justify-between shadow-2xs group card-saas-hover">
+          <div className="p-4 bg-card rounded-full border border-border hover:border-primary/40 transition-all flex items-center justify-between shadow-2xs group card-saas-hover">
             <div className="flex items-center gap-3">
               <div className="h-9 w-9 rounded-full bg-[#EEF4FF] dark:bg-[#172554]/40 text-[#1D60C9] dark:text-[#60a5fa] flex items-center justify-center group-hover:bg-[#dce9fc] dark:group-hover:bg-[#1e3a8a]/50 transition-colors">
                 <Clock className="h-4 w-4" />
@@ -206,7 +206,7 @@ export default function AdminDashboardPage() {
 
         {/* Action 3: Manage Departments and Centers */}
         <Link href="/admin/departments">
-          <div className="p-4 bg-card rounded-[20px] border border-border hover:border-primary/40 transition-all flex items-center justify-between shadow-2xs group card-saas-hover">
+          <div className="p-4 bg-card rounded-full border border-border hover:border-primary/40 transition-all flex items-center justify-between shadow-2xs group card-saas-hover">
             <div className="flex items-center gap-3">
               <div className="h-9 w-9 rounded-full bg-[#F5F0FF] dark:bg-[#3b0764]/40 text-[#6B21A8] dark:text-[#c084fc] flex items-center justify-center group-hover:bg-[#ece2fc] dark:group-hover:bg-[#581c87]/50 transition-colors">
                 <Building2 className="h-4 w-4" />
@@ -222,7 +222,7 @@ export default function AdminDashboardPage() {
 
         {/* Action 4: Manage Leaves */}
         <Link href="/admin/leaves">
-          <div className="p-4 bg-card rounded-[20px] border border-border hover:border-primary/40 transition-all flex items-center justify-between shadow-2xs group card-saas-hover">
+          <div className="p-4 bg-card rounded-full border border-border hover:border-primary/40 transition-all flex items-center justify-between shadow-2xs group card-saas-hover">
             <div className="flex items-center gap-3">
               <div className="h-9 w-9 rounded-full bg-[#FEF7E8] dark:bg-[#451a03]/40 text-[#D99A28] dark:text-[#fbbf24] flex items-center justify-center group-hover:bg-[#faeccb] dark:group-hover:bg-[#78350f]/50 transition-colors">
                 <CalendarOff className="h-4 w-4" />
@@ -238,7 +238,7 @@ export default function AdminDashboardPage() {
 
         {/* Action 5: Monthly Reports */}
         <Link href="/admin/reports/monthly">
-          <div className="p-4 bg-card rounded-[20px] border border-border hover:border-primary/40 transition-all flex items-center justify-between shadow-2xs group card-saas-hover">
+          <div className="p-4 bg-card rounded-full border border-border hover:border-primary/40 transition-all flex items-center justify-between shadow-2xs group card-saas-hover">
             <div className="flex items-center gap-3">
               <div className="h-9 w-9 rounded-full bg-primary-light text-primary flex items-center justify-center group-hover:bg-[#d2ecd9] dark:group-hover:bg-[#1f3d2a] transition-colors">
                 <FileText className="h-4 w-4" />
@@ -254,7 +254,7 @@ export default function AdminDashboardPage() {
 
         {/* Action 6: Analytics */}
         <Link href="/admin/analytics">
-          <div className="p-4 bg-card rounded-[20px] border border-border hover:border-primary/40 transition-all flex items-center justify-between shadow-2xs group card-saas-hover">
+          <div className="p-4 bg-card rounded-full border border-border hover:border-primary/40 transition-all flex items-center justify-between shadow-2xs group card-saas-hover">
             <div className="flex items-center gap-3">
               <div className="h-9 w-9 rounded-full bg-muted text-foreground flex items-center justify-center group-hover:bg-primary-light transition-colors">
                 <BarChart3 className="h-4 w-4" />

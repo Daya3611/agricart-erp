@@ -284,52 +284,67 @@ export function VertixBalanceCard({
           </div>
 
           {/* Mini Cards Breakdown: Departments, Centers, Leaves (Exact 3-col layout) */}
-          <div className="pt-2 border-t border-border space-y-2.5">
-            <div className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">
-              Operational Hubs
+          
+          <div className="border-t border-border pt-3 mt-1 space-y-3 min-w-0">
+            <div className="flex items-center justify-between gap-2">
+              <h3 className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                Operational Hubs
+              </h3>
+              <span className="text-[10px] text-muted-foreground">
+                Organization Overview
+              </span>
             </div>
 
-            <div className="grid grid-cols-3 gap-2">
-              {/* Mini Card 1: Departments */}
-              <div className="p-2.5 rounded-2xl bg-muted/60 border border-border space-y-1">
-                <div className="text-[11px] font-bold text-muted-foreground truncate">
+            <div className="grid grid-cols-3 gap-2 min-w-0">
+
+              {/* Departments */}
+              <div className="min-w-0 min-h-[100px] rounded-xl border border-border bg-muted/40 p-2.5 flex flex-col justify-between gap-2">
+                <div className="text-[11px] font-semibold text-muted-foreground leading-tight">
                   Departments
                 </div>
-                <div className="text-xs font-extrabold text-foreground truncate">
-                  {deptCount} Active
+
+                <div className="text-lg font-extrabold text-foreground leading-none">
+                  {deptCount}
                 </div>
-                <span className="inline-block text-[10px] font-semibold text-primary">
-                  Configured
-                </span>
+
+                <div className="text-[10px] font-semibold text-primary leading-tight">
+                  Active
+                </div>
               </div>
 
-              {/* Mini Card 2: Centers */}
-              <div className="p-2.5 rounded-2xl bg-muted/60 border border-border space-y-1">
-                <div className="text-[11px] font-bold text-muted-foreground truncate">
+              {/* Centers */}
+              <div className="min-w-0 min-h-[100px] rounded-xl border border-border bg-muted/40 p-2.5 flex flex-col justify-between gap-2">
+                <div className="text-[11px] font-semibold text-muted-foreground leading-tight">
                   Centers
                 </div>
-                <div className="text-xs font-extrabold text-foreground truncate">
-                  {centerCount} Hubs
+
+                <div className="text-lg font-extrabold text-foreground leading-none">
+                  {centerCount}
                 </div>
-                <span className="inline-block text-[10px] font-semibold text-primary">
+
+                <div className="text-[10px] font-semibold text-primary leading-tight">
                   Active
-                </span>
+                </div>
               </div>
 
-              {/* Mini Card 3: Leaves */}
-              <div className="p-2.5 rounded-2xl bg-muted/60 border border-border space-y-1">
-                <div className="text-[11px] font-bold text-muted-foreground truncate">
+              {/* Staff on Leave */}
+              <div className="min-w-0 min-h-[100px] rounded-xl border border-border bg-muted/40 p-2.5 flex flex-col justify-between gap-2">
+                <div className="text-[11px] font-semibold text-muted-foreground leading-tight">
                   On Leave
                 </div>
-                <div className="text-xs font-extrabold text-foreground truncate">
-                  {onLeaveCount} Staff
+
+                <div className="text-lg font-extrabold text-foreground leading-none">
+                  {onLeaveCount}
                 </div>
-                <span className="inline-block text-[10px] font-semibold text-muted-foreground">
+
+                <div className="text-[10px] font-semibold text-muted-foreground leading-tight">
                   Authorized
-                </span>
+                </div>
               </div>
+
             </div>
           </div>
+
         </div>
       </Card>
 
