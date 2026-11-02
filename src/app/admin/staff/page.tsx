@@ -215,6 +215,11 @@ export default function AdminStaffManagementPage() {
     }
   };
 
+  const handleOpenInfo = (staff: UserProfile) => {
+    setSelectedStaffForInfo(staff);
+    setInfoModalOpen(true);
+  };
+
   const handleOpenCompliance = async (staff: UserProfile) => {
     setSelectedStaffForCompliance(staff);
     setComplianceModalOpen(true);
@@ -232,11 +237,6 @@ export default function AdminStaffManagementPage() {
     } finally {
       setComplianceLoading(false);
     }
-  };
-
-  const handleOpenInfo = (staff: UserProfile) => {
-    setSelectedStaffForInfo(staff);
-    setInfoModalOpen(true);
   };
 
   const roleBadges: Record<string, { label: string; variant: any }> = {
@@ -470,7 +470,7 @@ export default function AdminStaffManagementPage() {
                           </TableCell>
                           <TableCell className="text-right">
                             <div className="flex items-center justify-end gap-1">
-                              {/* Compliance and Report History Button */}
+                              {/* Employee Information Details Button */}
                               <Button
                                 size="sm"
                                 variant="outline"
@@ -481,7 +481,7 @@ export default function AdminStaffManagementPage() {
                                 <FileText className="h-3.5 w-3.5" />
                               </Button>
 
-                              {/* Reports & Compliance Button */}
+                              {/* Compliance and Report History Button */}
                               <Button
                                 size="sm"
                                 variant="outline"
@@ -669,6 +669,10 @@ export default function AdminStaffManagementPage() {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end" className="w-52">
+                            <DropdownMenuItem onClick={() => handleOpenCompliance(staff)}>
+                              <BarChart3 className="h-4 w-4 mr-2 text-emerald-600" /> Reports & Compliance
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
                             {!isDeactivated && (
                               <>
                                 <DropdownMenuItem onClick={() => handleResendInvite(staff)}>
@@ -744,6 +748,23 @@ export default function AdminStaffManagementPage() {
           onSuccess={() => {
             fetchStaffData();
             showNotification('success', staffToEdit ? 'Employee updated successfully.' : 'New employee registered successfully.');
+          }}
+        />
+      )}
+
+      {/* Employee Information Modal */}
+      {infoModalOpen && selectedStaffForInfo && (
+        <EmployeeInfoModal
+          open={infoModalOpen}
+          onOpenChange={setInfoModalOpen}
+          staff={selectedStaffForInfo}
+          canEdit={isSuperAdmin || (selectedStaffForInfo.role !== 'admin' && selectedStaffForInfo.role !== 'super_admin')}
+          onEdit={(staff) => {
+            setStaffToEdit(staff);
+            setModalOpen(true);
+          }}
+          onViewCompliance={(staff) => {
+            handleOpenCompliance(staff);
           }}
         />
       )}

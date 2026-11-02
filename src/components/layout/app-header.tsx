@@ -44,7 +44,7 @@ export function AppHeader({
 
   return (
     <>
-      <header className="h-16 sm:h-20 bg-transparent px-3 sm:px-6 md:px-8 flex items-center justify-between sticky top-0 z-20 backdrop-blur-md">
+      <header className="h-16 sm:h-20 bg-background px-3 sm:px-6 md:px-8 flex items-center justify-between sticky top-0 z-20 backdrop-blur-md">
         {/* Left Section: Brand Logo & Title */}
         <div className="flex items-center gap-3">
           {/* Mobile hamburger menu toggle */}

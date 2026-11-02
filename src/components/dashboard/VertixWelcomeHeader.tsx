@@ -35,7 +35,7 @@ export function VertixWelcomeHeader({
   return (
     <div className="space-y-1.5 mb-2">
       <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-foreground">
-        {getGreeting()}, {displayName}
+        {getGreeting()}, <span className="text-primary underline">{displayName}</span>
       </h1>
       <p className="text-xs sm:text-sm font-medium text-muted-foreground">
         {subtitle || 'Stay on top of your tasks, monitor progress, and track status.'}
