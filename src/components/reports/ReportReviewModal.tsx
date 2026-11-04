@@ -15,14 +15,18 @@ import {
   ShieldCheck,
   RotateCcw,
   Calendar,
+  Download,
+  Navigation,
 } from 'lucide-react';
-import { DailyReport, UserProfile } from '@/types';
+import { DailyReport, UserProfile, FieldReport } from '@/types';
 import { Dialog } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { AttachmentGallery } from './AttachmentGallery';
 import { formatReadableDateTime } from '@/lib/utils/date-utils';
 import { RequestEditDialog } from './RequestEditDialog';
+import { formatGpsCoordinates, getGoogleMapsUrl } from '@/lib/utils/geolocation';
+import { LocationDisplayCard } from '@/components/reports/LocationDisplayCard';
 
 interface ReportReviewModalProps {
   report: DailyReport | null;
@@ -43,11 +47,25 @@ export function ReportReviewModal({
   const [requestEditOpen, setRequestEditOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [fieldReportDetails, setFieldReportDetails] = useState<FieldReport | null>(null);
 
   React.useEffect(() => {
     setComment('');
     setFeedback(null);
     setRequestEditOpen(false);
+    setFieldReportDetails(null);
+
+    if (report?.id && open) {
+      // Fetch full field report details if available
+      fetch(`/api/field-reports/${report.id}`)
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.success && data.report) {
+            setFieldReportDetails(data.report);
+          }
+        })
+        .catch(() => {});
+    }
   }, [report?.id, open]);
 
   if (!report) return null;
@@ -64,7 +82,12 @@ export function ReportReviewModal({
     setFeedback(null);
 
     try {
-      const res = await fetch(`/api/reports/${report.id}/review`, {
+      const isFieldReport = report.id.startsWith('field_rep_') || Boolean(fieldReportDetails);
+      const endpoint = isFieldReport
+        ? `/api/field-reports/${report.id}/review`
+        : `/api/reports/${report.id}/review`;
+
+      const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: actionStatus, actionStatus, comment }),
@@ -73,6 +96,15 @@ export function ReportReviewModal({
       const data = await res.json();
       if (!res.ok || !data.success) {
         throw new Error(data.error || 'Failed to update report status.');
+      }
+
+      // Also update field report review status if applicable
+      if (!isFieldReport && fieldReportDetails) {
+        await fetch(`/api/field-reports/${report.id}/review`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ actionStatus, comment }),
+        }).catch(() => {});
       }
 
       setFeedback({ type: 'success', message: `Report successfully updated to ${actionStatus.replace('_', ' ')}!` });
@@ -130,13 +162,23 @@ export function ReportReviewModal({
                 </Badge>
               )}
             </div>
-            <div className="text-xs text-muted-foreground font-medium">
-              Submitted: <span className="font-bold text-foreground">{formatReadableDateTime(report.submittedAt)}</span>
-              {report.resubmittedAt && (
-                <span className="ml-2 text-purple-600 dark:text-purple-400 font-bold">
-                  • Resubmitted: {formatReadableDateTime(report.resubmittedAt)}
-                </span>
-              )}
+            <div className="flex items-center gap-3">
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => window.open(`/api/field-reports/${report.id}/pdf`, '_blank')}
+                className="bg-primary hover:bg-primary/90 text-white font-bold text-xs h-8 rounded-xl shadow-xs"
+              >
+                <Download className="h-3.5 w-3.5 mr-1" /> Download Daily PDF (1 Page)
+              </Button>
+              <div className="text-xs text-muted-foreground font-medium">
+                Submitted: <span className="font-bold text-foreground">{formatReadableDateTime(report.submittedAt)}</span>
+                {report.resubmittedAt && (
+                  <span className="ml-2 text-purple-600 dark:text-purple-400 font-bold">
+                    • Resubmitted: {formatReadableDateTime(report.resubmittedAt)}
+                  </span>
+                )}
+              </div>
             </div>
           </div>
 
@@ -164,6 +206,81 @@ export function ReportReviewModal({
               </div>
             </div>
           </div>
+
+          {/* Field Activity Slots & GPS Tracking Breakdown */}
+          {fieldReportDetails && fieldReportDetails.activities && fieldReportDetails.activities.length > 0 && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between border-b border-border pb-1">
+                <h3 className="text-sm font-bold uppercase tracking-wider text-primary">
+                  Recorded Activity Slots ({fieldReportDetails.activities.length} Slots)
+                </h3>
+              </div>
+
+              {fieldReportDetails.finalizationGps && (
+                <LocationDisplayCard
+                  location={fieldReportDetails.finalizationGps}
+                  label="Daily Report Finalization Location"
+                  status={fieldReportDetails.finalizationLocationStatus}
+                />
+              )}
+
+              <div className="space-y-2">
+                {fieldReportDetails.activities.map((act) => (
+                  <div key={act.slotNumber} className="p-3 bg-card rounded-xl border border-border text-xs space-y-1.5">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className="h-5 w-5 rounded bg-primary text-white font-bold text-[10px] flex items-center justify-center">
+                          {act.slotNumber}
+                        </span>
+                        <span className="font-bold text-foreground">
+                          {act.activityNameLabel || act.activityName?.replace(/_/g, ' ')}
+                        </span>
+                        <Badge variant="outline" className="text-[10px]">
+                          {act.activityName === 'desk_job' ? 'Desk Job' : (act.village || 'Field')}
+                        </Badge>
+                      </div>
+
+                      <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                        <span>{act.activityStart ? act.activityStart.split('T')[1]?.slice(0, 5) : '—'} - {act.activityEnd ? act.activityEnd.split('T')[1]?.slice(0, 5) : '—'}</span>
+                        <span>•</span>
+                        <span className="font-bold text-primary">{act.durationMinutes || 0} mins</span>
+                        {act.activityName !== 'desk_job' && (
+                          <>
+                            <span>•</span>
+                            <span>{act.totalParticipants || 0} participants (M: {act.maleParticipants || 0}, F: {act.femaleParticipants || 0})</span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+
+                    <p className="text-muted-foreground leading-relaxed">{act.observations}</p>
+
+                    {/* Start & End Location Cards with Human-Readable Addresses */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                      <LocationDisplayCard
+                        location={act.activityStartLocation || act.activityStartGps}
+                        label="Start Location"
+                        status={act.activityStartLocationStatus}
+                        variant="compact"
+                      />
+                      <LocationDisplayCard
+                        location={act.activityEndLocation || act.activityEndGps}
+                        label="End Location"
+                        status={act.activityEndLocationStatus}
+                        variant="compact"
+                      />
+                    </div>
+
+                    {act.followUpRequired && (
+                      <div className="text-[11px] text-amber-700 dark:text-amber-400 font-medium pt-1">
+                        Follow-up: {act.followUpDetails || 'Yes'} {act.followUpDate ? `(Target: ${act.followUpDate})` : ''}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Activity Details Breakdown (Read-Only) */}
           <div className="space-y-4">

@@ -20,6 +20,7 @@ import {
   ArrowRight,
   Calendar,
   RotateCcw,
+  Download,
 } from 'lucide-react';
 import { DailyReport, ReportAttachment } from '@/types';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
@@ -407,6 +408,16 @@ export default function StaffReportHistoryPage() {
                           <Eye className="h-3.5 w-3.5 mr-1" /> View Report
                         </Button>
 
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => window.open(`/api/field-reports/${r.id}/pdf`, '_blank')}
+                          className="text-xs font-bold h-9 rounded-lg text-primary hover:bg-primary/10"
+                          title="Download Daily PDF"
+                        >
+                          PDF
+                        </Button>
+
                         {(r.status === 'correction_requested' || r.status === 'edit_requested' || r.status === 'draft') && (
                           <Link href={`/staff/daily-report?id=${r.id}`}>
                             <Button size="sm" className="bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-bold h-9 rounded-lg">
@@ -675,6 +686,26 @@ export default function StaffReportHistoryPage() {
                 </div>
               </div>
             )}
+
+            <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => window.open(`/api/field-reports/${viewingReport.id}/pdf`, '_blank')}
+                className="bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs h-9 rounded-xl"
+              >
+                <Download className="h-3.5 w-3.5 mr-1.5" /> Download Daily PDF (1 Page)
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setViewingReport(null)}
+                className="text-xs font-bold h-9 rounded-xl"
+              >
+                Close
+              </Button>
+            </div>
           </div>
         </Dialog>
       )}

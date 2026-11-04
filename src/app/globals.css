@@ -25,7 +25,7 @@
   --muted: #F4F5F2;
   --muted-foreground: #858B83;
   --surface: #FFFFFF;
-  
+
   /* Borders */
   --border: #E7EAE5;
   --border-subtle-green: #CDE7D4;
@@ -61,6 +61,12 @@
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   --safe-left: env(safe-area-inset-left, 0px);
   --safe-right: env(safe-area-inset-right, 0px);
+
+  /* buttons */
+  --button-primary: #ffffff;
+  --button-primary-dark: #000000;
+  --button-primary-light: #a1d1af;
+  --button-primary-foreground: #FFFFFF;
 }
 
 body {
@@ -76,6 +82,7 @@ body {
 .no-scrollbar::-webkit-scrollbar {
   display: none;
 }
+
 .no-scrollbar {
   -ms-overflow-style: none;
   scrollbar-width: none;
@@ -85,13 +92,16 @@ body {
 aside::-webkit-scrollbar {
   width: 5px;
 }
+
 aside::-webkit-scrollbar-track {
   background: transparent;
 }
+
 aside::-webkit-scrollbar-thumb {
   background: #cbd5e1;
   border-radius: 9999px;
 }
+
 aside::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
 }
@@ -186,6 +196,7 @@ aside::-webkit-scrollbar-thumb:hover {
 .card-saas-shadow {
   box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.04), 0 1px 2px -1px rgba(0, 0, 0, 0.02);
 }
+
 .dark .card-saas-shadow {
   box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.35), 0 1px 2px -1px rgba(0, 0, 0, 0.2);
 }
@@ -193,10 +204,12 @@ aside::-webkit-scrollbar-thumb:hover {
 .card-saas-hover {
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
+
 .card-saas-hover:hover {
   box-shadow: 0 4px 12px 0 rgba(34, 139, 78, 0.08);
   border-color: #CDE7D4;
 }
+
 .dark .card-saas-hover:hover {
   box-shadow: 0 4px 16px 0 rgba(0, 0, 0, 0.45);
   border-color: #228B4E;
@@ -208,15 +221,19 @@ aside::-webkit-scrollbar-thumb:hover {
   animation: none;
   mix-blend-mode: normal;
 }
+
 ::view-transition-old(root) {
   z-index: 1;
 }
+
 ::view-transition-new(root) {
   z-index: 9999;
 }
+
 .dark::view-transition-old(root) {
   z-index: 9999;
 }
+
 .dark::view-transition-new(root) {
   z-index: 1;
 }
@@ -240,6 +257,7 @@ textarea,
 }
 
 @media (prefers-reduced-motion: reduce) {
+
   *,
   *::before,
   *::after {
@@ -248,6 +266,7 @@ textarea,
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
   }
+
   ::view-transition-group(*),
   ::view-transition-old(*),
   ::view-transition-new(*) {
@@ -259,9 +278,11 @@ textarea,
   * {
     @apply border-border outline-ring/50;
   }
+
   body {
     @apply bg-background text-foreground;
   }
+
   html {
     @apply font-sans;
   }

@@ -71,7 +71,7 @@ export async function generateMonthlyReportDOCX(report: MonthlyReportSummary): P
   };
 
   const titleParagraph = new Paragraph({
-    text: 'AGRICART FARMERS PRODUCER COMPANY LTD',
+    text: 'MONTHLY EMPLOYEE ACTIVITY & LEAVE REPORT',
     heading: HeadingLevel.TITLE,
     alignment: AlignmentType.LEFT,
     spacing: { after: 120 },
@@ -358,7 +358,7 @@ export async function generateMonthlyReportDOCX(report: MonthlyReportSummary): P
     evidenceChildren.push(
       new Paragraph({ text: '', pageBreakBefore: true, spacing: { after: 120 } }),
       new Paragraph({
-        text: 'AGRICART FARMERS PRODUCER COMPANY LTD',
+        text: 'MONTHLY EMPLOYEE ACTIVITY & LEAVE REPORT',
         heading: HeadingLevel.HEADING_1,
         spacing: { after: 80 },
       }),

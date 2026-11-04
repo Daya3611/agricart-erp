@@ -17,6 +17,14 @@ export const ERP_COLLECTIONS = {
   emailLogs: 'erp_email_logs',
   auditLogs: 'erp_audit_logs',
   systemSettings: 'erp_system_settings',
+  // Field Activity Reporting & Attendance Collections
+  attendanceSessions: 'erp_attendance_sessions',
+  fieldReports: 'erp_field_reports',
+  fieldActivities: 'erp_field_activities',
+  fieldReportAttachments: 'erp_field_report_attachments',
+  fieldReportRevisions: 'erp_field_report_revisions',
+  fieldReportReviews: 'erp_field_report_reviews',
+  fieldReportSyncLogs: 'erp_field_report_sync_logs',
 } as const;
 
 export type ErpCollectionKey = keyof typeof ERP_COLLECTIONS;

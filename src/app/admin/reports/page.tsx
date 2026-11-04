@@ -18,6 +18,7 @@ import {
   RecordCardActions,
 } from '@/components/ui/record-card';
 import { ReportReviewModal } from '@/components/reports/ReportReviewModal';
+import { AdminLiveActivityTracker } from '@/components/reports/AdminLiveActivityTracker';
 import { exportReportsToCSV, exportReportsToPDF } from '@/lib/utils/export-utils';
 import { getDateRangeFromPreset } from '@/lib/utils/date-utils';
 
@@ -151,6 +152,14 @@ export default function AdminReportsPage() {
         </div>
       </div>
 
+      {/* Live Field Operations Activity Monitor */}
+      <AdminLiveActivityTracker
+        onSelectReport={(repId) => {
+          const r = reports.find((item) => item.id === repId);
+          if (r) setSelectedReport(r);
+        }}
+      />
+
       <FilterToolbar
         filters={filters}
         onFilterChange={setFilters}
@@ -210,7 +219,11 @@ export default function AdminReportsPage() {
                         <TableCell className="text-xs font-medium text-muted-foreground">{r.departmentName}</TableCell>
                         <TableCell className="text-xs font-medium text-muted-foreground">{r.centerName}</TableCell>
                         <TableCell className="text-xs font-bold text-primary">
-                          {r.farmersVisited || 0} farmers | {r.meetingsConducted || 0} meetings
+                          {(r as any).isFieldActivity ? (
+                            <span>{(r as any).fieldActivitiesCount || 1} activities • {r.farmersVisited || 0} contacts</span>
+                          ) : (
+                            <span>{r.farmersVisited || 0} farmers | {r.meetingsConducted || 0} meetings</span>
+                          )}
                         </TableCell>
                         <TableCell>
                           <Badge variant={statusBadges[r.status]?.variant || 'secondary'}>
@@ -286,7 +299,9 @@ export default function AdminReportsPage() {
                         label="Field Metrics"
                         value={
                           <span className="text-primary font-semibold text-xs">
-                            {r.farmersVisited || 0} farmers • {r.meetingsConducted || 0} meetings
+                            {(r as any).isFieldActivity
+                              ? `${(r as any).fieldActivitiesCount || 1} activities • ${r.farmersVisited || 0} contacts`
+                              : `${r.farmersVisited || 0} farmers • ${r.meetingsConducted || 0} meetings`}
                           </span>
                         }
                       />

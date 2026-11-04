@@ -17,8 +17,10 @@ import {
   RefreshCw,
   AlertCircle,
   BarChart3,
+  Play,
+  Square,
 } from 'lucide-react';
-import { DailyReport, UserProfile } from '@/types';
+import { DailyReport, UserProfile, AttendanceSession } from '@/types';
 import { VertixWelcomeHeader } from '@/components/dashboard/VertixWelcomeHeader';
 import { VertixBalanceCard } from '@/components/dashboard/VertixBalanceCard';
 import { VertixStatGrid } from '@/components/dashboard/VertixStatGrid';
@@ -27,12 +29,14 @@ import { VertixRecentActivities } from '@/components/dashboard/VertixRecentActiv
 import { Button } from '@/components/ui/button';
 import { ReportReviewModal } from '@/components/reports/ReportReviewModal';
 import { getTodayDateString } from '@/lib/utils/date-utils';
+import { StaffDashboardAttendanceCard } from '@/components/attendance/StaffDashboardAttendanceCard';
 
 export default function StaffDashboardPage() {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [todayReport, setTodayReport] = useState<DailyReport | null>(null);
   const [todayLeave, setTodayLeave] = useState<any | null>(null);
   const [reports, setReports] = useState<DailyReport[]>([]);
+  const [attendanceSession, setAttendanceSession] = useState<AttendanceSession | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedReport, setSelectedReport] = useState<DailyReport | null>(null);
 
@@ -68,6 +72,17 @@ export default function StaffDashboardPage() {
             l.endDate >= todayStr
         );
         if (activeLeave) setTodayLeave(activeLeave);
+      }
+
+      // 4. Fetch today's attendance session
+      try {
+        const attRes = await fetch('/api/attendance/current');
+        const attData = await attRes.json();
+        if (attRes.ok && attData.success) {
+          setAttendanceSession(attData.session);
+        }
+      } catch (attErr) {
+        console.warn('Failed to load current attendance session:', attErr);
       }
     } catch (err) {
       console.error('Failed to load staff dashboard data:', err);
@@ -143,6 +158,37 @@ export default function StaffDashboardPage() {
 
   // Today's Status Banner (Shows real status, deadline, and direct action)
   const renderTodayActionBanner = () => {
+    // 1. Check if there's an ongoing in-progress field activity
+    const activitiesList = Array.isArray((todayReport as any)?.fieldActivities)
+      ? (todayReport as any).fieldActivities
+      : Array.isArray((todayReport as any)?.activities)
+      ? (todayReport as any).activities
+      : [];
+    const inProgressActivity = activitiesList.find((a: any) => a?.activityStatus === 'in_progress');
+    if (inProgressActivity) {
+      return (
+        <div className="p-5 rounded-[22px] bg-emerald-50/90 dark:bg-[#132B1C] border border-emerald-300 dark:border-[#1E4A2E] flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-2xs">
+          <div className="space-y-1">
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-300 text-xs font-bold border border-emerald-300">
+              <span className="h-2 w-2 rounded-full bg-emerald-600 animate-ping" />
+              Active Field Activity In Progress
+            </span>
+            <h2 className="text-base font-extrabold text-foreground">
+              Activity #{inProgressActivity.slotNumber}: {inProgressActivity.activityNameLabel || inProgressActivity.activityName?.replace(/_/g, ' ')}
+            </h2>
+            <p className="text-xs text-muted-foreground">
+              Started at {inProgressActivity.activityStartAt ? new Date(inProgressActivity.activityStartAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true }) : 'recently'}. Field activities operate independently of attendance and continue until completed.
+            </p>
+          </div>
+          <Link href={todayReport ? `/staff/daily-report?id=${todayReport.id}` : '/staff/daily-report'} className="w-full md:w-auto">
+            <Button className="w-full md:w-auto bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs h-10 px-5 rounded-full shadow-xs">
+              <Square className="h-4 w-4 mr-1.5 fill-white" /> Continue &amp; End Activity
+            </Button>
+          </Link>
+        </div>
+      );
+    }
+
     if (!todayReport) {
       if (todayLeave) {
         return (
@@ -301,7 +347,17 @@ export default function StaffDashboardPage() {
       {/* 2. Today's Overview & Action Banner */}
       {renderTodayActionBanner()}
 
-      {/* 3. Vertix 3-Column Asymmetric Grid */}
+      {/* 3. Dashboard Attendance Card (Section 2) */}
+      <div id="attendance-card" className="scroll-mt-6">
+        <StaffDashboardAttendanceCard
+          user={user}
+          session={attendanceSession}
+          loading={loading}
+          onSessionChange={(s) => setAttendanceSession(s)}
+        />
+      </div>
+
+      {/* 4. Vertix 3-Column Asymmetric Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
         {/* Column 1: Today's Overview, Work Details, Deadline & Progress */}
         <div className="lg:col-span-4 w-full">
@@ -311,6 +367,13 @@ export default function StaffDashboardPage() {
             reports={reports}
             todayReport={todayReport}
             todayLeave={todayLeave}
+            attendanceSession={attendanceSession}
+            onAttendanceClick={() => {
+              const el = document.getElementById('attendance-card');
+              if (el) {
+                el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              }
+            }}
             deadline="07:00 PM IST"
           />
         </div>

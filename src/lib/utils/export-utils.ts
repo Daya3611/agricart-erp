@@ -79,10 +79,10 @@ export async function exportReportsToPDF(reports: DailyReport[], title = 'Agrica
     doc.setTextColor(255, 255, 255);
     doc.setFontSize(16);
     doc.setFont('helvetica', 'bold');
-    doc.text('AGRICART FARMERS PRODUCER COMPANY LTD', 14, 12);
+    doc.text(title.toUpperCase(), 14, 12);
     doc.setFontSize(10);
     doc.setFont('helvetica', 'normal');
-    doc.text(title, 14, 18);
+    doc.text('Official Verified Report Submission', 14, 18);
     doc.text(`Generated: ${new Date().toLocaleDateString('en-IN')}`, 240, 18);
 
     doc.setTextColor(15, 23, 42);

@@ -1,4 +1,5 @@
 export * from '@/lib/firebase/collections';
+export * from './field-activity';
 
 export type UserRole = 'super_admin' | 'admin' | 'manager' | 'staff';
 
@@ -362,6 +363,70 @@ export interface AuditLog {
 }
 
 
+
+export interface OrganizationDetails {
+  companyName: string;
+  companyLogoUrl?: string;
+  address?: string;
+  phone?: string;
+  email?: string;
+  footerText?: string;
+}
+
+export interface GlobalReportingConfig {
+  timezone: string; // 'Asia/Kolkata'
+  reportingPeriod: 'calendar_month' | 'cut_off_25th' | 'custom_range';
+  submissionDeadline: string; // '19:00'
+  allowLateSubmissions: boolean;
+  workingDays: number[]; // [1, 2, 3, 4, 5, 6] (1=Monday..6=Saturday)
+  holidays: Array<{ date: string; name: string }>;
+  requireAttendanceForActivity: boolean;
+  minActivitiesPerDay: number;
+  maxDailyActivitySlots: number; // 20
+  leaveCountsAsWorkingDay: boolean;
+  includeLeaveInMissingReports: boolean;
+
+  // Export & Privacy Controls
+  includePhotosInExports: boolean;
+  includeGpsInExports: boolean;
+  gpsVisibleToAdmin: boolean;
+
+  // Format preferences
+  pdfSettings: {
+    showOrgHeader: boolean;
+    headerTitle: string;
+    footerText: string;
+    showSignatures: boolean;
+  };
+  docxSettings: {
+    headerTitle: string;
+    includeTableOfContents: boolean;
+  };
+  excelSettings: {
+    freezePanes: boolean;
+    autoFilter: boolean;
+    highlightMissingDays: boolean;
+    includeReviewHistory: boolean;
+  };
+
+  // Activity field rules
+  requiredActivityFields: {
+    farmerName: boolean;
+    village: boolean;
+    observations: boolean;
+    photoEvidence: boolean;
+  };
+
+  // Permissions
+  exportPermissions: {
+    allowStaffExcelExport: boolean;
+    allowStaffPdfExport: boolean;
+    allowStaffDocxExport: boolean;
+  };
+
+  organization: OrganizationDetails;
+}
+
 export interface SystemSettings {
   id: 'global';
   companyName: string;
@@ -387,6 +452,7 @@ export interface SystemSettings {
     fromEmail: string;
     fromName: string;
   };
+  reportingConfig?: GlobalReportingConfig;
   updatedByUid?: string;
   updatedAt: string;
 }

@@ -1,11 +1,12 @@
 import { NextResponse } from 'next/server';
 import { requireAuthenticatedUser, ReportReviewSchema } from '@/lib/auth/permissions';
 import { reviewReport } from '@/lib/services/report-service';
+import { reviewFieldReport } from '@/lib/services/field-report-service';
 import { fetchDocument } from '@/lib/firebase/firestore';
 import { ERP_COLLECTIONS } from '@/lib/firebase/collections';
 import { sendEmail } from '@/lib/email/resend';
 import { getReportReviewStatusEmail } from '@/lib/email/templates';
-import { DailyReport } from '@/types';
+import { DailyReport, FieldReport } from '@/types';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,8 +15,23 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     const user = await requireAuthenticatedUser();
     const { id: reportId } = await params;
 
-    const reportDoc = (await fetchDocument(ERP_COLLECTIONS.dailyReports, reportId)) as DailyReport | null;
+    let reportDoc = (await fetchDocument(ERP_COLLECTIONS.dailyReports, reportId)) as DailyReport | null;
+
     if (!reportDoc) {
+      // Check field reports collection
+      const fieldDoc = (await fetchDocument(ERP_COLLECTIONS.fieldReports, reportId)) as FieldReport | null;
+      if (fieldDoc) {
+        return NextResponse.json({
+          success: true,
+          reportId,
+          status: fieldDoc.status,
+          reviewerUid: fieldDoc.reviewerUid,
+          reviewerName: fieldDoc.reviewerName,
+          reviewedAt: fieldDoc.reviewedAt,
+          reviewComments: fieldDoc.reviewComments || '',
+          revisionNumber: 1,
+        });
+      }
       return NextResponse.json({ success: false, error: 'Report not found' }, { status: 404 });
     }
 
@@ -42,13 +58,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const body = await req.json();
 
     // Accept both status and actionStatus, and normalize comments
-    const statusInput = body.status || body.actionStatus;
+    const statusInput = (body.status || body.actionStatus || '').toString().trim().toLowerCase();
     const commentInput = body.comment !== undefined ? body.comment : (body.comments !== undefined ? body.comments : '');
 
     const parseResult = ReportReviewSchema.safeParse({
       reportId,
       status: statusInput,
-      comment: commentInput,
+      comment: String(commentInput || ''),
     });
 
     if (!parseResult.success) {
@@ -68,8 +84,17 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       );
     }
 
-    let result;
-    if (actionStatus === 'edit_requested') {
+    let result: { success: boolean; error?: string } = { success: false };
+    const isFieldReport = reportId.startsWith('field_rep_');
+
+    if (isFieldReport) {
+      result = await reviewFieldReport(
+        reviewer as any,
+        reportId,
+        actionStatus as any,
+        comment
+      );
+    } else if (actionStatus === 'edit_requested') {
       const { requestReportEdit } = await import('@/lib/services/report-service');
       result = await requestReportEdit(
         { uid: reviewer.uid, fullName: reviewer.fullName, role: reviewer.role },
@@ -83,6 +108,19 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         actionStatus,
         comment
       );
+
+      // Fallback: If not found in dailyReports, try fieldReports
+      if (!result.success && result.error === 'Report not found.') {
+        const fieldResult = await reviewFieldReport(
+          reviewer as any,
+          reportId,
+          actionStatus as any,
+          comment
+        );
+        if (fieldResult.success) {
+          result = fieldResult;
+        }
+      }
     }
 
     if (!result.success) {
@@ -90,24 +128,48 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     }
 
     // Send email notification to report author
-    const reportDoc = (await fetchDocument(ERP_COLLECTIONS.dailyReports, reportId)) as DailyReport | null;
-    if (reportDoc && reportDoc.staffEmail) {
-      const { subject, html } = getReportReviewStatusEmail({
-        recipientName: reportDoc.staffName,
-        reportDate: reportDoc.reportDate,
-        status: actionStatus,
-        reviewerName: reviewer.fullName,
-        comments: comment,
-      });
+    try {
+      let recipientEmail = '';
+      let recipientName = '';
+      let reportDateStr = '';
+      let staffUid = '';
 
-      await sendEmail({
-        to: reportDoc.staffEmail,
-        subject,
-        html,
-        emailType: actionStatus === 'approved' ? 'report_approved' : 'correction_requested',
-        staffUid: reportDoc.staffUid,
-        reportId,
-      });
+      const reportDoc = (await fetchDocument(ERP_COLLECTIONS.dailyReports, reportId)) as DailyReport | null;
+      if (reportDoc && reportDoc.staffEmail) {
+        recipientEmail = reportDoc.staffEmail;
+        recipientName = reportDoc.staffName;
+        reportDateStr = reportDoc.reportDate;
+        staffUid = reportDoc.staffUid;
+      } else {
+        const fieldDoc = (await fetchDocument(ERP_COLLECTIONS.fieldReports, reportId)) as FieldReport | null;
+        if (fieldDoc && (fieldDoc as any).staffEmail) {
+          recipientEmail = (fieldDoc as any).staffEmail;
+          recipientName = fieldDoc.staffName;
+          reportDateStr = fieldDoc.reportDate;
+          staffUid = fieldDoc.staffUid;
+        }
+      }
+
+      if (recipientEmail) {
+        const { subject, html } = getReportReviewStatusEmail({
+          recipientName: recipientName || 'Team Member',
+          reportDate: reportDateStr || new Date().toISOString(),
+          status: actionStatus,
+          reviewerName: reviewer.fullName,
+          comments: comment,
+        });
+
+        await sendEmail({
+          to: recipientEmail,
+          subject,
+          html,
+          emailType: actionStatus === 'approved' ? 'report_approved' : 'correction_requested',
+          staffUid,
+          reportId,
+        });
+      }
+    } catch (mailErr) {
+      console.warn('Failed to send review status notification email:', mailErr);
     }
 
     return NextResponse.json({ success: true, message: `Report review updated to ${actionStatus}` });

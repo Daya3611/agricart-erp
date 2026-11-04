@@ -90,14 +90,14 @@ export function getNavigationForRole(role: UserRole): NavGroupConfig[] {
         items: [
           {
             id: 'admin-reports',
-            label: 'Daily Reports',
+            label: 'Field Activity Reports',
             href: '/admin/reports',
             icon: FileText,
             exactMatch: true,
           },
           {
             id: 'admin-monthly-reports',
-            label: 'Monthly Report',
+            label: 'Admin Monthly Reports',
             href: '/admin/reports/monthly',
             icon: CalendarDays,
           },
@@ -229,13 +229,13 @@ export function getNavigationForRole(role: UserRole): NavGroupConfig[] {
         },
         {
           id: 'staff-daily-report',
-          label: 'Submit Daily Report',
+          label: 'Field Activity Reporting',
           href: '/staff/daily-report',
           icon: PlusCircle,
         },
         {
           id: 'staff-report-history',
-          label: 'My Reports',
+          label: 'My Field Activities',
           href: '/staff/report-history',
           icon: History,
         },

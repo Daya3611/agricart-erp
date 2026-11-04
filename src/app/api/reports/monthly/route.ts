@@ -1,9 +1,12 @@
 import { NextResponse } from 'next/server';
-import { requireAuthenticatedUser, hasRolePermission } from '@/lib/auth/permissions';
+import { requireAuthenticatedUser } from '@/lib/auth/permissions';
 import { fetchDocument } from '@/lib/firebase/firestore';
 import { ERP_COLLECTIONS } from '@/lib/firebase/collections';
 import { generateMonthlyReport } from '@/lib/services/monthly-report-service';
+import { buildMonthlyReportsDataset } from '@/lib/services/monthly-reports-aggregator';
 import { UserProfile } from '@/types';
+
+export const dynamic = 'force-dynamic';
 
 export async function GET(req: Request) {
   try {
@@ -13,7 +16,11 @@ export async function GET(req: Request) {
     const now = new Date();
     const yearParam = searchParams.get('year');
     const monthParam = searchParams.get('month');
-    let staffUidParam = searchParams.get('staffUid');
+    let staffUidParam = searchParams.get('staffUid') || undefined;
+    let departmentId = searchParams.get('departmentId') || undefined;
+    let centerId = searchParams.get('centerId') || undefined;
+    const reportStatus = searchParams.get('status') || undefined;
+    const attendanceStatus = searchParams.get('attendanceStatus') || undefined;
 
     const year = yearParam ? parseInt(yearParam, 10) : now.getFullYear();
     const month = monthParam ? parseInt(monthParam, 10) : now.getMonth() + 1;
@@ -25,40 +32,41 @@ export async function GET(req: Request) {
       );
     }
 
-    // Role-based security checks
-    let targetStaffUid = staffUidParam;
-
+    // Role-based restrictions
     if (sessionUser.role === 'staff') {
-      // Staff CANNOT view another employee's monthly report
-      targetStaffUid = sessionUser.uid;
-    } else if (!targetStaffUid) {
-      // Default to session user if not provided
-      targetStaffUid = sessionUser.uid;
-    }
-
-    // Manager scope check
-    if (sessionUser.role === 'manager' && targetStaffUid !== sessionUser.uid) {
-      const targetEmp = (await fetchDocument(ERP_COLLECTIONS.employees, targetStaffUid)) as UserProfile | null;
-      if (!targetEmp) {
-        return NextResponse.json({ success: false, error: 'Employee not found' }, { status: 404 });
-      }
-
-      const isDeptMatch = sessionUser.departmentId && targetEmp.departmentId === sessionUser.departmentId;
-      const isCenterMatch = targetEmp.assignedCenterIds?.some((c) => sessionUser.assignedCenterIds?.includes(c));
-
-      if (!isDeptMatch && !isCenterMatch) {
-        return NextResponse.json(
-          { success: false, error: 'FORBIDDEN: You can only view monthly reports for staff in your assigned department.' },
-          { status: 403 }
-        );
+      staffUidParam = sessionUser.uid;
+    } else if (sessionUser.role === 'manager') {
+      if (sessionUser.departmentId) {
+        departmentId = sessionUser.departmentId;
       }
     }
 
-    const report = await generateMonthlyReport(targetStaffUid, year, month);
+    // Build complete monthly dataset across all matching employees
+    const dataset = await buildMonthlyReportsDataset({
+      year,
+      month,
+      departmentId: departmentId && departmentId !== 'all' ? departmentId : undefined,
+      centerId: centerId && centerId !== 'all' ? centerId : undefined,
+      employeeUid: staffUidParam && staffUidParam !== 'all' ? staffUidParam : undefined,
+      reportStatus: reportStatus && reportStatus !== 'all' ? reportStatus : undefined,
+      attendanceStatus: attendanceStatus && attendanceStatus !== 'all' ? attendanceStatus : undefined,
+    });
 
-    return NextResponse.json({ success: true, report });
+    // Also include legacy single report if single staffUid requested for backward compatibility
+    let singleReport = null;
+    if (staffUidParam && staffUidParam !== 'all') {
+      singleReport = await generateMonthlyReport(staffUidParam, year, month);
+    }
+
+    return NextResponse.json({
+      success: true,
+      report: singleReport,
+      dataset,
+      employeeSummaries: dataset.employeeSummaries,
+      dailyRecords: dataset.dailyRecords,
+    });
   } catch (err: any) {
-    const status = err.message.startsWith('UNAUTHORIZED') ? 401 : err.message.startsWith('FORBIDDEN') ? 403 : 500;
+    const status = err.message?.startsWith('UNAUTHORIZED') ? 401 : err.message?.startsWith('FORBIDDEN') ? 403 : 500;
     return NextResponse.json({ success: false, error: err.message }, { status });
   }
 }

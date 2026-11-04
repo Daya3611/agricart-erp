@@ -126,6 +126,74 @@ service cloud.firestore {
     }
 
     // ==========================================
+    // Attendance Sessions: erp_attendance_sessions
+    // ==========================================
+    match /erp_attendance_sessions/{sessionId} {
+      allow read: if isAuthenticated() && (
+        isOwner(resource.data.employeeUid) || isManager() || isAdmin()
+      );
+      allow create: if isAuthenticated() && (
+        request.resource.data.employeeUid == request.auth.uid || isAdmin()
+      );
+      allow update: if isAuthenticated() && (
+        isOwner(resource.data.employeeUid) || isAdmin()
+      );
+      allow delete: if isAdmin();
+    }
+
+    // ==========================================
+    // Field Activity Reports & Activities
+    // ==========================================
+    match /erp_field_reports/{reportId} {
+      allow read: if isAuthenticated() && (
+        isOwner(resource.data.staffUid) ||
+        (isManager() && (getUserData().departmentId == resource.data.departmentId || resource.data.centerId in getUserData().assignedCenterIds)) ||
+        isAdmin()
+      );
+      allow create: if isAuthenticated() && (
+        request.resource.data.staffUid == request.auth.uid || isAdmin()
+      );
+      allow update: if isAuthenticated() && (
+        (isOwner(resource.data.staffUid) && resource.data.status != 'approved') ||
+        (isManager() && (getUserData().departmentId == resource.data.departmentId || resource.data.centerId in getUserData().assignedCenterIds)) ||
+        isAdmin()
+      );
+      allow delete: if isAdmin();
+    }
+
+    match /erp_field_activities/{activityId} {
+      allow read: if isAuthenticated() && (
+        isOwner(resource.data.staffUid) || isManager() || isAdmin()
+      );
+      allow create, update: if isAuthenticated() && (
+        request.resource.data.staffUid == request.auth.uid || isAdmin()
+      );
+      allow delete: if isAdmin();
+    }
+
+    match /erp_field_report_attachments/{attId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated();
+      allow delete: if isAdmin();
+    }
+
+    match /erp_field_report_revisions/{revId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update, delete: if false;
+    }
+
+    match /erp_field_report_reviews/{reviewId} {
+      allow read: if isAuthenticated();
+      allow create: if isManager() || isAdmin();
+      allow update, delete: if isAdmin();
+    }
+
+    match /erp_field_report_sync_logs/{logId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // ==========================================
     // Attachments, Comments & Revisions
     // ==========================================
     match /erp_report_attachments/{attId} {

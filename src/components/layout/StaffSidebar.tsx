@@ -26,8 +26,8 @@ export function StaffSidebar({ user }: StaffSidebarProps) {
 
   const staffNavItems = [
     { label: 'My Dashboard', href: '/staff/dashboard', icon: LayoutDashboard },
-    { label: 'Submit Daily Report', href: '/staff/daily-report', icon: PlusCircle },
-    { label: 'My Report History', href: '/staff/report-history', icon: History },
+    { label: 'Field Activity Reporting', href: '/staff/daily-report', icon: PlusCircle },
+    { label: 'My Field Activities', href: '/staff/report-history', icon: History },
     { label: 'Corrections Required', href: '/staff/corrections', icon: AlertCircle },
     { label: 'My Profile', href: '/staff/profile', icon: User },
   ];

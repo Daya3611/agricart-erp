@@ -76,11 +76,11 @@ export async function generateMonthlyReportPDF(report: MonthlyReportSummary): Pr
   doc.setTextColor(255, 255, 255);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(15);
-  doc.text('AGRICART FARMERS PRODUCER COMPANY LTD', 14, 11);
+  doc.text('MONTHLY EMPLOYEE ACTIVITY & LEAVE REPORT', 14, 11);
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(9.5);
-  doc.text(`Monthly Employee Activity & Leave Report — ${report.monthName}`, 14, 18);
+  doc.text(`Reporting Period: ${report.monthName} • Official Verified Submission`, 14, 18);
 
   const genDate = new Date(report.generatedAt).toLocaleDateString('en-IN', {
     day: 'numeric',
@@ -108,40 +108,62 @@ export async function generateMonthlyReportPDF(report: MonthlyReportSummary): Pr
   doc.setDrawColor(226, 232, 240);
   doc.roundedRect(14, 40, 269, 14, 2, 2, 'S');
 
-  doc.setFontSize(8.5);
+  doc.setFontSize(8.0);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(slateDark[0], slateDark[1], slateDark[2]);
-  doc.text(`Calendar Days: ${report.stats.totalCalendarDays}`, 20, 48.5);
+  doc.text(`Calendar Days: ${report.stats.totalCalendarDays}`, 16, 48.5);
   doc.setTextColor(22, 101, 52);
-  doc.text(`Submitted Reports: ${report.stats.submittedReportDays}`, 65, 48.5);
+  doc.text(`Attended: ${(report.stats as any).daysAttended ?? (report.stats as any).presentDays ?? 0}`, 48, 48.5);
   doc.setTextColor(5, 150, 105);
-  doc.text(`Approved Reports: ${report.stats.approvedReportDays}`, 120, 48.5);
+  doc.text(`Activities: ${(report.stats as any).totalActivities ?? report.stats.submittedReportDays}`, 78, 48.5);
+  doc.setTextColor(30, 64, 175);
+  doc.text(`Work Hours: ${(report.stats as any).totalWorkingPeriod ?? 0}h`, 110, 48.5);
+  doc.setTextColor(16, 185, 129);
+  doc.text(`Approved: ${report.stats.approvedReportDays}`, 146, 48.5);
   doc.setTextColor(147, 51, 234);
-  doc.text(`Approved Leaves: ${report.stats.approvedLeaveDays}`, 175, 48.5);
+  doc.text(`Leaves: ${report.stats.approvedLeaveDays}`, 178, 48.5);
   doc.setTextColor(217, 119, 6);
-  doc.text(`Missing Days: ${report.stats.missingReportDays}`, 230, 48.5);
+  doc.text(`Missing: ${(report.stats as any).missingAttendanceDays ?? report.stats.missingReportDays}`, 208, 48.5);
+  doc.setTextColor(15, 23, 42);
+  doc.text(`Contacts: ${(report.stats as any).totalFarmerContacts ?? report.stats.totalFarmersVisited}`, 240, 48.5);
 
-  // Daily Activity Table Data
+  // Daily Activity Table Data with Field Activity Reporting Records
   const tableHeaders = [
-    ['Date', 'Day', 'Daily Activity Summary', 'Report Status', 'Time', 'Review Status', 'Remarks & Evidence'],
+    ['Date', 'Day', 'Attendance & Locations', 'Field Activities Summary', 'Dur', 'Pts', 'Status', 'Review & Remarks'],
   ];
 
-  const tableRows = report.days.map((d) => {
-    let remarksText = d.remarks;
+  const tableRows = report.days.map((d: any) => {
+    let attendanceText = 'Absent';
+    if (d.attendanceStatus === 'Present' || d.loginTime !== '—') {
+      const inLoc = d.loginLocationName && d.loginLocationName !== 'Location unavailable' ? ` (${d.loginLocationName})` : '';
+      const outLoc = d.logoutLocationName && d.logoutLocationName !== 'Location unavailable' ? ` (${d.logoutLocationName})` : '';
+      attendanceText = `In: ${d.loginTime || '—'}${inLoc}\nOut: ${d.logoutTime || '—'}${outLoc}`;
+    } else if (d.reportStatus === 'On Leave') {
+      attendanceText = `On Leave (${d.leaveType || 'Leave'})`;
+    } else if (d.reportStatus === 'Holiday') {
+      attendanceText = 'Official Holiday';
+    } else if (d.reportStatus === 'Weekly Off') {
+      attendanceText = 'Weekly Off';
+    }
+
+    let remarksText = d.remarks || '—';
     if (d.attachments && d.attachments.length > 0) {
-      const photos = d.attachments.filter((a) => !a.mimeType?.startsWith('video/')).length;
-      const videos = d.attachments.filter((a) => a.mimeType?.startsWith('video/')).length;
-      const tag = `[Evidence: ${photos} photo${photos === 1 ? '' : 's'}${videos > 0 ? `, ${videos} video${videos === 1 ? '' : 's'}` : ''}]`;
+      const photos = d.attachments.filter((a: any) => !a.mimeType?.startsWith('video/')).length;
+      const tag = `[Evidence: ${photos} photo(s)]`;
       remarksText = remarksText === '—' ? tag : `${remarksText}\n${tag}`;
     }
+
+    const durationText = d.activityDurationMinutes > 0 ? `${Math.floor(d.activityDurationMinutes / 60)}h ${d.activityDurationMinutes % 60}m` : '—';
+    const participantsText = String(d.participantCount || d.farmersVisited || 0);
 
     return [
       d.date,
       d.dayOfWeek.slice(0, 3),
+      attendanceText,
       d.dailyActivity,
+      durationText,
+      participantsText,
       d.reportStatus,
-      d.submissionTime,
-      d.reviewStatus,
       remarksText,
     ];
   });
@@ -152,8 +174,8 @@ export async function generateMonthlyReportPDF(report: MonthlyReportSummary): Pr
     body: tableRows,
     theme: 'grid',
     styles: {
-      fontSize: 8,
-      cellPadding: 2.5,
+      fontSize: 7.5,
+      cellPadding: 2.2,
       overflow: 'linebreak',
       textColor: [15, 23, 42],
       lineColor: [226, 232, 240],
@@ -169,26 +191,27 @@ export async function generateMonthlyReportPDF(report: MonthlyReportSummary): Pr
       fillColor: [248, 250, 249],
     },
     columnStyles: {
-      0: { cellWidth: 22, fontStyle: 'bold' }, // Date
-      1: { cellWidth: 14 }, // Day
-      2: { cellWidth: 102 }, // Activity summary
-      3: { cellWidth: 28, fontStyle: 'bold' }, // Status
-      4: { cellWidth: 18 }, // Time
-      5: { cellWidth: 38 }, // Review
-      6: { cellWidth: 47 }, // Remarks & Evidence
+      0: { cellWidth: 20, fontStyle: 'bold' }, // Date
+      1: { cellWidth: 12 }, // Day
+      2: { cellWidth: 46 }, // Attendance & Locations
+      3: { cellWidth: 84 }, // Activities summary
+      4: { cellWidth: 16, halign: 'center' }, // Duration
+      5: { cellWidth: 12, halign: 'center' }, // Participants
+      6: { cellWidth: 24, fontStyle: 'bold' }, // Status
+      7: { cellWidth: 55 }, // Review & Remarks
     },
     didParseCell: (data) => {
-      if (data.section === 'body' && data.column.index === 3) {
+      if (data.section === 'body' && data.column.index === 6) {
         const val = String(data.cell.raw);
         if (val === 'Approved') {
           data.cell.styles.textColor = [22, 101, 52];
         } else if (val === 'On Leave') {
           data.cell.styles.textColor = [126, 34, 206];
-        } else if (val === 'Missing') {
+        } else if (val === 'Missing' || val.includes('Missing')) {
           data.cell.styles.textColor = [180, 83, 9];
-        } else if (val === 'Correction Requested') {
+        } else if (val.includes('Correction') || val === 'Rejected') {
           data.cell.styles.textColor = [190, 18, 60];
-        } else if (val === 'Submitted' || val === 'Under Review') {
+        } else if (val === 'Submitted' || val === 'Under Review' || val.includes('Activities')) {
           data.cell.styles.textColor = [3, 105, 161];
         }
       }
@@ -207,7 +230,7 @@ export async function generateMonthlyReportPDF(report: MonthlyReportSummary): Pr
       doc.setTextColor(255, 255, 255);
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(12);
-      doc.text('AGRICART FARMERS PRODUCER COMPANY LTD — DAILY PHOTO EVIDENCE', 14, 9.5);
+      doc.text('MONTHLY REPORT — DAILY PHOTO EVIDENCE', 14, 9.5);
 
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(8);
@@ -422,7 +445,7 @@ export async function generateMonthlyReportPDF(report: MonthlyReportSummary): Pr
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(slateMuted[0], slateMuted[1], slateMuted[2]);
     doc.text(
-      `Page ${p} of ${totalPages} | Agricart Farmers Producer Company Ltd`,
+      `Page ${p} of ${totalPages} | Confidential Staff Activity Record`,
       14,
       202
     );

@@ -77,8 +77,8 @@ export function MobileBottomNav({ user }: MobileBottomNavProps) {
     // Staff
     primaryItems = [
       { label: 'Dashboard', href: '/staff/dashboard', icon: LayoutDashboard, exact: true },
-      { label: 'Submit', href: '/staff/daily-report', icon: CirclePlus },
-      { label: 'My Reports', href: '/staff/report-history', icon: History },
+      { label: 'Field Activity', href: '/staff/daily-report', icon: CirclePlus },
+      { label: 'Activities', href: '/staff/report-history', icon: History },
       { label: 'My Leaves', href: '/staff/leaves', icon: CalendarOff },
     ];
   }

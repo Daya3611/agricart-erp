@@ -41,9 +41,68 @@ export async function GET(req: Request) {
       filters.push({ field: 'reportDate', op: '==', value: reportDate });
     }
 
-    let reports = (await fetchCollection(ERP_COLLECTIONS.dailyReports, filters)) as DailyReport[];
+    const fieldReportsRaw = (await fetchCollection(ERP_COLLECTIONS.fieldReports, filters)) as any[];
+    const legacyReports = (await fetchCollection(ERP_COLLECTIONS.dailyReports, filters)) as DailyReport[];
 
-    reports.sort((a: DailyReport, b: DailyReport) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    // Map Field Reports to DailyReport shape
+    const fieldReportsMapped: DailyReport[] = fieldReportsRaw.map((f: any) => {
+      const acts: any[] = f.activities || [];
+      const actNames = acts.map((a) => a.activityNameLabel || a.activityName?.replace(/_/g, ' ') || 'Activity').slice(0, 3).join(', ');
+      const loc = acts[0]?.village || acts[0]?.wadi || 'Field Operations';
+
+      return {
+        id: f.id,
+        staffUid: f.staffUid,
+        employeeId: f.employeeId || 'EMP',
+        staffName: f.staffName || 'Staff',
+        staffEmail: f.staffEmail || '',
+        departmentId: f.departmentId || '',
+        departmentName: f.departmentName || 'Field Operations',
+        centerId: f.centerId || '',
+        centerName: f.centerName || 'Nashik Center',
+        reportDate: f.reportDate,
+        workLocation: loc,
+        workStartTime: f.summary?.firstActivityStart ? f.summary.firstActivityStart.split('T')[1]?.slice(0, 5) : '09:00',
+        workEndTime: f.summary?.lastActivityEnd ? f.summary.lastActivityEnd.split('T')[1]?.slice(0, 5) : '18:00',
+        activities: `${f.summary?.totalActivities || acts.length} activities: ${actNames}${acts.length > 3 ? '...' : ''}`,
+        completedTasks: acts.map((a) => a.observations).filter(Boolean).slice(0, 3).join('; '),
+        farmersVisited: f.summary?.totalParticipantContacts || 0,
+        meetingsConducted: acts.filter((a) => a.activityType === 'group').length,
+        attachments: [],
+        status: f.status,
+        isLate: Boolean(f.isLate),
+        hasLeaveConflict: Boolean(f.hasLeaveConflict),
+        conflictDetails: f.conflictDetails,
+        submittedAt: f.submittedAt,
+        resubmittedAt: f.resubmittedAt,
+        reviewerUid: f.reviewerUid,
+        reviewerName: f.reviewerName,
+        reviewedAt: f.reviewedAt,
+        reviewComments: f.reviewComments,
+        revisionNumber: f.revisionNumber || 1,
+        createdAt: f.createdAt,
+        updatedAt: f.updatedAt,
+        // Additional field activity metadata
+        isFieldActivity: true,
+        fieldActivitiesCount: f.summary?.totalActivities || acts.length,
+        finalizationGps: f.finalizationGps,
+      } as any;
+    });
+
+    // Merge: prioritize field report if both exist for same staffUid and reportDate
+    const seenMap = new Map<string, DailyReport>();
+    for (const fr of fieldReportsMapped) {
+      seenMap.set(`${fr.staffUid}_${fr.reportDate}`, fr);
+    }
+    for (const lr of legacyReports) {
+      const key = `${lr.staffUid}_${lr.reportDate}`;
+      if (!seenMap.has(key)) {
+        seenMap.set(key, lr);
+      }
+    }
+
+    const reports = Array.from(seenMap.values());
+    reports.sort((a, b) => (b.reportDate || '').localeCompare(a.reportDate || '') || new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
     return NextResponse.json({ success: true, reports });
   } catch (err: any) {

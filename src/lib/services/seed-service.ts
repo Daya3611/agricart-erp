@@ -3,7 +3,7 @@ import { ERP_COLLECTIONS } from '@/lib/firebase/collections';
 import { adminAuth, hasValidAdminCredentials } from '@/lib/firebase/admin';
 import { sendEmail } from '@/lib/email/resend';
 import { logAuditAction } from '@/lib/services/audit-service';
-import { Department, Center, UserProfile, SystemSettings } from '@/types';
+import { Department, Center, UserProfile, SystemSettings, GlobalReportingConfig } from '@/types';
 
 export const DEFAULT_DEPARTMENTS: Department[] = [
   {
@@ -92,7 +92,71 @@ export const DEFAULT_CENTERS: Center[] = [
 
 export const DEFAULT_USERS: UserProfile[] = [];
 
+
+export const DEFAULT_GLOBAL_REPORTING_CONFIG: GlobalReportingConfig = {
+  timezone: 'Asia/Kolkata',
+  reportingPeriod: 'calendar_month',
+  submissionDeadline: '19:00',
+  allowLateSubmissions: true,
+  workingDays: [1, 2, 3, 4, 5, 6], // Monday through Saturday
+  holidays: [
+    { date: '2026-01-26', name: 'Republic Day' },
+    { date: '2026-03-03', name: 'Holi / Dhulivandan' },
+    { date: '2026-04-14', name: 'Dr. Ambedkar Jayanti' },
+    { date: '2026-05-01', name: 'Maharashtra Day / Labour Day' },
+    { date: '2026-08-15', name: 'Independence Day' },
+    { date: '2026-10-02', name: 'Mahatma Gandhi Jayanti' },
+    { date: '2026-10-20', name: 'Dussehra' },
+    { date: '2026-11-08', name: 'Diwali' },
+    { date: '2026-12-25', name: 'Christmas' },
+  ],
+  requireAttendanceForActivity: true,
+  minActivitiesPerDay: 1,
+  maxDailyActivitySlots: 20,
+  leaveCountsAsWorkingDay: false,
+  includeLeaveInMissingReports: false,
+  includePhotosInExports: true,
+  includeGpsInExports: true,
+  gpsVisibleToAdmin: true,
+  pdfSettings: {
+    showOrgHeader: true,
+    headerTitle: 'DAILY FIELD ACTIVITY REPORT',
+    footerText: 'Confidential Staff Activity Record • Official Verified Submission',
+    showSignatures: true,
+  },
+  docxSettings: {
+    headerTitle: 'MONTHLY FIELD ACTIVITY & ATTENDANCE REPORT',
+    includeTableOfContents: false,
+  },
+  excelSettings: {
+    freezePanes: true,
+    autoFilter: true,
+    highlightMissingDays: true,
+    includeReviewHistory: true,
+  },
+  requiredActivityFields: {
+    farmerName: true,
+    village: true,
+    observations: true,
+    photoEvidence: false,
+  },
+  exportPermissions: {
+    allowStaffExcelExport: true,
+    allowStaffPdfExport: true,
+    allowStaffDocxExport: true,
+  },
+  organization: {
+    companyName: 'Agricart Farmers Producer Company Ltd',
+    companyLogoUrl: '/logo.png',
+    address: 'Plot 42, MIDC Dindori Road, Nashik, Maharashtra 422004',
+    phone: '+91 253 2500000',
+    email: 'contact@agricartfpc.in',
+    footerText: 'Agricart Farmers Producer Company Ltd • All rights reserved.',
+  },
+};
+
 export const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
+  reportingConfig: DEFAULT_GLOBAL_REPORTING_CONFIG,
   id: 'global',
   companyName: 'Agricart Farmers Producer Company Ltd',
   companyLogoUrl: '/logo.png',

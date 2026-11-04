@@ -15,10 +15,12 @@ import {
   FileEdit,
   ArrowRight,
   ShieldCheck,
+  LogIn,
+  LogOut,
 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { DashboardStats, Center, Department, DailyReport, UserProfile } from '@/types';
+import { DashboardStats, Center, Department, DailyReport, UserProfile, AttendanceSession } from '@/types';
 
 interface VertixBalanceCardProps {
   role?: 'admin' | 'staff' | 'manager';
@@ -29,6 +31,8 @@ interface VertixBalanceCardProps {
   reports?: DailyReport[];
   todayReport?: DailyReport | null;
   todayLeave?: any | null;
+  attendanceSession?: AttendanceSession | null;
+  onAttendanceClick?: () => void;
   deadline?: string;
   onQuickAction?: () => void;
   onExport?: () => void;
@@ -43,6 +47,8 @@ export function VertixBalanceCard({
   reports = [],
   todayReport,
   todayLeave,
+  attendanceSession,
+  onAttendanceClick,
   deadline = '07:00 PM IST',
   onQuickAction,
   onExport,
@@ -87,6 +93,24 @@ export function VertixBalanceCard({
       statusDotColor = 'bg-[#1D60C9]';
     }
 
+    const isAttendanceActive =
+      attendanceSession?.status === 'active' || attendanceSession?.attendanceStatus === 'active';
+    const isAttendanceClosed =
+      attendanceSession?.status === 'closed' ||
+      attendanceSession?.attendanceStatus === 'closed' ||
+      attendanceSession?.attendanceStatus === 'system_closed';
+
+    const handleAttendanceAction = () => {
+      if (onAttendanceClick) {
+        onAttendanceClick();
+      } else {
+        const card = document.getElementById('attendance-card');
+        if (card) {
+          card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }
+    };
+
     return (
       <div className="space-y-4">
         {/* Main Employee Operational Card */}
@@ -124,7 +148,7 @@ export function VertixBalanceCard({
               </div>
             </div>
 
-            {/* Action Buttons: Submit Daily Report & My Reports */}
+            {/* Action Buttons: Submit Daily Report & Attendance Login / Logout */}
             <div className="grid grid-cols-2 gap-2.5 pt-1">
               <Link href="/staff/daily-report" className="w-full">
                 <Button className="w-full bg-[#252923] dark:bg-primary hover:bg-[#176638] text-white font-semibold text-xs h-10 rounded-full flex items-center justify-center gap-1.5 shadow-xs transition-all">
@@ -132,15 +156,36 @@ export function VertixBalanceCard({
                   <span>Submit Daily Report</span>
                 </Button>
               </Link>
-              <Link href="/staff/report-history" className="w-full">
-                <Button
-                  variant="outline"
-                  className="w-full font-semibold text-xs h-10 rounded-full flex items-center justify-center gap-1.5 shadow-2xs transition-all"
-                >
-                  <FileText className="h-3.5 w-3.5 text-muted-foreground" />
-                  <span>My Reports</span>
-                </Button>
-              </Link>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleAttendanceAction}
+                disabled={isAttendanceClosed}
+                className={`w-full font-semibold text-xs h-10 rounded-full flex items-center justify-center gap-1.5 shadow-2xs transition-all ${
+                  isAttendanceActive
+                    ? 'border-rose-300 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40'
+                    : isAttendanceClosed
+                    ? 'opacity-60 bg-muted/50 cursor-not-allowed text-muted-foreground'
+                    : 'border-border text-foreground hover:bg-[#E8F5EC] hover:text-[#228B4E] hover:border-[#CDE7D4]'
+                }`}
+              >
+                {isAttendanceClosed ? (
+                  <>
+                    <CheckCircle2 className="h-3.5 w-3.5 text-[#228B4E]" />
+                    <span>Day Completed</span>
+                  </>
+                ) : isAttendanceActive ? (
+                  <>
+                    <LogOut className="h-3.5 w-3.5 text-rose-600" />
+                    <span>Logout</span>
+                  </>
+                ) : (
+                  <>
+                    <LogIn className="h-3.5 w-3.5 text-[#228B4E]" />
+                    <span>Login</span>
+                  </>
+                )}
+              </Button>
             </div>
 
             {/* Sub-Cards: Department, Center, Status (Exact 3-col layout) */}

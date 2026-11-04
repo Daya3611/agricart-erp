@@ -343,7 +343,7 @@ export async function exportMonthlyReportToPDF(report: MonthlyReportSummary) {
   doc.setTextColor(255, 255, 255);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(15);
-  doc.text('AGRICART FARMERS PRODUCER COMPANY LTD', 14, 11);
+  doc.text('MONTHLY EMPLOYEE ACTIVITY & LEAVE REPORT', 14, 11);
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(9.5);
@@ -474,7 +474,7 @@ export async function exportMonthlyReportToPDF(report: MonthlyReportSummary) {
       doc.setTextColor(255, 255, 255);
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(12);
-      doc.text('AGRICART FARMERS PRODUCER COMPANY LTD — DAILY WORK EVIDENCE', 14, 9.5);
+      doc.text('MONTHLY EMPLOYEE ACTIVITY & LEAVE REPORT — DAILY WORK EVIDENCE', 14, 9.5);
 
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(8);
@@ -686,7 +686,7 @@ export async function exportMonthlyReportToPDF(report: MonthlyReportSummary) {
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(slateMuted[0], slateMuted[1], slateMuted[2]);
     doc.text(
-      `Page ${p} of ${totalPages} | Agricart Farmers Producer Company Ltd`,
+      `Page ${p} of ${totalPages} | Confidential Staff Activity Record`,
       14,
       202
     );
@@ -737,7 +737,7 @@ export async function exportMonthlyReportToDOCX(report: MonthlyReportSummary) {
 
   // 1. Header Paragraphs
   const titleParagraph = new Paragraph({
-    text: 'AGRICART FARMERS PRODUCER COMPANY LTD',
+    text: 'MONTHLY EMPLOYEE ACTIVITY & LEAVE REPORT',
     heading: HeadingLevel.TITLE,
     alignment: AlignmentType.LEFT,
     spacing: { after: 120 },
@@ -1029,7 +1029,7 @@ export async function exportMonthlyReportToDOCX(report: MonthlyReportSummary) {
     evidenceChildren.push(
       new Paragraph({ text: '', pageBreakBefore: true, spacing: { after: 120 } }),
       new Paragraph({
-        text: 'AGRICART FARMERS PRODUCER COMPANY LTD',
+        text: 'MONTHLY EMPLOYEE ACTIVITY & LEAVE REPORT',
         heading: HeadingLevel.HEADING_1,
         spacing: { after: 80 },
       }),

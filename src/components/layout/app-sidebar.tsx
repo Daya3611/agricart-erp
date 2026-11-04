@@ -35,7 +35,8 @@ export function AppSidebar({ user, onNavigate, className }: AppSidebarProps) {
     if (role === 'super_admin' || role === 'admin') {
       return [
         { label: 'Dashboard', href: '/admin/dashboard', icon: LayoutDashboard, exact: true },
-        { label: 'Daily Reports', href: '/admin/reports', icon: FileText, exact: false },
+        { label: 'Field Activity Reports', href: '/admin/reports', icon: FileText, exact: false },
+        { label: 'Admin Monthly Reports', href: '/admin/reports/monthly', icon: CalendarDays, exact: false },
         { label: 'Staff Directory', href: '/admin/staff', icon: Users, exact: false },
         { label: 'Leaves', href: '/admin/leaves', icon: CalendarOff, exact: false },
         { label: 'Analytics', href: '/admin/analytics', icon: BarChart3, exact: false },
@@ -55,8 +56,8 @@ export function AppSidebar({ user, onNavigate, className }: AppSidebarProps) {
     // Staff
     return [
       { label: 'Dashboard', href: '/staff/dashboard', icon: LayoutDashboard, exact: true },
-      { label: 'Submit Daily Report', href: '/staff/daily-report', icon: PlusCircle, exact: false },
-      { label: 'My Reports', href: '/staff/report-history', icon: FileText, exact: false },
+      { label: 'Field Activity Reporting', href: '/staff/daily-report', icon: PlusCircle, exact: false },
+      { label: 'My Field Activities', href: '/staff/report-history', icon: FileText, exact: false },
       { label: 'Leaves', href: '/staff/leaves', icon: CalendarOff, exact: false },
       { label: 'Monthly Report', href: '/staff/reports/monthly', icon: CalendarDays, exact: false },
     ];

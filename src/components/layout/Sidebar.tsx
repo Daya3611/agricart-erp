@@ -19,6 +19,7 @@ import {
   History,
   User,
   LogOut,
+  CalendarDays,
 } from 'lucide-react';
 import Image from 'next/image';
 import { UserProfile, UserRole } from '@/types';
@@ -38,7 +39,8 @@ export function Sidebar({ user }: SidebarProps) {
     { label: 'Staff Management', href: '/staff', icon: Users, roles: ['super_admin', 'admin'] },
     { label: 'Departments', href: '/departments', icon: Building2, roles: ['super_admin', 'admin', 'manager'] },
     { label: 'Centers & Locations', href: '/centers', icon: MapPin, roles: ['super_admin', 'admin', 'manager'] },
-    { label: 'Daily Activity Reports', href: '/reports', icon: FileText, roles: ['super_admin', 'admin', 'manager'] },
+    { label: 'Field Activity Reports', href: '/reports', icon: FileText, roles: ['super_admin', 'admin', 'manager'] },
+    { label: 'Admin Monthly Reports', href: '/admin/reports/monthly', icon: CalendarDays, roles: ['super_admin', 'admin', 'manager'] },
     { label: 'Pending Reviews', href: '/pending-reviews', icon: Clock, roles: ['super_admin', 'admin', 'manager'] },
     { label: 'Missing Reports', href: '/missing-reports', icon: AlertTriangle, roles: ['super_admin', 'admin', 'manager'] },
     { label: 'Analytics & Reports', href: '/analytics', icon: BarChart3, roles: ['super_admin', 'admin', 'manager'] },
@@ -49,8 +51,8 @@ export function Sidebar({ user }: SidebarProps) {
 
   const staffNavItems = [
     { label: 'Staff Dashboard', href: '/staff/dashboard', icon: LayoutDashboard },
-    { label: 'Submit Daily Report', href: '/staff/daily-report', icon: PlusCircle },
-    { label: 'My Report History', href: '/staff/report-history', icon: History },
+    { label: 'Field Activity Reporting', href: '/staff/daily-report', icon: PlusCircle },
+    { label: 'My Field Activities', href: '/staff/report-history', icon: History },
     { label: 'My Profile', href: '/staff/profile', icon: User },
   ];
 

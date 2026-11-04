@@ -7,21 +7,20 @@ import {
   FileSpreadsheet,
   Download,
   AlertTriangle,
-  Building2,
-  MapPin,
   RefreshCw,
-  ImageIcon,
-  Video,
   CheckCircle2,
   Clock,
   CalendarOff,
   AlertCircle,
-  ArrowRight,
   FileText,
-  X,
+  MapPin,
+  ChevronDown,
+  ChevronUp,
+  Image as ImageIcon,
+  Users,
 } from 'lucide-react';
-import { MonthlyReportSummary, UserProfile } from '@/types';
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
+import { MonthlyReportSummary, MonthlyReportsDataset, EmployeeDailyRecordItem, EmployeeDailyActivityDetail } from '@/types';
+import { Card, CardContent } from '@/components/ui/card';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -47,25 +46,39 @@ export default function StaffMonthlyReportPage() {
   const [selectedYear, setSelectedYear] = useState<number>(now.getFullYear());
   const [selectedMonth, setSelectedMonth] = useState<number>(now.getMonth() + 1);
   const [report, setReport] = useState<MonthlyReportSummary | null>(null);
+  const [dataset, setDataset] = useState<MonthlyReportsDataset | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [exportingPDF, setExportingPDF] = useState<boolean>(false);
-  const [exportingDOCX, setExportingDOCX] = useState<boolean>(false);
+  const [exportingExcel, setExportingExcel] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  // Expanded dates state for inspecting individual activity slots
+  const [expandedDates, setExpandedDates] = useState<Set<string>>(new Set());
+
+  const toggleExpandDate = (dateStr: string) => {
+    setExpandedDates((prev) => {
+      const next = new Set(prev);
+      if (next.has(dateStr)) next.delete(dateStr);
+      else next.add(dateStr);
+      return next;
+    });
+  };
 
   const fetchMonthlyReport = async () => {
     setLoading(true);
     setErrorMsg(null);
     try {
-      // Backend automatically restricts to authenticated staff user
       const res = await fetch(`/api/reports/monthly?year=${selectedYear}&month=${selectedMonth}`);
       const data = await res.json();
       if (!res.ok || !data.success) {
         throw new Error(data.error || 'Failed to generate monthly report.');
       }
       setReport(data.report);
+      setDataset(data.dataset);
     } catch (err: any) {
       setErrorMsg(err.message);
       setReport(null);
+      setDataset(null);
     } finally {
       setLoading(false);
     }
@@ -76,7 +89,7 @@ export default function StaffMonthlyReportPage() {
   }, [selectedYear, selectedMonth]);
 
   const handleDownloadPDF = async () => {
-    if (!report) return;
+    if (!report && !dataset) return;
     setExportingPDF(true);
     setErrorMsg(null);
     try {
@@ -87,7 +100,8 @@ export default function StaffMonthlyReportPage() {
         throw new Error(errJson?.error || `Server responded with status ${res.status}`);
       }
       const blob = await res.blob();
-      const cleanEmpId = report.employee.employeeId.replace(/[^a-zA-Z0-9_-]/g, '_');
+      const empId = report?.employee.employeeId || dataset?.employeeSummaries[0]?.employeeId || 'STAFF';
+      const cleanEmpId = empId.replace(/[^a-zA-Z0-9_-]/g, '_');
       const filename = `Agricart_Monthly_Report_${cleanEmpId}_${selectedYear}-${String(selectedMonth).padStart(2, '0')}.pdf`;
       const blobUrl = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -105,20 +119,18 @@ export default function StaffMonthlyReportPage() {
     }
   };
 
-  const handleDownloadDOCX = async () => {
-    if (!report) return;
-    setExportingDOCX(true);
+  const handleDownloadExcel = async () => {
+    setExportingExcel(true);
     setErrorMsg(null);
     try {
-      const url = `/api/reports/monthly/docx?year=${selectedYear}&month=${selectedMonth}`;
+      const url = `/api/reports/monthly/excel?year=${selectedYear}&month=${selectedMonth}`;
       const res = await fetch(url);
       if (!res.ok) {
         const errJson = await res.json().catch(() => null);
         throw new Error(errJson?.error || `Server responded with status ${res.status}`);
       }
       const blob = await res.blob();
-      const cleanEmpId = report.employee.employeeId.replace(/[^a-zA-Z0-9_-]/g, '_');
-      const filename = `Agricart_Monthly_Report_${cleanEmpId}_${selectedYear}-${String(selectedMonth).padStart(2, '0')}.docx`;
+      const filename = `Agricart_Monthly_Activity_Report_${selectedYear}-${String(selectedMonth).padStart(2, '0')}.xlsx`;
       const blobUrl = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = blobUrl;
@@ -128,53 +140,85 @@ export default function StaffMonthlyReportPage() {
       document.body.removeChild(a);
       URL.revokeObjectURL(blobUrl);
     } catch (err: any) {
-      console.error('DOCX export failed:', err);
-      setErrorMsg(`DOCX export failed: ${err.message || 'Unknown error'}`);
+      console.error('Excel export failed:', err);
+      setErrorMsg(`Excel export failed: ${err.message || 'Unknown error'}`);
     } finally {
-      setExportingDOCX(false);
+      setExportingExcel(false);
     }
   };
 
   const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'Approved':
-        return (
-          <Badge className="bg-emerald-50 text-emerald-800 border-emerald-200 font-bold text-[10px]">
-            <CheckCircle2 className="h-3 w-3 mr-1" /> Approved
-          </Badge>
-        );
-      case 'Submitted':
-      case 'Under Review':
-        return (
-          <Badge className="bg-sky-50 text-sky-800 border-sky-200 font-bold text-[10px]">
-            <Clock className="h-3 w-3 mr-1" /> {status}
-          </Badge>
-        );
-      case 'Correction Requested':
-        return (
-          <Badge className="bg-rose-50 text-rose-800 border-rose-200 font-bold text-[10px]">
-            <AlertTriangle className="h-3 w-3 mr-1" /> Correction
-          </Badge>
-        );
-      case 'On Leave':
-        return (
-          <Badge className="bg-purple-50 text-purple-800 border-purple-200 font-bold text-[10px]">
-            <CalendarOff className="h-3 w-3 mr-1" /> On Leave
-          </Badge>
-        );
-      case 'Missing':
-      default:
-        return (
-          <Badge className="bg-amber-50 text-amber-800 border-amber-200 font-bold text-[10px]">
-            <AlertCircle className="h-3 w-3 mr-1" /> Missing
-          </Badge>
-        );
+    const s = (status || '').toLowerCase();
+    if (s.includes('approved')) {
+      return (
+        <Badge className="bg-emerald-50 text-emerald-800 border-emerald-200 font-bold text-[10px]">
+          <CheckCircle2 className="h-3 w-3 mr-1" /> Approved
+        </Badge>
+      );
     }
+    if (s.includes('correction') || s.includes('rejected')) {
+      return (
+        <Badge className="bg-rose-50 text-rose-800 border-rose-200 font-bold text-[10px]">
+          <AlertTriangle className="h-3 w-3 mr-1" /> Correction Required
+        </Badge>
+      );
+    }
+    if (s.includes('leave')) {
+      return (
+        <Badge className="bg-purple-50 text-purple-800 border-purple-200 font-bold text-[10px]">
+          <CalendarOff className="h-3 w-3 mr-1" /> On Leave
+        </Badge>
+      );
+    }
+    if (s.includes('holiday')) {
+      return (
+        <Badge className="bg-indigo-50 text-indigo-800 border-indigo-200 font-bold text-[10px]">
+          <Calendar className="h-3 w-3 mr-1" /> Holiday
+        </Badge>
+      );
+    }
+    if (s.includes('weekly') || s.includes('off')) {
+      return (
+        <Badge className="bg-slate-100 text-slate-700 border-slate-200 font-bold text-[10px]">
+          Weekly Off
+        </Badge>
+      );
+    }
+    if (s.includes('activities recorded') || s.includes('completed')) {
+      return (
+        <Badge className="bg-emerald-50 text-emerald-800 border-emerald-200 font-bold text-[10px]">
+          <CheckCircle2 className="h-3 w-3 mr-1" /> {status}
+        </Badge>
+      );
+    }
+    if (s.includes('present')) {
+      return (
+        <Badge className="bg-blue-50 text-blue-800 border-blue-200 font-bold text-[10px]">
+          <Clock className="h-3 w-3 mr-1" /> Present
+        </Badge>
+      );
+    }
+    if (s.includes('submitted') || s.includes('review')) {
+      return (
+        <Badge className="bg-sky-50 text-sky-800 border-sky-200 font-bold text-[10px]">
+          <Clock className="h-3 w-3 mr-1" /> Pending Review
+        </Badge>
+      );
+    }
+    return (
+      <Badge className="bg-amber-50 text-amber-800 border-amber-200 font-bold text-[10px]">
+        <AlertCircle className="h-3 w-3 mr-1" /> Missing Attendance
+      </Badge>
+    );
   };
+
+  const dailyRecords: EmployeeDailyRecordItem[] = dataset?.dailyRecords || [];
+  const empSummary = dataset?.employeeSummaries?.[0];
+  const stats = report?.stats;
 
   return (
     <div className="space-y-5">
-      {/* 1. Header & Export Actions */}
+      {/* 1. Header & Actions (Excel + PDF only, DOCX removed per spec) */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
         <div>
           <div className="flex items-center gap-2">
@@ -184,34 +228,34 @@ export default function StaffMonthlyReportPage() {
             </h1>
           </div>
           <p className="text-xs sm:text-sm text-slate-500 font-medium mt-1 leading-relaxed">
-            Review your calendar activity log for the month and export signed official PDF or Word copies.
+            Calendar breakdown from real Field Activity records with verified device GPS timestamps.
           </p>
         </div>
 
-        {/* Action Buttons */}
-        <div className="flex items-center gap-2 w-full sm:w-auto">
+        {/* Action Buttons: Export Excel (.xlsx) and Export PDF */}
+        <div className="flex items-center gap-2.5 flex-wrap sm:flex-nowrap">
+          <Button
+            onClick={handleDownloadExcel}
+            disabled={dailyRecords.length === 0 || exportingExcel || loading}
+            variant="outline"
+            className="border-emerald-600 text-emerald-800 hover:bg-emerald-50 font-bold text-xs h-9 min-h-[38px] rounded-full shadow-2xs"
+          >
+            <FileSpreadsheet className={`h-4 w-4 mr-1.5 text-emerald-600 ${exportingExcel ? 'animate-bounce' : ''}`} />
+            {exportingExcel ? 'Generating Workbook...' : 'Export Excel (.xlsx)'}
+          </Button>
+
           <Button
             onClick={handleDownloadPDF}
-            disabled={!report || exportingPDF || loading}
-            className="flex-1 sm:flex-initial bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs h-10 min-h-[44px] rounded-full shadow-xs"
+            disabled={dailyRecords.length === 0 || exportingPDF || loading}
+            className="bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs h-9 min-h-[38px] rounded-full shadow-2xs"
           >
             <Download className={`h-4 w-4 mr-1.5 ${exportingPDF ? 'animate-bounce' : ''}`} />
             {exportingPDF ? 'Generating...' : 'Export PDF'}
           </Button>
-
-          <Button
-            variant="outline"
-            onClick={handleDownloadDOCX}
-            disabled={!report || exportingDOCX || loading}
-            className="flex-1 sm:flex-initial border-slate-300 text-slate-800 hover:bg-slate-50 font-bold text-xs h-10 min-h-[44px] rounded-full"
-          >
-            <FileSpreadsheet className={`h-4 w-4 mr-1.5 text-blue-600 ${exportingDOCX ? 'animate-bounce' : ''}`} />
-            {exportingDOCX ? 'Generating...' : 'Export DOCX'}
-          </Button>
         </div>
       </div>
 
-      {/* 2. Period Selector / Filter Panel */}
+      {/* 2. Period Selector */}
       <Card className="border border-slate-200/90 shadow-2xs">
         <CardContent className="p-3.5 sm:p-4 space-y-3">
           <div className="flex items-center justify-between">
@@ -232,8 +276,7 @@ export default function StaffMonthlyReportPage() {
             </Button>
           </div>
 
-          <div className="grid grid-cols-2 gap-2.5">
-            {/* Month Selector */}
+          <div className="grid grid-cols-2 gap-2.5 max-w-sm">
             <div>
               <label htmlFor="select-month" className="block text-[11px] font-bold text-slate-600 mb-1">
                 Month
@@ -242,7 +285,7 @@ export default function StaffMonthlyReportPage() {
                 id="select-month"
                 value={selectedMonth}
                 onChange={(e) => setSelectedMonth(parseInt(e.target.value, 10))}
-                className="w-full h-10 rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                className="w-full h-9 rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
               >
                 {MONTHS.map((m) => (
                   <option key={m.value} value={m.value}>
@@ -252,7 +295,6 @@ export default function StaffMonthlyReportPage() {
               </select>
             </div>
 
-            {/* Year Selector */}
             <div>
               <label htmlFor="select-year" className="block text-[11px] font-bold text-slate-600 mb-1">
                 Year
@@ -261,7 +303,7 @@ export default function StaffMonthlyReportPage() {
                 id="select-year"
                 value={selectedYear}
                 onChange={(e) => setSelectedYear(parseInt(e.target.value, 10))}
-                className="w-full h-10 rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+                className="w-full h-9 rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
               >
                 <option value={2025}>2025</option>
                 <option value={2026}>2026</option>
@@ -279,250 +321,338 @@ export default function StaffMonthlyReportPage() {
         </div>
       )}
 
-      {/* 3. Report Performance Summary */}
-      {report && (
-        <>
-          {/* <div className="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/90 shadow-2xs flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <div className="space-y-1">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-700 block">
-                {report.monthName} — Performance Record
-              </span>
-              <h2 className="text-base sm:text-lg font-bold text-slate-900 leading-snug">
-                {report.employee.fullName} ({report.employee.employeeId})
-              </h2>
-              <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 font-medium pt-0.5">
-                <span className="flex items-center gap-1">
-                  <Building2 className="h-3.5 w-3.5 text-emerald-600" /> {report.employee.departmentName}
-                </span>
-                <span>•</span>
-                <span className="flex items-center gap-1">
-                  <MapPin className="h-3.5 w-3.5 text-emerald-600" /> {report.employee.centerName}
-                </span>
-              </div>
-            </div>
-
-            <div className="text-xs text-slate-500 font-medium sm:text-right shrink-0">
-              <span className="text-slate-400 block text-[11px]">Generated</span>
-              <span className="font-bold text-slate-700">
-                {new Date(report.generatedAt).toLocaleDateString('en-IN')}
-              </span>
-            </div>
-          </div> */}
-
-          {/* 4. Stats Summary Grid */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5">
-            <div className="bg-white rounded-xl p-3 border border-slate-200/90 shadow-2xs flex items-center justify-between">
-              <div>
-                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Total Days</span>
-                <span className="text-xl sm:text-2xl font-black text-slate-900 leading-tight">{report.stats.totalCalendarDays}</span>
-              </div>
-              <div className="h-8 w-8 rounded-lg bg-slate-100 flex items-center justify-center text-slate-600">
-                <FileText className="h-4 w-4" />
-              </div>
-            </div>
-
-            <div className="bg-white rounded-xl p-3 border border-slate-200/90 shadow-2xs flex items-center justify-between">
-              <div>
-                <span className="text-[11px] font-bold text-emerald-700 uppercase tracking-wider block">Submitted</span>
-                <span className="text-xl sm:text-2xl font-black text-emerald-800 leading-tight">{report.stats.submittedReportDays}</span>
-              </div>
-              <div className="h-8 w-8 rounded-lg bg-emerald-50 flex items-center justify-center text-emerald-700">
-                <Clock className="h-4 w-4" />
-              </div>
-            </div>
-
-            <div className="bg-white rounded-xl p-3 border border-slate-200/90 shadow-2xs flex items-center justify-between">
-              <div>
-                <span className="text-[11px] font-bold text-emerald-800 uppercase tracking-wider block">Approved</span>
-                <span className="text-xl sm:text-2xl font-black text-emerald-900 leading-tight">{report.stats.approvedReportDays}</span>
-              </div>
-              <div className="h-8 w-8 rounded-lg bg-emerald-100/70 flex items-center justify-center text-emerald-800">
-                <CheckCircle2 className="h-4 w-4" />
-              </div>
-            </div>
-
-            <div className="bg-white rounded-xl p-3 border border-slate-200/90 shadow-2xs flex items-center justify-between">
-              <div>
-                <span className="text-[11px] font-bold text-purple-700 uppercase tracking-wider block">On Leave</span>
-                <span className="text-xl sm:text-2xl font-black text-purple-900 leading-tight">{report.stats.approvedLeaveDays}</span>
-              </div>
-              <div className="h-8 w-8 rounded-lg bg-purple-50 flex items-center justify-center text-purple-700">
-                <CalendarOff className="h-4 w-4" />
-              </div>
-            </div>
-
-            <div className="bg-white rounded-xl p-3 border border-slate-200/90 shadow-2xs flex items-center justify-between col-span-2 sm:col-span-1">
-              <div>
-                <span className="text-[11px] font-bold text-amber-700 uppercase tracking-wider block">Missing</span>
-                <span className="text-xl sm:text-2xl font-black text-amber-900 leading-tight">{report.stats.missingReportDays}</span>
-              </div>
-              <div className="h-8 w-8 rounded-lg bg-amber-50 flex items-center justify-center text-amber-700">
-                <AlertCircle className="h-4 w-4" />
-              </div>
-            </div>
+      {/* 3. Monthly Reporting Statistics from New Field Activity Records */}
+      {empSummary && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2.5">
+          <div className="bg-white rounded-xl p-3 border border-slate-200/90 shadow-2xs">
+            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">Calendar Days</span>
+            <span className="text-xl font-black text-slate-900 leading-tight">{empSummary.totalCalendarDays ?? 30}</span>
           </div>
 
-          {/* 5. Daily Calendar Record */}
-          <div>
-            <div className="flex items-center justify-between mb-3 px-1">
-              <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wider">
-                Daily Calendar Record ({report.days.length} Days)
-              </h2>
-              <span className="text-xs text-slate-500 font-medium">
-                {report.monthName}
-              </span>
-            </div>
+          <div className="bg-white rounded-xl p-3 border border-slate-200/90 shadow-2xs">
+            <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider block">Days Attended</span>
+            <span className="text-xl font-black text-emerald-800 leading-tight">{empSummary.daysAttended ?? empSummary.presentDays ?? 0}</span>
+          </div>
 
-            {/* Desktop Table View (>= 768px) */}
-            <div className="hidden md:block bg-white rounded-2xl border border-slate-200/90 shadow-2xs overflow-hidden">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-28">Date</TableHead>
-                    <TableHead className="w-16">Day</TableHead>
-                    <TableHead>Daily Activity</TableHead>
-                    <TableHead className="w-32">Status</TableHead>
-                    <TableHead className="w-24">Time</TableHead>
-                    <TableHead className="w-40">Review Status</TableHead>
-                    <TableHead className="w-44">Remarks</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {report.days.map((day) => (
-                    <TableRow key={day.date} className={day.hasConflict ? 'bg-amber-50/40' : undefined}>
-                      <TableCell className="font-bold text-slate-900 whitespace-nowrap text-xs">
-                        {formatReadableDate(day.date)}
-                      </TableCell>
-                      <TableCell className="text-xs font-semibold text-slate-500">
-                        {day.dayOfWeek.slice(0, 3)}
-                      </TableCell>
-                      <TableCell className="text-xs text-slate-800">
-                        <span className={day.reportStatus === 'Missing' ? 'italic text-slate-400' : 'font-medium'}>
-                          {day.dailyActivity}
-                        </span>
-                        {day.hasConflict && (
-                          <span className="block text-[10px] text-amber-700 font-bold mt-0.5">
-                            ⚠️ Overlaps with approved leave
-                          </span>
-                        )}
-                        {day.attachments && day.attachments.length > 0 && (
-                          <div className="flex items-center gap-1.5 mt-1">
-                            <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                              <ImageIcon className="h-3 w-3 inline" /> {day.attachments.filter((a) => !a.mimeType?.startsWith('video/')).length} photos
-                              {day.attachments.some((a) => a.mimeType?.startsWith('video/')) && (
-                                <span className="ml-1 text-purple-700 inline-flex items-center gap-0.5">
-                                  <Video className="h-3 w-3 inline ml-1" /> {day.attachments.filter((a) => a.mimeType?.startsWith('video/')).length} videos
-                                </span>
-                              )}
-                            </span>
-                          </div>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {getStatusBadge(day.reportStatus)}
-                      </TableCell>
-                      <TableCell className="text-xs text-slate-600 font-mono">
-                        {day.submissionTime}
-                      </TableCell>
-                      <TableCell className="text-xs text-slate-700">
-                        {day.reviewStatus}
-                      </TableCell>
-                      <TableCell className="text-xs text-slate-600">
-                        {day.remarks}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
+          <div className="bg-white rounded-xl p-3 border border-slate-200/90 shadow-2xs">
+            <span className="text-[10px] font-bold text-blue-700 uppercase tracking-wider block">Activity Days</span>
+            <span className="text-xl font-black text-blue-900 leading-tight">{empSummary.daysWithActivities ?? empSummary.totalDaysWorked ?? 0}</span>
+          </div>
 
-            {/* Mobile Daily Cards List (< 768px) */}
-            <div className="md:hidden space-y-2.5">
-              {report.days.map((day) => {
-                const isMissing = day.reportStatus === 'Missing';
-                const isOnLeave = day.reportStatus === 'On Leave';
+          <div className="bg-white rounded-xl p-3 border border-slate-200/90 shadow-2xs">
+            <span className="text-[10px] font-bold text-emerald-800 uppercase tracking-wider block">Total Activities</span>
+            <span className="text-xl font-black text-emerald-900 leading-tight">{empSummary.totalActivities}</span>
+            <span className="text-[10px] text-slate-500 block">({empSummary.totalActivityHours}h active)</span>
+          </div>
+
+          <div className="bg-white rounded-xl p-3 border border-slate-200/90 shadow-2xs">
+            <span className="text-[10px] font-bold text-slate-700 uppercase tracking-wider block">Working Hours</span>
+            <span className="text-xl font-black text-slate-900 leading-tight">{empSummary.totalWorkingHours}h</span>
+          </div>
+
+          <div className="bg-white rounded-xl p-3 border border-slate-200/90 shadow-2xs">
+            <span className="text-[10px] font-bold text-purple-700 uppercase tracking-wider block">Farmer Contacts</span>
+            <span className="text-xl font-black text-purple-900 leading-tight">{empSummary.totalFarmerContacts}</span>
+            <span className="text-[10px] text-slate-500 block">(M:{empSummary.totalMaleParticipants} F:{empSummary.totalFemaleParticipants})</span>
+          </div>
+
+          <div className="bg-white rounded-xl p-3 border border-slate-200/90 shadow-2xs">
+            <span className="text-[10px] font-bold text-amber-700 uppercase tracking-wider block">Missing Days</span>
+            <span className="text-xl font-black text-amber-900 leading-tight">{empSummary.missingAttendanceDays ?? empSummary.daysReportMissing ?? 0}</span>
+          </div>
+        </div>
+      )}
+
+      {/* 4. Complete Calendar Daily Records with Expandable Activities */}
+      <div>
+        <div className="flex items-center justify-between mb-3 px-1">
+          <h2 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
+            Daily Activity & Attendance Log ({dailyRecords.length} Days)
+          </h2>
+          <span className="text-xs text-slate-500 font-medium">
+            {dataset?.monthName || report?.monthName}
+          </span>
+        </div>
+
+        <div className="bg-white rounded-2xl border border-slate-200/90 shadow-2xs overflow-x-auto">
+          <Table className="min-w-[1700px] text-xs">
+            <TableHeader className="bg-slate-50">
+              <TableRow>
+                <TableHead className="w-24 whitespace-nowrap font-bold">Date</TableHead>
+                <TableHead className="w-14 whitespace-nowrap font-bold">Day</TableHead>
+                <TableHead className="w-28 whitespace-nowrap font-bold">Attendance Status</TableHead>
+                <TableHead className="w-20 whitespace-nowrap font-bold">Login Time</TableHead>
+                <TableHead className="w-20 whitespace-nowrap font-bold">Logout Time</TableHead>
+                <TableHead className="w-36 whitespace-nowrap font-bold">Login Location</TableHead>
+                <TableHead className="w-36 whitespace-nowrap font-bold">Logout Location</TableHead>
+                <TableHead className="w-16 text-center font-bold">Acts</TableHead>
+                <TableHead className="w-72 whitespace-nowrap font-bold">Activity Names & Summary</TableHead>
+                <TableHead className="w-24 text-right font-bold">Duration</TableHead>
+                <TableHead className="w-24 text-right font-bold">Work Period</TableHead>
+                <TableHead className="w-20 text-center font-bold">Participants</TableHead>
+                <TableHead className="w-24 whitespace-nowrap font-bold">Leave Status</TableHead>
+                <TableHead className="w-28 whitespace-nowrap font-bold">Completion</TableHead>
+                <TableHead className="w-32 whitespace-nowrap font-bold">Review Status</TableHead>
+                <TableHead className="w-40 whitespace-nowrap font-bold">Reviewer Remarks</TableHead>
+                <TableHead className="w-20 text-center font-bold">PDF</TableHead>
+                <TableHead className="w-24 text-center font-bold">Details</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {dailyRecords.map((day) => {
+                const isOff = day.isWeeklyOff || day.isHoliday;
+                const isMissing = day.isMissing;
+                const isExpanded = expandedDates.has(day.date);
+                const hasActivities = Array.isArray(day.activitiesList) && day.activitiesList.length > 0;
 
                 return (
-                  <article
-                    key={day.date}
-                    className={`bg-white rounded-2xl border ${day.hasConflict ? 'border-amber-300' : 'border-slate-200/90'} p-3.5 shadow-2xs space-y-2.5`}
-                  >
-                    {/* Top Row: Date, Day & Status */}
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-baseline gap-2">
-                        <span className="font-bold text-sm text-slate-900">
-                          {formatReadableDate(day.date)}
-                        </span>
-                        <span className="text-xs font-semibold text-slate-500 uppercase">
-                          {day.dayOfWeek.slice(0, 3)}
-                        </span>
-                      </div>
-                      <div>{getStatusBadge(day.reportStatus)}</div>
-                    </div>
+                  <React.Fragment key={day.date}>
+                    <TableRow
+                      className={
+                        isOff
+                          ? 'bg-slate-50/60 text-slate-500'
+                          : isMissing
+                            ? 'bg-rose-50/30'
+                            : undefined
+                      }
+                    >
+                      {/* 1. Date */}
+                      <TableCell className="font-bold text-slate-900 whitespace-nowrap">
+                        {formatReadableDate(day.date)}
+                      </TableCell>
 
-                    {/* Activity Text */}
-                    <div className="text-xs leading-relaxed">
-                      {isMissing ? (
-                        <p className="text-slate-400 italic">No activity report submitted for this day.</p>
-                      ) : isOnLeave ? (
-                        <p className="text-purple-800 font-medium">On Authorized Leave: {day.dailyActivity || 'Scheduled Leave'}</p>
-                      ) : (
-                        <p className="text-slate-800 font-medium">{day.dailyActivity}</p>
-                      )}
+                      {/* 2. Day */}
+                      <TableCell className="font-semibold text-slate-500">
+                        {day.dayOfWeek}
+                      </TableCell>
 
-                      {day.hasConflict && (
-                        <div className="mt-1.5 p-2 bg-amber-50 rounded-lg border border-amber-200 text-amber-900 text-[11px] font-bold">
-                          ⚠️ Overlaps with approved leave: {day.conflictDetails || 'Conflicting schedule entry'}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Attachments Pill if any */}
-                    {day.attachments && day.attachments.length > 0 && (
-                      <div className="flex items-center gap-1.5">
-                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                          <ImageIcon className="h-3 w-3" />
-                          <span>{day.attachments.filter((a) => !a.mimeType?.startsWith('video/')).length} photos</span>
-                          {day.attachments.some((a) => a.mimeType?.startsWith('video/')) && (
-                            <span className="ml-1 text-purple-700 inline-flex items-center gap-0.5">
-                              <Video className="h-3 w-3" />
-                              <span>{day.attachments.filter((a) => a.mimeType?.startsWith('video/')).length} videos</span>
-                            </span>
-                          )}
+                      {/* 3. Attendance Status */}
+                      <TableCell>
+                        <span
+                          className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold ${
+                            day.attendanceStatus === 'Present'
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : day.attendanceStatus === 'Active'
+                                ? 'bg-blue-100 text-blue-800'
+                                : day.attendanceStatus === 'Absent'
+                                  ? 'bg-rose-100 text-rose-800'
+                                  : 'bg-slate-100 text-slate-700'
+                          }`}
+                        >
+                          {day.attendanceStatus || '—'}
                         </span>
-                      </div>
+                      </TableCell>
+
+                      {/* 4. Login Time */}
+                      <TableCell className="font-mono text-[11px] text-slate-700">
+                        {day.attendanceLogin}
+                      </TableCell>
+
+                      {/* 5. Logout Time */}
+                      <TableCell className="font-mono text-[11px] text-slate-700">
+                        {day.attendanceLogout}
+                      </TableCell>
+
+                      {/* Login Location Name */}
+                      <TableCell className="text-slate-600 max-w-xs truncate" title={day.loginLocationName || day.loginLocation}>
+                        {day.loginLocationName || 'Location unavailable'}
+                      </TableCell>
+
+                      {/* Logout Location Name */}
+                      <TableCell className="text-slate-600 max-w-xs truncate" title={day.logoutLocationName || day.logoutLocation}>
+                        {day.logoutLocationName || 'Location unavailable'}
+                      </TableCell>
+
+                      {/* Number of Activities */}
+                      <TableCell className="text-center font-bold text-slate-900">
+                        {day.activitiesCount}
+                      </TableCell>
+
+                      {/* Activity Names / Summary */}
+                      <TableCell className="text-slate-800 max-w-xs truncate" title={day.activitySummary}>
+                        <span className={isMissing ? 'italic text-slate-400' : 'font-medium'}>
+                          {day.activitySummary}
+                        </span>
+                      </TableCell>
+
+                      {/* Activity Duration */}
+                      <TableCell className="text-right text-slate-700 font-mono">
+                        {day.totalActivityDurationFormatted || `${day.totalActivityDurationMinutes}m`}
+                      </TableCell>
+
+                      {/* Working Period */}
+                      <TableCell className="text-right text-slate-700 font-mono">
+                        {day.workingPeriodFormatted || '—'}
+                      </TableCell>
+
+                      {/* Participant Count */}
+                      <TableCell className="text-center font-bold text-slate-900">
+                        {day.participantContacts}
+                        {day.participantContacts > 0 && (
+                          <span className="block text-[10px] text-slate-400 font-normal">
+                            (M:{day.maleParticipants} F:{day.femaleParticipants})
+                          </span>
+                        )}
+                      </TableCell>
+
+                      {/* Leave Status */}
+                      <TableCell className="whitespace-nowrap">
+                        {day.leaveStatus !== 'None' ? (
+                          <span className="text-[10px] font-bold text-purple-700 bg-purple-50 px-2 py-0.5 rounded border border-purple-200">
+                            {day.leaveStatus}
+                          </span>
+                        ) : (
+                          <span className="text-slate-400">—</span>
+                        )}
+                      </TableCell>
+
+                      {/* Completion / Report Status */}
+                      <TableCell className="whitespace-nowrap">
+                        {getStatusBadge(day.reportStatus)}
+                      </TableCell>
+
+                      {/* Review Status */}
+                      <TableCell className="text-slate-700 whitespace-nowrap">
+                        {day.reviewStatus}
+                      </TableCell>
+
+                      {/* Reviewer Remarks */}
+                      <TableCell className="text-slate-600 max-w-xs truncate" title={day.reviewRemarks}>
+                        {day.reviewRemarks || '—'}
+                      </TableCell>
+
+                      {/* Individual Daily PDF Link */}
+                      <TableCell className="text-center">
+                        {day.reportId ? (
+                          <a
+                            href={`/api/field-reports/${day.reportId}/pdf`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center justify-center h-7 w-7 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800 transition-colors"
+                            title="Download Daily PDF"
+                          >
+                            <FileText className="h-3.5 w-3.5" />
+                          </a>
+                        ) : (
+                          <span className="text-slate-300">—</span>
+                        )}
+                      </TableCell>
+
+                      {/* Expandable Activities Toggle */}
+                      <TableCell className="text-center">
+                        {hasActivities ? (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => toggleExpandDate(day.date)}
+                            className="h-7 px-2 text-[11px] font-bold text-emerald-700 hover:bg-emerald-50"
+                          >
+                            {isExpanded ? (
+                              <span className="flex items-center gap-1">
+                                Hide <ChevronUp className="h-3 w-3" />
+                              </span>
+                            ) : (
+                              <span className="flex items-center gap-1">
+                                {day.activitiesList!.length} Acts <ChevronDown className="h-3 w-3" />
+                              </span>
+                            )}
+                          </Button>
+                        ) : (
+                          <span className="text-slate-300 text-[11px]">—</span>
+                        )}
+                      </TableCell>
+                    </TableRow>
+
+                    {/* Expandable Detail Section for Multiple Activities */}
+                    {isExpanded && hasActivities && (
+                      <TableRow className="bg-emerald-50/30 border-b border-emerald-100">
+                        <TableCell colSpan={18} className="p-3">
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between">
+                              <h4 className="font-bold text-xs text-emerald-900 flex items-center gap-1.5">
+                                <FileText className="h-3.5 w-3.5 text-emerald-600" />
+                                Recorded Field Activities for {formatReadableDate(day.date)} ({day.activitiesList!.length} Slots)
+                              </h4>
+                              <span className="text-[11px] text-slate-500 font-medium">
+                                Total Activity Duration: {day.totalActivityDurationFormatted}
+                              </span>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                              {day.activitiesList!.map((act, aIdx) => (
+                                <div
+                                  key={aIdx}
+                                  className="bg-white rounded-xl p-3 border border-slate-200/90 shadow-2xs space-y-1.5 text-xs"
+                                >
+                                  <div className="flex items-start justify-between gap-2">
+                                    <div>
+                                      <span className="font-bold text-slate-900 text-xs">
+                                        Slot {act.slotNumber}: {act.activityNameLabel}
+                                      </span>
+                                      <span className="block text-[10px] text-emerald-700 font-semibold">
+                                        {act.activityType} • {act.village} {act.wadi ? `(${act.wadi})` : ''}
+                                      </span>
+                                    </div>
+                                    <span className="font-mono text-[10px] font-bold bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded">
+                                      {act.durationMinutes}m
+                                    </span>
+                                  </div>
+
+                                  <div className="text-[11px] text-slate-500 flex items-center justify-between pt-0.5">
+                                    <span>Time: {act.startTime} - {act.endTime}</span>
+                                    <span className="font-semibold text-slate-700">
+                                      Contacts: {act.participants} (M:{act.maleParticipants} F:{act.femaleParticipants})
+                                    </span>
+                                  </div>
+
+                                  {act.farmerName && act.farmerName !== '—' && (
+                                    <p className="text-[11px] text-slate-600">
+                                      <strong className="text-slate-800">Farmer:</strong> {act.farmerName}
+                                    </p>
+                                  )}
+
+                                  <div className="text-[11px] text-slate-700 bg-slate-50 p-2 rounded-lg">
+                                    <p className="font-medium">
+                                      <strong>Obs:</strong> {act.observations}
+                                    </p>
+                                    {act.issues && act.issues !== '—' && (
+                                      <p className="text-amber-800 mt-1">
+                                        <strong>Issues:</strong> {act.issues}
+                                      </p>
+                                    )}
+                                  </div>
+
+                                  <div className="text-[10px] text-slate-500 space-y-0.5 pt-1">
+                                    <p>
+                                      <strong className="text-slate-600">Start Location:</strong> {act.startLocationName}
+                                    </p>
+                                    <p>
+                                      <strong className="text-slate-600">End Location:</strong> {act.endLocationName}
+                                    </p>
+                                  </div>
+
+                                  {act.photoUrls && act.photoUrls.length > 0 && (
+                                    <div className="pt-1 flex items-center gap-1.5">
+                                      <ImageIcon className="h-3 w-3 text-emerald-600" />
+                                      <span className="text-[10px] font-bold text-emerald-800">
+                                        {act.photoUrls.length} Photo Evidence Attached
+                                      </span>
+                                    </div>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        </TableCell>
+                      </TableRow>
                     )}
-
-                    {/* Metadata Footer: Submission time & Review Status / Remarks */}
-                    <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500 font-medium">
-                      <div className="flex items-center gap-2">
-                        {day.submissionTime && day.submissionTime !== '—' && (
-                          <span className="flex items-center gap-1 text-slate-600">
-                            <Clock className="h-3 w-3 text-slate-400" />
-                            <span>{day.submissionTime}</span>
-                          </span>
-                        )}
-                        {day.reviewStatus && day.reviewStatus !== '—' && (
-                          <span>• {day.reviewStatus}</span>
-                        )}
-                      </div>
-
-                      {day.reportId && (
-                        <Link href="/staff/report-history">
-                          <span className="text-emerald-700 font-bold hover:underline inline-flex items-center gap-0.5">
-                            View Log <ArrowRight className="h-3 w-3" />
-                          </span>
-                        </Link>
-                      )}
-                    </div>
-                  </article>
+                  </React.Fragment>
                 );
               })}
-            </div>
-          </div>
-        </>
-      )}
+            </TableBody>
+          </Table>
+        </div>
+      </div>
     </div>
   );
 }
-

@@ -18,18 +18,18 @@ export function TopPillNavigation({ role, className }: TopPillNavigationProps) {
     if (role === 'super_admin' || role === 'admin') {
       return [
         { label: 'Overview', href: '/admin/dashboard', exact: true },
-        { label: 'Activity', href: '/admin/reports', exact: false },
+        { label: 'Field Activities', href: '/admin/reports', exact: false },
         { label: 'Manage', href: '/admin/staff', exact: false },
         { label: 'Centers', href: '/admin/centers', exact: false },
         { label: 'Leaves', href: '/admin/leaves', exact: false },
         { label: 'Analytics', href: '/admin/analytics', exact: false },
-        { label: 'Reports', href: '/admin/reports/monthly', exact: false },
+        { label: 'Monthly Reports', href: '/admin/reports/monthly', exact: false },
       ];
     }
     if (role === 'manager') {
       return [
         { label: 'Overview', href: '/manager/dashboard', exact: true },
-        { label: 'Activity', href: '/manager/reports', exact: false },
+        { label: 'Field Activities', href: '/manager/reports', exact: false },
         { label: 'Manage', href: '/manager/staff', exact: false },
         { label: 'Leaves', href: '/manager/leaves', exact: false },
         { label: 'Analytics', href: '/manager/analytics', exact: false },
@@ -38,8 +38,8 @@ export function TopPillNavigation({ role, className }: TopPillNavigationProps) {
     // Staff
     return [
       { label: 'Overview', href: '/staff/dashboard', exact: true },
-      { label: 'Submit', href: '/staff/daily-report', exact: false },
-      { label: 'My Reports', href: '/staff/report-history', exact: false },
+      { label: 'Field Activities', href: '/staff/daily-report', exact: false },
+      { label: 'My Activities', href: '/staff/report-history', exact: false },
       { label: 'Leaves', href: '/staff/leaves', exact: false },
       { label: 'Account', href: '/staff/profile', exact: false },
     ];
