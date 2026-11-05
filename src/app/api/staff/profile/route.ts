@@ -4,6 +4,11 @@ import { fetchDocument, updateDocument } from '@/lib/firebase/firestore';
 import { ERP_COLLECTIONS } from '@/lib/firebase/collections';
 import { logAuditAction } from '@/lib/services/audit-service';
 import { UserProfile } from '@/types';
+import { handleCorsPreflight } from '@/lib/api/cors';
+
+export async function OPTIONS(req: Request) {
+  return handleCorsPreflight(req);
+}
 
 export async function GET() {
   try {

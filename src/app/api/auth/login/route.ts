@@ -6,8 +6,13 @@ import { ERP_COLLECTIONS } from '@/lib/firebase/collections';
 import { logAuditAction } from '@/lib/services/audit-service';
 import { bootstrapInitialSuperAdmin } from '@/lib/services/seed-service';
 import { UserProfile } from '@/types';
+import { handleCorsPreflight } from '@/lib/api/cors';
 
 export const dynamic = 'force-dynamic';
+
+export async function OPTIONS(req: Request) {
+  return handleCorsPreflight(req);
+}
 
 export async function POST(req: Request) {
   try {

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { SESSION_COOKIE_NAME, ROLE_COOKIE_NAME } from '@/lib/auth/constants';
+import { isAllowedOrigin, getCorsHeaders } from '@/lib/api/cors';
 
 const PUBLIC_ROUTES = ['/login', '/forgot-password', '/reset-password', '/setup-password'];
 
@@ -13,10 +14,36 @@ function isSafeInternalUrl(path: string): boolean {
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Ignore static assets, images, API routes, and public files
+  // 1. Centralized CORS handling for all API routes (/api/*)
+  if (pathname.startsWith('/api')) {
+    const origin = request.headers.get('origin');
+    const isOptions = request.method === 'OPTIONS';
+
+    // Immediate preflight response for OPTIONS requests (bypasses all auth/database)
+    if (isOptions) {
+      if (isAllowedOrigin(origin)) {
+        return new NextResponse(null, {
+          status: 204,
+          headers: getCorsHeaders(origin),
+        });
+      }
+      return new NextResponse(null, { status: 204 });
+    }
+
+    // Attach CORS headers to API responses for valid origins
+    const response = NextResponse.next();
+    if (isAllowedOrigin(origin)) {
+      const corsHeaders = getCorsHeaders(origin);
+      for (const [key, value] of Object.entries(corsHeaders)) {
+        response.headers.set(key, value);
+      }
+    }
+    return response;
+  }
+
+  // Ignore static assets, images, and public files
   if (
     pathname.startsWith('/_next') ||
-    pathname.startsWith('/api') ||
     pathname.includes('.') ||
     pathname === '/favicon.ico' ||
     pathname === '/logo.png'
