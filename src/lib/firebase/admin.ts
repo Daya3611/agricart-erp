@@ -1,7 +1,11 @@
 import { getApps, initializeApp, cert, App } from 'firebase-admin/app';
 import { getAuth, Auth } from 'firebase-admin/auth';
 import { getFirestore, Firestore } from 'firebase-admin/firestore';
-import { getStorage, Storage } from 'firebase-admin/storage';
+import type { Storage } from 'firebase-admin/storage';
+
+if (typeof window !== 'undefined') {
+  throw new Error('Firebase Admin SDK cannot be executed in the browser.');
+}
 
 function getPrivateKey(): string | undefined {
   const privateKey = process.env.FIREBASE_PRIVATE_KEY;
@@ -53,6 +57,22 @@ try {
 } catch {
   // Settings might have already been locked if reused
 }
-export const adminStorage: Storage = getStorage(app);
+let _adminStorage: Storage | null = null;
+
+export function getAdminStorage(): Storage {
+  if (!_adminStorage) {
+    // Dynamically load firebase-admin/storage to avoid eager evaluation of @google-cloud/storage
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { getStorage } = require('firebase-admin/storage');
+    _adminStorage = getStorage(app);
+  }
+  return _adminStorage!;
+}
+
+export const adminStorage: Storage = new Proxy({} as Storage, {
+  get(_target, prop, receiver) {
+    return Reflect.get(getAdminStorage(), prop, receiver);
+  },
+});
 
 export default app;

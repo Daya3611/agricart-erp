@@ -5,7 +5,7 @@ import { ERP_COLLECTIONS } from '@/lib/firebase/collections';
 import { logAuditAction } from '@/lib/services/audit-service';
 import { SystemSettings } from '@/types';
 import { getSystemSettings, invalidateSettingsCache } from '@/lib/services/settings-service';
-import { DEFAULT_SYSTEM_SETTINGS } from '@/lib/services/seed-service';
+import { DEFAULT_SYSTEM_SETTINGS } from '@/lib/constants/reporting-defaults';
 
 export const dynamic = 'force-dynamic';
 

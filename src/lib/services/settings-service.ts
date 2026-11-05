@@ -1,7 +1,7 @@
 import { fetchDocument, saveDocument } from '@/lib/firebase/firestore';
 import { ERP_COLLECTIONS } from '@/lib/firebase/collections';
 import { SystemSettings, GlobalReportingConfig } from '@/types';
-import { DEFAULT_SYSTEM_SETTINGS, DEFAULT_GLOBAL_REPORTING_CONFIG } from '@/lib/services/seed-service';
+import { DEFAULT_SYSTEM_SETTINGS, DEFAULT_GLOBAL_REPORTING_CONFIG } from '@/lib/constants/reporting-defaults';
 
 /**
  * Cached in-memory copy with short TTL (30 seconds) for fast repetitive queries

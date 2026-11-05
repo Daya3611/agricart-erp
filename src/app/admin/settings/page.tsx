@@ -26,7 +26,7 @@ import { Select } from '@/components/ui/select';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { UserProfile, SystemSettings, GlobalReportingConfig } from '@/types';
-import { DEFAULT_GLOBAL_REPORTING_CONFIG } from '@/lib/services/seed-service';
+import { DEFAULT_GLOBAL_REPORTING_CONFIG } from '@/lib/constants/reporting-defaults';
 
 export default function AdminSettingsPage() {
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
