@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Plus,
   Users,
@@ -26,6 +26,9 @@ import {
   Calendar,
   MoreVertical,
   BarChart3,
+  AlertTriangle,
+  Loader2,
+  X,
 } from 'lucide-react';
 import { UserProfile, Department, Center } from '@/types';
 import { Button } from '@/components/ui/button';
@@ -76,6 +79,14 @@ export default function AdminStaffManagementPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [staffToEdit, setStaffToEdit] = useState<UserProfile | null>(null);
   const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const notificationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Delete User Modal State
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [staffToDelete, setStaffToDelete] = useState<UserProfile | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [deleteConfirmed, setDeleteConfirmed] = useState(false);
 
   // Employee Information Modal
   const [infoModalOpen, setInfoModalOpen] = useState(false);
@@ -136,12 +147,55 @@ export default function AdminStaffManagementPage() {
     fetchStaffData();
   }, [searchQuery, selectedRoleFilter, selectedDeptFilter, selectedCenterFilter, selectedStatusFilter, sortBy, sortOrder, currentPage]);
 
+  useEffect(() => {
+    return () => {
+      if (notificationTimerRef.current) clearTimeout(notificationTimerRef.current);
+    };
+  }, []);
+
   const showNotification = (type: 'success' | 'error', message: string) => {
+    if (notificationTimerRef.current) clearTimeout(notificationTimerRef.current);
     setNotification({ type, message });
-    setTimeout(() => setNotification(null), 5000);
+    notificationTimerRef.current = setTimeout(() => setNotification(null), 5000);
+  };
+
+  const getStaffRowMeta = (staff: UserProfile) => {
+    const viewerIsSuperAdmin = currentUser?.role === 'super_admin';
+    const isSelf = Boolean(currentUser?.uid && staff.uid === currentUser.uid);
+    const isProtectedSuperAdmin = staff.role === 'super_admin';
+    const canEditThisStaff = viewerIsSuperAdmin || (staff.role !== 'admin' && staff.role !== 'super_admin');
+    const canDeleteThisStaff =
+      Boolean(currentUser) &&
+      !isSelf &&
+      !isProtectedSuperAdmin &&
+      (viewerIsSuperAdmin || staff.role !== 'admin');
+
+    let deleteDisabledReason = 'Delete User';
+    if (!currentUser) {
+      deleteDisabledReason = 'Loading permissions...';
+    } else if (isSelf) {
+      deleteDisabledReason = 'You cannot delete your own currently logged-in account.';
+    } else if (isProtectedSuperAdmin) {
+      deleteDisabledReason = 'Super Admin accounts are protected and cannot be deleted.';
+    } else if (staff.role === 'admin' && !viewerIsSuperAdmin) {
+      deleteDisabledReason = 'Only Super Administrators can delete Admin accounts.';
+    }
+
+    return {
+      isSelf,
+      canEditThisStaff,
+      canDeleteThisStaff,
+      deleteDisabledReason,
+      isDeactivated: staff.accountStatus === 'deactivated',
+      invitationStatus: (staff as any).invitationStatus || 'pending',
+    };
   };
 
   const handleDeactivate = async (staff: UserProfile) => {
+    if (currentUser?.uid === staff.uid) {
+      showNotification('error', 'You cannot deactivate your own currently logged-in account.');
+      return;
+    }
     if (staff.role === 'super_admin' || (staff.role === 'admin' && currentUser?.role !== 'super_admin')) {
       showNotification('error', 'Only Super Administrators can deactivate administrator accounts.');
       return;
@@ -150,7 +204,11 @@ export default function AdminStaffManagementPage() {
     if (!confirm(`Are you sure you want to deactivate ${staff.fullName}'s account? This blocks portal access.`)) return;
 
     try {
-      const res = await fetch(`/api/staff/${staff.uid}`, { method: 'DELETE' });
+      const res = await fetch(`/api/staff/${staff.uid}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accountStatus: 'deactivated' }),
+      });
       const data = await res.json();
       if (res.ok && data.success) {
         showNotification('success', `Account for ${staff.fullName} deactivated successfully.`);
@@ -160,6 +218,63 @@ export default function AdminStaffManagementPage() {
       }
     } catch (err: any) {
       showNotification('error', err.message || 'Error occurred while deactivating account.');
+    }
+  };
+
+  const handleOpenDeleteDialog = (staff: UserProfile) => {
+    const meta = getStaffRowMeta(staff);
+    if (!meta.canDeleteThisStaff) {
+      showNotification('error', meta.deleteDisabledReason);
+      return;
+    }
+    setStaffToDelete(staff);
+    setDeleteError(null);
+    setDeleteConfirmed(false);
+    setDeleteConfirmOpen(true);
+  };
+
+  const handleDeleteUser = async () => {
+    if (!staffToDelete || deleting || !deleteConfirmed) return;
+
+    const meta = getStaffRowMeta(staffToDelete);
+    if (!meta.canDeleteThisStaff) {
+      setDeleteError(meta.deleteDisabledReason);
+      showNotification('error', meta.deleteDisabledReason);
+      return;
+    }
+
+    setDeleting(true);
+    setDeleteError(null);
+
+    try {
+      const res = await fetch(`/api/staff/${staffToDelete.uid}`, {
+        method: 'DELETE',
+      });
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to delete user account.');
+      }
+
+      const deletedName = staffToDelete.fullName;
+      const deletedEmpId = staffToDelete.employeeId;
+
+      setDeleteConfirmOpen(false);
+      setStaffToDelete(null);
+      setDeleteConfirmed(false);
+      showNotification('success', `User ${deletedName} (${deletedEmpId}) deleted permanently.`);
+
+      if (staffList.length === 1 && currentPage > 1) {
+        setCurrentPage((p) => Math.max(1, p - 1));
+      } else {
+        await fetchStaffData();
+      }
+    } catch (err: any) {
+      const errMsg = err.message || 'Error occurred while deleting employee account.';
+      setDeleteError(errMsg);
+      showNotification('error', errMsg);
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -281,17 +396,6 @@ export default function AdminStaffManagementPage() {
           </Button>
         </div>
       </div>
-
-      {notification && (
-        <div
-          className={`p-3.5 rounded-xl text-xs font-bold border transition-all ${notification.type === 'success'
-            ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
-            : 'bg-rose-50 border-rose-200 text-rose-900'
-            }`}
-        >
-          {notification.message}
-        </div>
-      )}
 
       {/* Filter and Search Bar */}
       <Card>
@@ -417,22 +521,26 @@ export default function AdminStaffManagementPage() {
                   </TableHeader>
                   <TableBody>
                     {staffList.map((staff) => {
-                      const canEditThisStaff = isSuperAdmin || (staff.role !== 'admin' && staff.role !== 'super_admin');
-                      const isDeactivated = staff.accountStatus === 'deactivated';
-                      const invitationStatus = (staff as any).invitationStatus || 'pending';
+                      const {
+                        canEditThisStaff,
+                        canDeleteThisStaff,
+                        deleteDisabledReason,
+                        isDeactivated,
+                        invitationStatus,
+                      } = getStaffRowMeta(staff);
 
                       return (
                         <TableRow key={staff.uid} className={isDeactivated ? 'bg-slate-50 opacity-75' : ''}>
                           <TableCell>
                             <div>
-                              <p className="font-bold text-slate-900 leading-tight flex items-center gap-1.5">
+                              <div className="font-bold text-slate-900 leading-tight flex items-center gap-1.5">
                                 {staff.fullName}
                                 {isDeactivated && (
                                   <Badge variant="destructive" className="text-[10px] py-0 px-1.5">
                                     Inactive
                                   </Badge>
                                 )}
-                              </p>
+                              </div>
                               <p className="text-[11px] text-slate-500 font-mono font-medium">
                                 <span className="text-emerald-700 font-bold">{staff.employeeId}</span> • {staff.email}
                               </p>
@@ -560,6 +668,32 @@ export default function AdminStaffManagementPage() {
                               ) : (
                                 <span className="text-[10px] text-slate-400 italic px-2">Super Admin</span>
                               )}
+
+                              {/* Delete User Button */}
+                              {canDeleteThisStaff ? (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  title="Delete User"
+                                  aria-label={`Delete ${staff.fullName}`}
+                                  onClick={() => handleOpenDeleteDialog(staff)}
+                                  className="h-8 w-8 p-0 text-rose-600 border-rose-200/80 hover:text-rose-700 hover:bg-rose-50 hover:border-rose-300"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </Button>
+                              ) : (
+                                <span title={deleteDisabledReason} className="inline-flex">
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    disabled
+                                    aria-label={deleteDisabledReason}
+                                    className="h-8 w-8 p-0 text-rose-300 border-slate-200 cursor-not-allowed"
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </Button>
+                                </span>
+                              )}
                             </div>
                           </TableCell>
                         </TableRow>
@@ -572,9 +706,13 @@ export default function AdminStaffManagementPage() {
               {/* Mobile Record Cards (< 768px) */}
               <div className="md:hidden space-y-3 p-4">
                 {staffList.map((staff) => {
-                  const canEditThisStaff = isSuperAdmin || (staff.role !== 'admin' && staff.role !== 'super_admin');
-                  const isDeactivated = staff.accountStatus === 'deactivated';
-                  const invitationStatus = (staff as any).invitationStatus || 'pending';
+                  const {
+                    canEditThisStaff,
+                    canDeleteThisStaff,
+                    deleteDisabledReason,
+                    isDeactivated,
+                    invitationStatus,
+                  } = getStaffRowMeta(staff);
 
                   return (
                     <RecordCard key={staff.uid} className={isDeactivated ? 'opacity-80 bg-slate-50/70' : ''}>
@@ -694,6 +832,19 @@ export default function AdminStaffManagementPage() {
                                   <UserX className="h-4 w-4 mr-2" /> Deactivate Account
                                 </DropdownMenuItem>
                               )
+                            )}
+                            <DropdownMenuSeparator />
+                            {canDeleteThisStaff ? (
+                              <DropdownMenuItem
+                                onClick={() => handleOpenDeleteDialog(staff)}
+                                className="text-rose-600 hover:bg-rose-50 hover:text-rose-700"
+                              >
+                                <Trash2 className="h-4 w-4 mr-2" /> Delete User
+                              </DropdownMenuItem>
+                            ) : (
+                              <DropdownMenuItem disabled className="text-slate-400">
+                                <Trash2 className="h-4 w-4 mr-2" /> {deleteDisabledReason}
+                              </DropdownMenuItem>
                             )}
                           </DropdownMenuContent>
                         </DropdownMenu>
@@ -885,6 +1036,162 @@ export default function AdminStaffManagementPage() {
             </div>
           )}
         </Dialog>
+      )}
+
+      {/* Permanent Delete User Confirmation Dialog */}
+      <Dialog
+        open={deleteConfirmOpen}
+        onOpenChange={(open) => {
+          if (deleting) return;
+          setDeleteConfirmOpen(open);
+          if (!open) {
+            setStaffToDelete(null);
+            setDeleteError(null);
+            setDeleteConfirmed(false);
+          }
+        }}
+        title="Delete Employee Account"
+        description="Permanently remove this employee from Firebase Authentication and Firestore."
+        maxWidth="max-w-lg"
+      >
+        {staffToDelete && (
+          <div className="space-y-4 text-xs">
+            <div className="p-4 bg-rose-50 border border-rose-200 rounded-xl space-y-2.5">
+              <div className="font-bold text-rose-900 flex items-center gap-2 text-sm">
+                <AlertTriangle className="h-4 w-4 text-rose-600 shrink-0" />
+                <span>Confirm Permanent Deletion</span>
+              </div>
+              <p className="text-rose-800 leading-relaxed">
+                This action is permanent and cannot be undone. It will delete both the{' '}
+                <span className="font-semibold">Firebase Authentication</span> account and the{' '}
+                <span className="font-semibold">Firestore employee record</span> for this user.
+              </p>
+              <div className="p-3 bg-white/90 rounded-xl border border-rose-200/80 space-y-1.5">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-slate-500 font-medium">Employee Name</span>
+                  <span className="font-bold text-slate-900 text-right">{staffToDelete.fullName}</span>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-slate-500 font-medium">Employee ID</span>
+                  <span className="font-mono font-bold text-emerald-700">{staffToDelete.employeeId}</span>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-slate-500 font-medium">Email</span>
+                  <span className="font-medium text-slate-700 truncate">{staffToDelete.email}</span>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-slate-500 font-medium">Role</span>
+                  <Badge variant={roleBadges[staffToDelete.role]?.variant || 'secondary'} className="text-[10px]">
+                    {roleBadges[staffToDelete.role]?.label || staffToDelete.role}
+                  </Badge>
+                </div>
+              </div>
+            </div>
+
+            <label className="flex items-start gap-2.5 p-3 rounded-xl border border-slate-200 bg-slate-50/80 cursor-pointer select-none hover:bg-slate-50 transition-colors">
+              <input
+                type="checkbox"
+                checked={deleteConfirmed}
+                onChange={(e) => setDeleteConfirmed(e.target.checked)}
+                disabled={deleting}
+                className="mt-0.5 h-4 w-4 rounded border-slate-300 text-rose-600 focus:ring-rose-500"
+              />
+              <span className="text-slate-700 font-medium leading-snug">
+                I explicitly confirm permanent deletion of{' '}
+                <span className="font-bold text-slate-900">{staffToDelete.fullName}</span>{' '}
+                (<span className="font-mono font-bold text-emerald-700">{staffToDelete.employeeId}</span>).
+              </span>
+            </label>
+
+            {deleteError && (
+              <div className="p-3 bg-rose-100 border border-rose-300 text-rose-900 rounded-xl font-semibold flex items-start gap-2">
+                <XCircle className="h-4 w-4 text-rose-600 shrink-0 mt-0.5" />
+                <span>{deleteError}</span>
+              </div>
+            )}
+
+            <div className="flex flex-wrap items-center justify-end gap-2 pt-3 border-t border-slate-100">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={deleting}
+                onClick={() => {
+                  setDeleteConfirmOpen(false);
+                  setStaffToDelete(null);
+                  setDeleteError(null);
+                  setDeleteConfirmed(false);
+                }}
+              >
+                Cancel
+              </Button>
+              {staffToDelete.accountStatus !== 'deactivated' && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={deleting}
+                  onClick={async () => {
+                    const target = staffToDelete;
+                    setDeleteConfirmOpen(false);
+                    setStaffToDelete(null);
+                    setDeleteError(null);
+                    setDeleteConfirmed(false);
+                    await handleDeactivate(target);
+                  }}
+                  className="text-amber-700 border-amber-200 hover:bg-amber-50"
+                >
+                  Deactivate Instead
+                </Button>
+              )}
+              <Button
+                type="button"
+                variant="destructive"
+                disabled={deleting || !deleteConfirmed}
+                onClick={handleDeleteUser}
+                className="font-bold"
+              >
+                {deleting ? (
+                  <>
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    Deleting...
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="h-3.5 w-3.5" />
+                    Delete Permanently
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        )}
+      </Dialog>
+
+      {/* Toast Notification */}
+      {notification && (
+        <div
+          role="status"
+          aria-live="polite"
+          className={`fixed bottom-20 right-4 sm:bottom-6 sm:right-6 z-50 max-w-md flex items-center gap-3 px-4 py-3 rounded-2xl text-xs font-bold border shadow-xl animate-in slide-in-from-bottom duration-200 ${
+            notification.type === 'success'
+              ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+              : 'bg-rose-50 border-rose-200 text-rose-900'
+          }`}
+        >
+          {notification.type === 'success' ? (
+            <CheckCircle className="h-4 w-4 text-emerald-600 shrink-0" />
+          ) : (
+            <XCircle className="h-4 w-4 text-rose-600 shrink-0" />
+          )}
+          <span className="flex-1 leading-snug">{notification.message}</span>
+          <button
+            type="button"
+            onClick={() => setNotification(null)}
+            aria-label="Dismiss notification"
+            className="p-1 rounded-full hover:bg-black/5 text-current opacity-70 hover:opacity-100 transition-opacity"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
       )}
     </div>
   );

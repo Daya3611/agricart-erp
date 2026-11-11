@@ -119,7 +119,8 @@ export default function AdminReportsPage() {
         const matchesDept = r.departmentName?.toLowerCase().includes(q);
         const matchesCenter = r.centerName?.toLowerCase().includes(q);
         const matchesTasks = r.completedTasks?.toLowerCase().includes(q);
-        if (!matchesStaff && !matchesEmpId && !matchesActivities && !matchesDept && !matchesCenter && !matchesTasks) {
+        const matchesLocation = r.workLocation?.toLowerCase().includes(q);
+        if (!matchesStaff && !matchesEmpId && !matchesActivities && !matchesDept && !matchesCenter && !matchesTasks && !matchesLocation) {
           return false;
         }
       }
@@ -182,7 +183,39 @@ export default function AdminReportsPage() {
           {loading ? (
             <div className="p-8 text-center text-xs text-muted-foreground">Loading daily activity reports...</div>
           ) : filteredReports.length === 0 ? (
-            <div className="p-8 text-center text-xs text-muted-foreground">No reports found matching selected filters.</div>
+            <div className="p-8 text-center text-xs text-muted-foreground">
+              <p>No reports found matching selected filters.</p>
+              {reports.length > 0 && filters.datePreset === 'today' && (
+                <div className="mt-3 p-3 bg-muted/40 rounded-xl inline-block border border-border">
+                  <span className="text-muted-foreground">
+                    There {reports.length === 1 ? 'is' : 'are'} <strong>{reports.length}</strong> activity report{reports.length === 1 ? '' : 's'} recorded for other dates.{' '}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setFilters((prev) => ({ ...prev, datePreset: 'all' }))}
+                    className="text-primary font-bold underline hover:opacity-80 ml-1 cursor-pointer"
+                  >
+                    View All Dates
+                  </button>
+                  <span className="mx-2 text-muted-foreground">|</span>
+                  <button
+                    type="button"
+                    onClick={() => setFilters((prev) => ({ ...prev, datePreset: 'last7' }))}
+                    className="text-primary font-bold underline hover:opacity-80 cursor-pointer"
+                  >
+                    View Last 7 Days
+                  </button>
+                  <span className="mx-2 text-muted-foreground">|</span>
+                  <button
+                    type="button"
+                    onClick={() => setFilters((prev) => ({ ...prev, datePreset: 'yesterday' }))}
+                    className="text-primary font-bold underline hover:opacity-80 cursor-pointer"
+                  >
+                    View Yesterday
+                  </button>
+                </div>
+              )}
+            </div>
           ) : (
             <>
               {/* Desktop Table View */}

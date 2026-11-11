@@ -237,9 +237,62 @@ export async function endFieldActivity(
   }
 ): Promise<{ success: boolean; activity?: FieldActivityRecord; error?: string }> {
   try {
-    const existing = (await fetchDocument(ERP_COLLECTIONS.fieldActivities, activityId)) as FieldActivityRecord | null;
+    let existing = (await fetchDocument(ERP_COLLECTIONS.fieldActivities, activityId)) as FieldActivityRecord | null;
     if (!existing) {
-      return { success: false, error: 'Activity not found in database to end.' };
+      // Graceful offline self-heal: If activity was started offline and arrives directly via end
+      const nowIso = new Date().toISOString();
+      const reportDate = normalizeReportDate((data.finalDetails as any)?.reportDate || getOperationalDateString());
+      existing = {
+        activityId,
+        id: activityId,
+        reportId: `field_rep_${staffUser.uid}_${reportDate}`,
+        staffUid: staffUser.uid,
+        employeeUid: staffUser.uid,
+        employeeId: staffUser.employeeId || '',
+        employeeName: staffUser.fullName || 'Staff Member',
+        departmentId: staffUser.departmentId || '',
+        departmentName: staffUser.departmentName || 'Field Operations',
+        centerId: staffUser.assignedCenterIds?.[0] || '',
+        centerName: staffUser.assignedCenterNames?.[0] || '',
+        reportDate,
+        slotNumber: 1,
+        activityStatus: 'IN_PROGRESS',
+        activityName: (data.finalDetails?.activityName as any) || 'farmer_visit',
+        activityNameLabel: data.finalDetails?.activityNameLabel || 'Farmer Visit',
+        activityOther: data.finalDetails?.activityOther || '',
+        village: data.finalDetails?.village || '',
+        wadi: data.finalDetails?.wadi || '',
+        activityStartAt: data.finalDetails?.activityStartAt || nowIso,
+        activityStartLocation: null,
+        activityStartGps: null,
+        activityStartLocationStatus: 'unavailable',
+        activityEndAt: null,
+        activityEndLocation: null,
+        activityEndGps: null,
+        activityEndLocationStatus: null,
+        activityDurationMinutes: 0,
+        durationMinutes: 0,
+        participantType: (data.finalDetails?.activityType as any) || 'group',
+        farmerName: data.finalDetails?.farmerName || '',
+        totalParticipants: Number(data.finalDetails?.totalParticipants) || 0,
+        maleParticipants: Number(data.finalDetails?.maleParticipants) || 0,
+        femaleParticipants: Number(data.finalDetails?.femaleParticipants) || 0,
+        observations: data.finalDetails?.observations || '',
+        farmerIssues: data.finalDetails?.farmerIssues || '',
+        supportProvided: data.finalDetails?.supportProvided || [],
+        followUpRequired: Boolean(data.finalDetails?.followUpRequired),
+        followUpDetails: data.finalDetails?.followUpDetails || '',
+        followUpDate: data.finalDetails?.followUpDate || '',
+        photoEvidence: data.finalDetails?.photoUrl ? [data.finalDetails.photoUrl] : [],
+        photoUrl: data.finalDetails?.photoUrl || '',
+        videoEvidence: data.finalDetails?.videoUrl ? [data.finalDetails.videoUrl] : [],
+        videoUrl: data.finalDetails?.videoUrl || '',
+        syncStatus: 'synced',
+        createdAt: nowIso,
+        updatedAt: nowIso,
+        completedAt: null,
+      };
+      await saveDocument(ERP_COLLECTIONS.fieldActivities, activityId, existing);
     }
 
     // Ownership check
@@ -455,6 +508,17 @@ async function syncActivityToParentReport(staffUser: UserProfile, activity: Fiel
 
     const { summary } = calculateActivitiesSummary(updatedActivities, false);
 
+    const hasCompleted = updatedActivities.some(
+      (a: any) => a.activityStatus === 'COMPLETED' || a.activityStatus === 'completed'
+    );
+
+    const resolvedStatus =
+      existingRep?.status && existingRep.status !== 'draft'
+        ? existingRep.status
+        : hasCompleted
+        ? 'submitted'
+        : 'draft';
+
     const reportPayload = {
       id: reportDocId,
       staffUid: staffUser.uid,
@@ -468,8 +532,9 @@ async function syncActivityToParentReport(staffUser: UserProfile, activity: Fiel
       reportDate: activity.reportDate,
       activities: updatedActivities,
       summary,
-      status: existingRep?.status || 'draft',
-      finalized: existingRep?.finalized || false,
+      status: resolvedStatus,
+      finalized: Boolean(existingRep?.finalized || hasCompleted),
+      submittedAt: existingRep?.submittedAt || (hasCompleted ? new Date().toISOString() : undefined),
       revisionNumber: existingRep?.revisionNumber || 1,
       createdAt: existingRep?.createdAt || activity.createdAt,
       updatedAt: new Date().toISOString(),
@@ -478,6 +543,6 @@ async function syncActivityToParentReport(staffUser: UserProfile, activity: Fiel
 
     await saveDocument(ERP_COLLECTIONS.fieldReports, reportDocId, reportPayload);
   } catch (err) {
-    console.warn('syncActivityToParentReport deferred:', err);
+    console.error('syncActivityToParentReport error:', err);
   }
 }

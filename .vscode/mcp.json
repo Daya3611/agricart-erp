@@ -3,7 +3,7 @@
     "codelens": {
       "command": "node",
       "args": [
-        "c:/Users/Dayanand/.antigravity-ide/extensions/pranaydas.codelens-graph-0.3.1-universal/dist/mcp.js",
+        "C:/Users/Dayanand/.codelens/mcp.js",
         "--auto"
       ]
     }
