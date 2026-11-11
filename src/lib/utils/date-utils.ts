@@ -43,14 +43,59 @@ export function formatReadableDate(dateStr: string): string {
   }
 }
 
-export function formatReadableDateTime(isoStr?: string): string {
+export function formatTimeIST(isoStr?: string | null): string {
+  if (!isoStr) return '—';
+  try {
+    const d = new Date(isoStr);
+    if (isNaN(d.getTime())) return String(isoStr);
+    return new Intl.DateTimeFormat('en-IN', {
+      timeZone: 'Asia/Kolkata',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+    }).format(d);
+  } catch {
+    return String(isoStr);
+  }
+}
+
+export function formatTime24IST(isoStr?: string | null): string {
+  if (!isoStr) return '—';
+  try {
+    const d = new Date(isoStr);
+    if (isNaN(d.getTime())) return String(isoStr);
+    return new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Asia/Kolkata',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    }).format(d);
+  } catch {
+    return String(isoStr);
+  }
+}
+
+export function formatDateTimeIST(isoStr?: string | null): string {
   if (!isoStr) return 'N/A';
   try {
-    const d = parseISO(isoStr);
-    return format(d, 'dd MMM yyyy, hh:mm a');
+    const d = new Date(isoStr);
+    if (isNaN(d.getTime())) return String(isoStr);
+    return new Intl.DateTimeFormat('en-IN', {
+      timeZone: 'Asia/Kolkata',
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+    }).format(d);
   } catch {
-    return isoStr;
+    return String(isoStr);
   }
+}
+
+export function formatReadableDateTime(isoStr?: string): string {
+  return formatDateTimeIST(isoStr);
 }
 
 export function getDateRangeFromPreset(preset: string): { startDate: string; endDate: string } {

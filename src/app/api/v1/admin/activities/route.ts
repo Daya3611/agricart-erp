@@ -5,6 +5,12 @@ import { ERP_COLLECTIONS } from '@/lib/firebase/collections';
 import { FieldActivityRecord } from '@/types';
 import { getLiveActivitiesForAdmin } from '@/lib/services/field-activity-service';
 import { getOperationalDateString, normalizeReportDate } from '@/lib/utils/date-utils';
+import {
+  deduplicateActivityRecords,
+  isActivityCompleted,
+  isActivityInProgress,
+  normalizeActivityStatus,
+} from '@/lib/utils/field-activity-calculations';
 
 export const dynamic = 'force-dynamic';
 
@@ -41,7 +47,12 @@ export async function GET(req: Request) {
       queryFilters.push({ field: 'staffUid', op: '==', value: staffUid });
     }
 
-    let activities = (await fetchCollection(ERP_COLLECTIONS.fieldActivities, queryFilters)) as FieldActivityRecord[];
+    let rawActivities = (await fetchCollection(ERP_COLLECTIONS.fieldActivities, queryFilters)) as FieldActivityRecord[];
+
+    let activities = deduplicateActivityRecords(
+      rawActivities,
+      (a) => `${a.staffUid || a.employeeUid}_${a.reportDate}_${Number(a.slotNumber) || 1}`
+    );
 
     // Scoping for manager
     if (user.role === 'manager') {
@@ -64,7 +75,8 @@ export async function GET(req: Request) {
       activities = activities.filter((a) => a.centerId === centerId);
     }
     if (status && status !== 'ALL') {
-      activities = activities.filter((a) => (a.activityStatus?.toUpperCase() || '') === status);
+      const targetStatus = normalizeActivityStatus(status);
+      activities = activities.filter((a) => normalizeActivityStatus(a) === targetStatus);
     }
 
     // Sort descending by reportDate, then activity start time
@@ -84,8 +96,8 @@ export async function GET(req: Request) {
       page,
       limit,
       totalPages,
-      inProgressCount: activities.filter((a) => a.activityStatus === 'IN_PROGRESS').length,
-      completedCount: activities.filter((a) => a.activityStatus === 'COMPLETED').length,
+      inProgressCount: activities.filter((a) => isActivityInProgress(a)).length,
+      completedCount: activities.filter((a) => isActivityCompleted(a)).length,
     });
   } catch (err: any) {
     const status = err.message?.startsWith('UNAUTHORIZED') ? 401 : err.message?.startsWith('FORBIDDEN') ? 403 : 500;

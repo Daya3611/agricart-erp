@@ -8,6 +8,7 @@ import {
   MobileActivityStartSchema,
 } from '@/lib/api/v1-helper';
 import { startFieldActivity } from '@/lib/services/field-activity-service';
+import { normalizeActivityStatus } from '@/lib/utils/field-activity-calculations';
 import { fetchDocument } from '@/lib/firebase/firestore';
 import { ERP_COLLECTIONS } from '@/lib/firebase/collections';
 import { ActivityChoiceKey, FieldActivityRecord, GpsCoordinate, LocationCaptureStatus } from '@/types';
@@ -30,22 +31,31 @@ export async function POST(req: Request) {
 
     const chosenId = data!.clientActivityId || data!.activityId;
 
-    // Idempotency check for offline retries: if an activity with this UUID already exists, return it
+    // Idempotency check for offline retries: if an activity with this UUID already exists on the SAME slot, return normalized state
     if (chosenId) {
       const existing = (await fetchDocument(ERP_COLLECTIONS.fieldActivities, chosenId)) as FieldActivityRecord | null;
       if (existing) {
         if (existing.staffUid !== user.uid) {
           return apiError('FORBIDDEN: Activity UUID belongs to another employee.', 403);
         }
-        return apiSuccess(
-          {
-            activity: existing,
-            activityId: existing.id || chosenId,
-            isIdempotentReplay: true,
-            syncStatus: 'synced',
-          },
-          'Activity retrieved from existing sync'
-        );
+        const existingNormStatus = normalizeActivityStatus(existing);
+        if (Number(existing.slotNumber) && Number(existing.slotNumber) !== Number(data!.slotNumber)) {
+          // Do not mask a different slot behind another slot's UUID; fall through to startFieldActivity conflict check
+        } else {
+          const normalizedActivity: FieldActivityRecord = {
+            ...existing,
+            activityStatus: existingNormStatus,
+          };
+          return apiSuccess(
+            {
+              activity: normalizedActivity,
+              activityId: existing.id || chosenId,
+              isIdempotentReplay: true,
+              syncStatus: 'synced',
+            },
+            'Activity retrieved from existing sync'
+          );
+        }
       }
     }
 
@@ -67,9 +77,6 @@ export async function POST(req: Request) {
         ? 'denied'
         : 'unavailable';
 
-    const activityTypeChoice: 'single_farmer' | 'group' =
-      data!.activityType === 'single_farmer' ? 'single_farmer' : 'group';
-
     const result = await startFieldActivity(user, {
       activityId: chosenId,
       slotNumber: data!.slotNumber,
@@ -79,22 +86,28 @@ export async function POST(req: Request) {
       activityOther: data!.activityOther ?? undefined,
       village: data!.village ?? undefined,
       wadi: data!.wadi ?? undefined,
+      activityStartAt: data!.clientTimestamp || undefined,
       gps: gpsInput,
       locationStatus: locStatus,
       initialDetails: {
-        activityType: activityTypeChoice,
+        activityType: data!.activityType,
+        participantType: data!.activityType,
         farmerName: data!.farmerName ?? undefined,
+        groupDetails: data!.groupDetails ?? undefined,
         totalParticipants: data!.totalParticipants,
         maleParticipants: data!.maleParticipants,
         femaleParticipants: data!.femaleParticipants,
         observations: data!.observations ?? undefined,
         farmerIssues: data!.farmerIssues ?? undefined,
         supportProvided: data!.supportProvided,
+        supportOther: data!.supportOther ?? undefined,
         followUpRequired: data!.followUpRequired,
         followUpDetails: data!.followUpDetails ?? undefined,
         followUpDate: data!.followUpDate ?? undefined,
         photoUrl: data!.photoUrl ?? undefined,
+        photoEvidence: data!.photoEvidence,
         videoUrl: data!.videoUrl ?? undefined,
+        videoEvidence: data!.videoEvidence,
       },
     });
 

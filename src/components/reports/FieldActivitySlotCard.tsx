@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   MapPin,
   Clock,
@@ -18,6 +18,7 @@ import {
   Lock,
   Cloud,
   Save,
+  Upload,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -31,6 +32,11 @@ import {
 } from '@/types/field-activity';
 import { LocationDisplayCard } from '@/components/reports/LocationDisplayCard';
 import { formatCapturedTime } from '@/lib/utils/geolocation';
+import {
+  isSingleFarmerActivity,
+  mergeEvidenceUrls,
+  normalizeActivityStatus,
+} from '@/lib/utils/field-activity-calculations';
 
 interface FieldActivitySlotCardProps {
   slot: FieldActivitySlot;
@@ -43,6 +49,7 @@ interface FieldActivitySlotCardProps {
   isSavingDraft?: boolean;
   onRemove?: () => void;
   isReadOnly?: boolean;
+  allowEditCompleted?: boolean;
   hasActiveActivityElsewhere?: boolean;
 }
 
@@ -57,33 +64,41 @@ export function FieldActivitySlotCard({
   isSavingDraft = false,
   onRemove,
   isReadOnly = false,
+  allowEditCompleted = false,
   hasActiveActivityElsewhere = false,
 }: FieldActivitySlotCardProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [starting, setStarting] = useState(false);
   const [ending, setEnding] = useState(false);
   const [manualSaving, setManualSaving] = useState(false);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [uploadingVideo, setUploadingVideo] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [actionSuccess, setActionSuccess] = useState<string | null>(null);
   const [elapsedMinutes, setElapsedMinutes] = useState(0);
 
-  const rawStatus = slot.activityStatus || '';
-  const isCompleted =
-    rawStatus === 'COMPLETED' ||
-    rawStatus === 'completed' ||
-    Boolean(slot.activityEnd && slot.activityStart && (slot.durationMinutes || slot.activityDurationMinutes));
-  const isInProgress =
-    rawStatus === 'IN_PROGRESS' ||
-    rawStatus === 'in_progress' ||
-    Boolean(!isCompleted && (slot.activityStart || slot.activityStartAt));
-  const status: 'not_started' | 'in_progress' | 'completed' = isCompleted
-    ? 'completed'
-    : isInProgress
-    ? 'in_progress'
-    : 'not_started';
+  const startingRef = useRef(false);
+  const endingRef = useRef(false);
+  const savingRef = useRef(false);
+  const photoInputRef = useRef<HTMLInputElement | null>(null);
+  const videoInputRef = useRef<HTMLInputElement | null>(null);
 
-  const isDeskJob = slot.activityName === 'desk_job';
+  const canonicalStatus = normalizeActivityStatus(slot);
+  const status: 'not_started' | 'in_progress' | 'completed' | 'cancelled' =
+    canonicalStatus === 'COMPLETED'
+      ? 'completed'
+      : canonicalStatus === 'IN_PROGRESS'
+      ? 'in_progress'
+      : canonicalStatus === 'CANCELLED'
+      ? 'cancelled'
+      : 'not_started';
+
+  const isFieldLocked = isReadOnly || status === 'cancelled' || (status === 'completed' && !allowEditCompleted);
+  const isDeskJob =
+    slot.activityName === 'desk_job' ||
+    (typeof slot.activityName === 'string' && slot.activityName.toLowerCase().includes('desk'));
   const isOther = slot.activityName === 'other';
-  const isSingleFarmer = slot.activityType === 'single_farmer';
+  const isSingleFarmer = isSingleFarmerActivity(slot.activityType || slot.participantType);
 
   // Live timer for in-progress activities
   useEffect(() => {
@@ -103,7 +118,7 @@ export function FieldActivitySlotCard({
 
   // Support multiselect toggle
   const toggleSupport = (key: string) => {
-    if (status === 'completed' || isReadOnly) return;
+    if (isFieldLocked) return;
     const cur = slot.supportProvided || [];
     let updated: string[];
     if (key === 'none') {
@@ -116,7 +131,11 @@ export function FieldActivitySlotCard({
         updated = [...withoutNone, key];
       }
     }
-    onChange({ ...slot, supportProvided: updated });
+    onChange({
+      ...slot,
+      supportProvided: updated,
+      supportOther: updated.includes('other') ? slot.supportOther : '',
+    });
   };
 
   // Participant validation
@@ -125,50 +144,177 @@ export function FieldActivitySlotCard({
   const total = Number(slot.totalParticipants) || 0;
   const participantMismatch = !isDeskJob && !isSingleFarmer && total > 0 && male + female !== total;
 
+  const validateSlotRequiredFields = (): string | null => {
+    if (isOther && (!slot.activityOther || !slot.activityOther.trim())) {
+      return 'Please specify the "Other Activity" description before saving/completing.';
+    }
+    if (!isDeskJob) {
+      if (!slot.village || !slot.village.trim()) {
+        return 'Please specify Village / Location before completing this field activity.';
+      }
+      if (!slot.observations || !slot.observations.trim()) {
+        return 'Please enter Key Observations / Summary before completing this activity.';
+      }
+      if (isSingleFarmer && (!slot.farmerName || !slot.farmerName.trim())) {
+        return 'Farmer Name is required for single farmer visits.';
+      }
+      if (!isSingleFarmer) {
+        if (total < 1) {
+          return 'Total participants must be 1 or greater for group activities.';
+        }
+        if (participantMismatch) {
+          return `Participant counts must add up: Male (${male}) + Female (${female}) must equal Total (${total}).`;
+        }
+      }
+    }
+    if (slot.supportProvided?.includes('other') && (!slot.supportOther || !slot.supportOther.trim())) {
+      return 'Please specify Other Support Details when "Other" is selected.';
+    }
+    if (slot.followUpRequired && (!slot.followUpDetails || !slot.followUpDetails.trim())) {
+      return 'Follow-up Action Details are required when Follow-up is marked Yes.';
+    }
+    return null;
+  };
+
   // Handle Start
   const handleStart = async () => {
+    if (startingRef.current || starting || hasActiveActivityElsewhere || isFieldLocked) return;
     setActionError(null);
+    setActionSuccess(null);
+    if (isOther && (!slot.activityOther || !slot.activityOther.trim())) {
+      setActionError('Please specify the "Other Activity" description before starting.');
+      return;
+    }
+    startingRef.current = true;
     setStarting(true);
     try {
       await onStartActivity(slot.slotNumber);
+      setActionSuccess(`Activity #${slot.slotNumber} started successfully.`);
+      setTimeout(() => setActionSuccess(null), 3500);
     } catch (err: any) {
       setActionError(err.message || 'Failed to start activity.');
     } finally {
+      startingRef.current = false;
       setStarting(false);
+    }
+  };
+
+  // Handle Manual Save (for In Progress draft or Reopened Completed correction)
+  const handleManualSave = async () => {
+    if (!onSaveDraft || savingRef.current || manualSaving || ending || isFieldLocked) return;
+    setActionError(null);
+    setActionSuccess(null);
+
+    if (status === 'completed') {
+      const validationErr = validateSlotRequiredFields();
+      if (validationErr) {
+        setActionError(validationErr);
+        return;
+      }
+    }
+
+    savingRef.current = true;
+    setManualSaving(true);
+    try {
+      await onSaveDraft(slot.slotNumber);
+      setActionSuccess(`Activity #${slot.slotNumber} saved successfully.`);
+      setTimeout(() => setActionSuccess(null), 3500);
+    } catch (err: any) {
+      setActionError(err.message || 'Failed to save activity.');
+    } finally {
+      savingRef.current = false;
+      setManualSaving(false);
     }
   };
 
   // Handle End
   const handleEnd = async () => {
+    if (endingRef.current || ending || isFieldLocked) return;
     setActionError(null);
+    setActionSuccess(null);
 
-    // Validation checks before ending
-    if (!isDeskJob) {
-      if (!slot.village || !slot.village.trim()) {
-        setActionError('Please specify Village / Location before completing this field activity.');
-        return;
-      }
-      if (!slot.observations || !slot.observations.trim()) {
-        setActionError('Please enter observations/work summary before ending this activity.');
-        return;
-      }
-      if (isSingleFarmer && (!slot.farmerName || !slot.farmerName.trim())) {
-        setActionError('Farmer Name is required for single farmer visits.');
-        return;
-      }
-      if (!isSingleFarmer && participantMismatch) {
-        setActionError(`Participant counts must add up: Male (${male}) + Female (${female}) must equal Total (${total}).`);
-        return;
-      }
+    const validationErr = validateSlotRequiredFields();
+    if (validationErr) {
+      setActionError(validationErr);
+      return;
     }
 
+    endingRef.current = true;
     setEnding(true);
     try {
       await onEndActivity(slot.slotNumber);
+      setActionSuccess(`Activity #${slot.slotNumber} completed and saved.`);
+      setTimeout(() => setActionSuccess(null), 3500);
     } catch (err: any) {
       setActionError(err.message || 'Failed to end activity.');
     } finally {
+      endingRef.current = false;
       setEnding(false);
+    }
+  };
+
+  // Handle evidence upload to /api/uploads
+  const handleEvidenceUpload = async (kind: 'photo' | 'video', file?: File | null) => {
+    if (!file || isFieldLocked) return;
+    setActionError(null);
+    setActionSuccess(null);
+    if (kind === 'photo') setUploadingPhoto(true);
+    else setUploadingVideo(true);
+
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('reportId', slot.activityId || `slot_${slot.slotNumber}_${Date.now()}`);
+      formData.append('caption', `Activity #${slot.slotNumber} ${kind}`);
+
+      const res = await fetch('/api/uploads', { method: 'POST', body: formData });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || `Failed to upload ${kind}`);
+      }
+      const url = data.attachment?.downloadUrl || `/api/uploads/view?path=${encodeURIComponent(data.attachment?.storagePath || '')}`;
+      if (kind === 'photo') {
+        const merged = mergeEvidenceUrls(url, slot.photoEvidence);
+        onChange({ ...slot, photoUrl: url, photoEvidence: merged });
+      } else {
+        const merged = mergeEvidenceUrls(url, slot.videoEvidence);
+        onChange({ ...slot, videoUrl: url, videoEvidence: merged });
+      }
+      setActionSuccess(`${kind === 'photo' ? 'Photo' : 'Video'} uploaded and attached.`);
+      setTimeout(() => setActionSuccess(null), 3500);
+    } catch (err: any) {
+      setActionError(err.message || `Failed to upload ${kind}.`);
+    } finally {
+      if (kind === 'photo') setUploadingPhoto(false);
+      else setUploadingVideo(false);
+    }
+  };
+
+  // Enter key submission handler:
+  // - Regular Enter inside <textarea> keeps normal newline behavior.
+  // - Ctrl+Enter / Cmd+Enter inside <textarea>, or Enter inside <input>, triggers the validated save/start/end action.
+  const handleCardKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== 'Enter' || e.nativeEvent.isComposing || isFieldLocked) return;
+    const target = e.target as HTMLElement | null;
+    if (!target) return;
+
+    const tagName = target.tagName.toUpperCase();
+    if (tagName === 'TEXTAREA') {
+      if (!(e.ctrlKey || e.metaKey)) return;
+    } else if (tagName === 'INPUT') {
+      const inputType = (target as HTMLInputElement).type;
+      if (['file', 'button', 'submit', 'checkbox', 'radio'].includes(inputType)) return;
+    } else {
+      return;
+    }
+
+    e.preventDefault();
+    if (status === 'not_started') {
+      void handleStart();
+    } else if (status === 'in_progress') {
+      void handleEnd();
+    } else if (status === 'completed' && allowEditCompleted) {
+      void handleManualSave();
     }
   };
 
@@ -177,6 +323,7 @@ export function FieldActivitySlotCard({
 
   return (
     <div
+      onKeyDown={handleCardKeyDown}
       className={`border rounded-2xl bg-card shadow-2xs overflow-hidden transition-all ${
         status === 'in_progress'
           ? 'border-emerald-500 ring-2 ring-emerald-500/20'
@@ -229,6 +376,12 @@ export function FieldActivitySlotCard({
               {status === 'not_started' && (
                 <Badge variant="secondary" className="text-[10px]">
                   NOT STARTED
+                </Badge>
+              )}
+
+              {status === 'cancelled' && (
+                <Badge variant="secondary" className="text-[10px]">
+                  CANCELLED
                 </Badge>
               )}
             </div>
@@ -286,7 +439,7 @@ export function FieldActivitySlotCard({
         </div>
       </div>
 
-      {/* Action Error Banner */}
+      {/* Action Error & Success Banners */}
       {actionError && (
         <div className="px-4 py-2.5 bg-rose-50 border-b border-rose-200 text-rose-800 text-xs flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -299,6 +452,23 @@ export function FieldActivitySlotCard({
             size="sm"
             onClick={() => setActionError(null)}
             className="text-rose-700 text-xs h-6 px-1.5"
+          >
+            Dismiss
+          </Button>
+        </div>
+      )}
+      {actionSuccess && (
+        <div className="px-4 py-2 bg-emerald-50 border-b border-emerald-200 text-emerald-800 text-xs flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" />
+            <span>{actionSuccess}</span>
+          </div>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => setActionSuccess(null)}
+            className="text-emerald-700 text-xs h-6 px-1.5"
           >
             Dismiss
           </Button>
@@ -318,7 +488,7 @@ export function FieldActivitySlotCard({
                     Ready to Begin Activity #{slot.slotNumber}
                   </h5>
                   <p className="text-muted-foreground text-xs mt-0.5">
-                    Configure the activity type below and click <strong>Start Activity</strong>. Start time and GPS location will be captured automatically.
+                    Configure the activity type below and click <strong>Start Activity</strong> (or press <strong>Enter</strong>). Start time and GPS location will be captured automatically.
                   </p>
                 </div>
 
@@ -336,7 +506,7 @@ export function FieldActivitySlotCard({
 
               {hasActiveActivityElsewhere && (
                 <p className="text-xs text-amber-700 dark:text-amber-400 font-medium bg-amber-50 dark:bg-amber-950/30 p-2 rounded-lg border border-amber-200">
-                  Another activity is currently IN PROGRESS. Please complete it by clicking "End Activity" before starting Activity #{slot.slotNumber}.
+                  Another activity is currently IN PROGRESS. Please complete it by clicking &quot;End Activity&quot; before starting Activity #{slot.slotNumber}.
                 </p>
               )}
             </div>
@@ -357,7 +527,7 @@ export function FieldActivitySlotCard({
                     </span>
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Started at <strong>{formatCapturedTime(slot.activityStartAt || slot.activityStart)}</strong> (Elapsed: <strong>{elapsedMinutes} mins</strong>). Complete documentation and click End Activity when finished.
+                    Started at <strong>{formatCapturedTime(slot.activityStartAt || slot.activityStart)}</strong> (Elapsed: <strong>{elapsedMinutes} mins</strong>). Press <strong>Enter</strong> in any field (or <strong>Ctrl+Enter</strong> in notes) when all required fields are ready, or click End Activity.
                   </p>
                 </div>
 
@@ -368,16 +538,7 @@ export function FieldActivitySlotCard({
                         type="button"
                         variant="outline"
                         size="default"
-                        onClick={async () => {
-                          setManualSaving(true);
-                          try {
-                            await onSaveDraft(slot.slotNumber);
-                          } catch (err: any) {
-                            setActionError(err.message || 'Failed to save draft.');
-                          } finally {
-                            setManualSaving(false);
-                          }
-                        }}
+                        onClick={handleManualSave}
                         disabled={manualSaving || isSavingDraft || ending}
                         className="border-emerald-300 dark:border-emerald-700 text-emerald-800 dark:text-emerald-300 hover:bg-emerald-100/50 h-10 px-4 rounded-xl text-xs font-bold"
                       >
@@ -412,15 +573,36 @@ export function FieldActivitySlotCard({
           {/* STATE 3: COMPLETED - Start / End Timeline & Locations */}
           {status === 'completed' && (
             <div className="space-y-3 p-3.5 bg-muted/20 rounded-xl border border-border">
-              <div className="flex items-center justify-between border-b border-border pb-2">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border pb-2">
                 <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
                   <Clock className="h-3.5 w-3.5 text-primary" />
                   Activity Timeline & Locations
                 </span>
-                <span className="text-xs font-black text-emerald-700 dark:text-emerald-400">
-                  Total Duration: {slot.durationMinutes || slot.activityDurationMinutes || 0} minutes
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-black text-emerald-700 dark:text-emerald-400">
+                    Total Duration: {slot.durationMinutes || slot.activityDurationMinutes || 0} minutes
+                  </span>
+                  {allowEditCompleted && !isReadOnly && onSaveDraft && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={handleManualSave}
+                      disabled={manualSaving || isSavingDraft}
+                      className="h-7 text-[11px] font-bold border-amber-300 text-amber-800 hover:bg-amber-50 rounded-lg"
+                    >
+                      <Save className={`h-3 w-3 mr-1 ${manualSaving || isSavingDraft ? 'animate-spin' : ''}`} />
+                      {manualSaving || isSavingDraft ? 'Saving...' : 'Save Revision'}
+                    </Button>
+                  )}
+                </div>
               </div>
+
+              {allowEditCompleted && !isReadOnly && (
+                <div className="p-2.5 bg-amber-50/80 dark:bg-amber-950/30 border border-amber-200 rounded-lg text-[11px] text-amber-900 dark:text-amber-300 font-medium">
+                  Correction / Edit Mode enabled: You can edit activity details below while verified GPS timestamps remain preserved.
+                </div>
+              )}
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div>
@@ -457,7 +639,7 @@ export function FieldActivitySlotCard({
                     activityNameLabel: sel?.label,
                   });
                 }}
-                disabled={isReadOnly || status === 'completed'}
+                disabled={isFieldLocked}
                 className="text-xs h-9"
               >
                 {ACTIVITY_CHOICES.map((choice) => (
@@ -477,7 +659,7 @@ export function FieldActivitySlotCard({
                   value={slot.activityOther || ''}
                   onChange={(e) => onChange({ ...slot, activityOther: e.target.value })}
                   placeholder="Detail other activity..."
-                  disabled={isReadOnly || status === 'completed'}
+                  disabled={isFieldLocked}
                   className="text-xs h-9"
                 />
               </div>
@@ -493,7 +675,7 @@ export function FieldActivitySlotCard({
                     value={slot.village || ''}
                     onChange={(e) => onChange({ ...slot, village: e.target.value })}
                     placeholder="Enter village name..."
-                    disabled={isReadOnly || status === 'completed'}
+                    disabled={isFieldLocked}
                     className="text-xs h-9"
                   />
                 </div>
@@ -506,7 +688,7 @@ export function FieldActivitySlotCard({
                     value={slot.wadi || ''}
                     onChange={(e) => onChange({ ...slot, wadi: e.target.value })}
                     placeholder="Specific site or wadi..."
-                    disabled={isReadOnly || status === 'completed'}
+                    disabled={isFieldLocked}
                     className="text-xs h-9"
                   />
                 </div>
@@ -526,7 +708,7 @@ export function FieldActivitySlotCard({
                   <span
                     key={sug}
                     onClick={() => {
-                      if (status === 'completed' || isReadOnly) return;
+                      if (isFieldLocked) return;
                       const cur = slot.observations || '';
                       onChange({
                         ...slot,
@@ -550,8 +732,17 @@ export function FieldActivitySlotCard({
                 <div className="flex gap-2">
                   <button
                     type="button"
-                    onClick={() => onChange({ ...slot, activityType: 'single_farmer', totalParticipants: 1, maleParticipants: 0, femaleParticipants: 0 })}
-                    disabled={isReadOnly || status === 'completed'}
+                    onClick={() =>
+                      onChange({
+                        ...slot,
+                        activityType: 'single_farmer',
+                        participantType: 'single_farmer',
+                        totalParticipants: 1,
+                        maleParticipants: 0,
+                        femaleParticipants: 0,
+                      })
+                    }
+                    disabled={isFieldLocked}
                     className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
                       isSingleFarmer ? 'bg-primary text-white' : 'bg-card border border-border text-foreground hover:bg-muted'
                     }`}
@@ -560,8 +751,16 @@ export function FieldActivitySlotCard({
                   </button>
                   <button
                     type="button"
-                    onClick={() => onChange({ ...slot, activityType: 'group', farmerName: '', totalParticipants: Math.max(1, slot.totalParticipants) })}
-                    disabled={isReadOnly || status === 'completed'}
+                    onClick={() =>
+                      onChange({
+                        ...slot,
+                        activityType: 'group',
+                        participantType: 'group',
+                        farmerName: '',
+                        totalParticipants: Math.max(1, slot.totalParticipants),
+                      })
+                    }
+                    disabled={isFieldLocked}
                     className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
                       !isSingleFarmer ? 'bg-primary text-white' : 'bg-card border border-border text-foreground hover:bg-muted'
                     }`}
@@ -580,12 +779,25 @@ export function FieldActivitySlotCard({
                     value={slot.farmerName || ''}
                     onChange={(e) => onChange({ ...slot, farmerName: e.target.value })}
                     placeholder="Full name of farmer visited..."
-                    disabled={isReadOnly || status === 'completed'}
+                    disabled={isFieldLocked}
                     className="text-xs h-9"
                   />
                 </div>
               ) : (
-                <div>
+                <div className="space-y-3">
+                  <div>
+                    <label className="font-bold text-foreground block mb-1">
+                      Group Activity / Meeting Details <span className="text-muted-foreground font-normal">(FPO group name, agenda, topic)</span>
+                    </label>
+                    <Input
+                      value={slot.groupDetails || ''}
+                      onChange={(e) => onChange({ ...slot, groupDetails: e.target.value })}
+                      placeholder="e.g. Krishi Sangh SHG meeting on Kharif sowing & input planning..."
+                      disabled={isFieldLocked}
+                      className="text-xs h-9"
+                    />
+                  </div>
+
                   <div className="grid grid-cols-3 gap-3">
                     <div>
                       <label className="font-bold text-foreground block mb-1">
@@ -596,7 +808,7 @@ export function FieldActivitySlotCard({
                         min="1"
                         value={slot.totalParticipants || ''}
                         onChange={(e) => onChange({ ...slot, totalParticipants: Math.max(0, parseInt(e.target.value, 10) || 0) })}
-                        disabled={isReadOnly || status === 'completed'}
+                        disabled={isFieldLocked}
                         className="text-xs h-9 font-bold"
                       />
                     </div>
@@ -609,7 +821,7 @@ export function FieldActivitySlotCard({
                         min="0"
                         value={slot.maleParticipants || ''}
                         onChange={(e) => onChange({ ...slot, maleParticipants: Math.max(0, parseInt(e.target.value, 10) || 0) })}
-                        disabled={isReadOnly || status === 'completed'}
+                        disabled={isFieldLocked}
                         className="text-xs h-9 font-bold"
                       />
                     </div>
@@ -622,7 +834,7 @@ export function FieldActivitySlotCard({
                         min="0"
                         value={slot.femaleParticipants || ''}
                         onChange={(e) => onChange({ ...slot, femaleParticipants: Math.max(0, parseInt(e.target.value, 10) || 0) })}
-                        disabled={isReadOnly || status === 'completed'}
+                        disabled={isFieldLocked}
                         className="text-xs h-9 font-bold"
                       />
                     </div>
@@ -648,9 +860,9 @@ export function FieldActivitySlotCard({
               <textarea
                 value={slot.observations || ''}
                 onChange={(e) => onChange({ ...slot, observations: e.target.value })}
-                placeholder="Record main activities, observations, discussion, or outcomes..."
+                placeholder="Record main activities, observations, discussion, or outcomes... (Press Enter for newline, Ctrl+Enter to submit)"
                 rows={2}
-                disabled={isReadOnly || status === 'completed'}
+                disabled={isFieldLocked}
                 className="w-full text-xs p-2.5 rounded-xl border border-border bg-background focus:ring-2 focus:ring-primary/20 outline-none"
               />
             </div>
@@ -663,7 +875,7 @@ export function FieldActivitySlotCard({
                 value={slot.farmerIssues || ''}
                 onChange={(e) => onChange({ ...slot, farmerIssues: e.target.value })}
                 placeholder="Any challenges or concerns raised..."
-                disabled={isReadOnly || status === 'completed'}
+                disabled={isFieldLocked}
                 className="text-xs h-9"
               />
             </div>
@@ -682,7 +894,7 @@ export function FieldActivitySlotCard({
                     key={sup.key}
                     type="button"
                     onClick={() => toggleSupport(sup.key)}
-                    disabled={isReadOnly || status === 'completed'}
+                    disabled={isFieldLocked}
                     className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition-all ${
                       isSelected
                         ? 'bg-primary text-white shadow-2xs'
@@ -701,7 +913,7 @@ export function FieldActivitySlotCard({
                   value={slot.supportOther || ''}
                   onChange={(e) => onChange({ ...slot, supportOther: e.target.value })}
                   placeholder="Detail other support provided..."
-                  disabled={isReadOnly || status === 'completed'}
+                  disabled={isFieldLocked}
                   className="text-xs h-9"
                 />
               </div>
@@ -715,8 +927,8 @@ export function FieldActivitySlotCard({
               <div className="flex gap-2">
                 <button
                   type="button"
-                  onClick={() => onChange({ ...slot, followUpRequired: false, followUpDetails: '' })}
-                  disabled={isReadOnly || status === 'completed'}
+                  onClick={() => onChange({ ...slot, followUpRequired: false, followUpDetails: '', followUpDate: '' })}
+                  disabled={isFieldLocked}
                   className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
                     !slot.followUpRequired ? 'bg-slate-700 text-white' : 'bg-card border border-border text-foreground'
                   }`}
@@ -726,7 +938,7 @@ export function FieldActivitySlotCard({
                 <button
                   type="button"
                   onClick={() => onChange({ ...slot, followUpRequired: true })}
-                  disabled={isReadOnly || status === 'completed'}
+                  disabled={isFieldLocked}
                   className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
                     slot.followUpRequired ? 'bg-amber-600 text-white' : 'bg-card border border-border text-foreground'
                   }`}
@@ -746,7 +958,7 @@ export function FieldActivitySlotCard({
                     value={slot.followUpDetails || ''}
                     onChange={(e) => onChange({ ...slot, followUpDetails: e.target.value })}
                     placeholder="Specify action to be taken..."
-                    disabled={isReadOnly || status === 'completed'}
+                    disabled={isFieldLocked}
                     className="text-xs h-9"
                   />
                 </div>
@@ -758,7 +970,7 @@ export function FieldActivitySlotCard({
                     type="date"
                     value={slot.followUpDate || ''}
                     onChange={(e) => onChange({ ...slot, followUpDate: e.target.value })}
-                    disabled={isReadOnly || status === 'completed'}
+                    disabled={isFieldLocked}
                     className="text-xs h-9"
                   />
                 </div>
@@ -769,28 +981,104 @@ export function FieldActivitySlotCard({
           {/* Evidence Attachments (Photo/Video) */}
           {!isDeskJob && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
-              <div>
-                <label className="font-bold text-foreground flex items-center gap-1.5 mb-1">
-                  <ImageIcon className="h-3.5 w-3.5 text-primary" /> Photo Evidence URL
-                </label>
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="font-bold text-foreground flex items-center gap-1.5">
+                    <ImageIcon className="h-3.5 w-3.5 text-primary" /> Photo Evidence URL
+                  </label>
+                  {!isFieldLocked && (
+                    <>
+                      <input
+                        ref={photoInputRef}
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) => {
+                          void handleEvidenceUpload('photo', e.target.files?.[0]);
+                          e.target.value = '';
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => photoInputRef.current?.click()}
+                        disabled={uploadingPhoto}
+                        className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 hover:text-emerald-800"
+                      >
+                        <Upload className="h-3 w-3" />
+                        {uploadingPhoto ? 'Uploading...' : 'Upload Photo'}
+                      </button>
+                    </>
+                  )}
+                </div>
                 <Input
                   value={slot.photoUrl || ''}
-                  onChange={(e) => onChange({ ...slot, photoUrl: e.target.value })}
-                  placeholder="https://... (or capture in field)"
-                  disabled={isReadOnly || status === 'completed'}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    onChange({
+                      ...slot,
+                      photoUrl: val,
+                      photoEvidence: mergeEvidenceUrls(val, slot.photoEvidence?.filter((u) => u !== slot.photoUrl)),
+                    });
+                  }}
+                  placeholder="https://... (or upload photo)"
+                  disabled={isFieldLocked}
                   className="text-xs h-9"
                 />
+                {slot.photoUrl && (
+                  <div className="rounded-lg border border-border overflow-hidden bg-muted/20 p-1">
+                    <img
+                      src={slot.photoUrl}
+                      alt={`Activity #${slot.slotNumber} evidence`}
+                      className="h-24 w-full object-cover rounded"
+                      onError={(e) => {
+                        (e.currentTarget as HTMLImageElement).style.display = 'none';
+                      }}
+                    />
+                  </div>
+                )}
               </div>
 
-              <div>
-                <label className="font-bold text-foreground flex items-center gap-1.5 mb-1">
-                  <VideoIcon className="h-3.5 w-3.5 text-primary" /> Video Evidence URL <span className="text-muted-foreground font-normal">(optional)</span>
-                </label>
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="font-bold text-foreground flex items-center gap-1.5">
+                    <VideoIcon className="h-3.5 w-3.5 text-primary" /> Video Evidence URL <span className="text-muted-foreground font-normal">(optional)</span>
+                  </label>
+                  {!isFieldLocked && (
+                    <>
+                      <input
+                        ref={videoInputRef}
+                        type="file"
+                        accept="video/*"
+                        className="hidden"
+                        onChange={(e) => {
+                          void handleEvidenceUpload('video', e.target.files?.[0]);
+                          e.target.value = '';
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => videoInputRef.current?.click()}
+                        disabled={uploadingVideo}
+                        className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 hover:text-emerald-800"
+                      >
+                        <Upload className="h-3 w-3" />
+                        {uploadingVideo ? 'Uploading...' : 'Upload Video'}
+                      </button>
+                    </>
+                  )}
+                </div>
                 <Input
                   value={slot.videoUrl || ''}
-                  onChange={(e) => onChange({ ...slot, videoUrl: e.target.value })}
-                  placeholder="https://..."
-                  disabled={isReadOnly || status === 'completed'}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    onChange({
+                      ...slot,
+                      videoUrl: val,
+                      videoEvidence: mergeEvidenceUrls(val, slot.videoEvidence?.filter((u) => u !== slot.videoUrl)),
+                    });
+                  }}
+                  placeholder="https://... (or upload video)"
+                  disabled={isFieldLocked}
                   className="text-xs h-9"
                 />
               </div>

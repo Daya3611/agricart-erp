@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { UserRole } from '@/types';
 import { cn } from '@/lib/utils/cn';
+import { resolveActiveNavHref } from '@/lib/utils/navigation';
 
 interface TopPillNavigationProps {
   role: UserRole;
@@ -46,6 +47,7 @@ export function TopPillNavigation({ role, className }: TopPillNavigationProps) {
   };
 
   const pills = getPillsForRole();
+  const activeHref = resolveActiveNavHref(pathname, pills);
 
   return (
     <nav
@@ -56,9 +58,7 @@ export function TopPillNavigation({ role, className }: TopPillNavigationProps) {
       )}
     >
       {pills.map((pill) => {
-        const isActive = pill.exact
-          ? pathname === pill.href
-          : pathname === pill.href || pathname.startsWith(pill.href + '/');
+        const isActive = pill.href === activeHref;
 
         return (
           <Link

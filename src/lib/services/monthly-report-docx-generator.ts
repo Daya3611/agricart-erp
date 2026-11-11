@@ -14,6 +14,8 @@ import {
   ShadingType,
 } from 'docx';
 import { MonthlyReportSummary } from '@/types';
+import { formatDateTimeIST } from '@/lib/utils/date-utils';
+import { getGlobalReportingSettings } from '@/lib/services/settings-service';
 import { fetchAttachmentData, FetchedAttachmentData } from './attachment-fetcher';
 
 interface DayMediaGroup {
@@ -26,15 +28,18 @@ interface DayMediaGroup {
 }
 
 /**
- * Server-side Microsoft Word (.docx) generator with embedded real photos.
+ * Server-side Microsoft Word (.docx) generator with complete untruncated field details and embedded real photos.
  */
 export async function generateMonthlyReportDOCX(report: MonthlyReportSummary): Promise<Buffer> {
   console.log(`[Monthly DOCX Export] Initiating DOCX generation for ${report.employee.fullName}`);
 
+  const reportingConfig = await getGlobalReportingSettings();
+  const includePhotos = reportingConfig.includePhotosInExports !== false;
+
   // 1. Preload attachments
-  const daysWithAttachments = report.days.filter(
-    (d) => Array.isArray(d.attachments) && d.attachments.length > 0
-  );
+  const daysWithAttachments = includePhotos
+    ? report.days.filter((d) => Array.isArray(d.attachments) && d.attachments.length > 0)
+    : [];
 
   const dayMediaGroups: DayMediaGroup[] = [];
   for (const day of daysWithAttachments) {
@@ -71,7 +76,7 @@ export async function generateMonthlyReportDOCX(report: MonthlyReportSummary): P
   };
 
   const titleParagraph = new Paragraph({
-    text: 'MONTHLY EMPLOYEE ACTIVITY & LEAVE REPORT',
+    text: reportingConfig.docxSettings?.headerTitle || 'MONTHLY FIELD ACTIVITY & ATTENDANCE REPORT',
     heading: HeadingLevel.TITLE,
     alignment: AlignmentType.LEFT,
     spacing: { after: 120 },
@@ -80,13 +85,13 @@ export async function generateMonthlyReportDOCX(report: MonthlyReportSummary): P
   const subtitleParagraph = new Paragraph({
     children: [
       new TextRun({
-        text: `Monthly Employee Activity & Leave Report — ${report.monthName}`,
+        text: `${report.monthName} — Complete Official Report`,
         bold: true,
         size: 24,
         color: '166534',
       }),
       new TextRun({
-        text: `   (Generated: ${new Date(report.generatedAt).toLocaleDateString('en-IN')})`,
+        text: `   (Generated IST: ${formatDateTimeIST(report.generatedAt)})`,
         size: 18,
         color: '64748B',
       }),
@@ -149,6 +154,7 @@ export async function generateMonthlyReportDOCX(report: MonthlyReportSummary): P
     ],
   });
 
+  const statsAny = report.stats as any;
   const metricsTable = new Table({
     width: { size: 100, type: WidthType.PERCENTAGE },
     borders: borderLight,
@@ -161,8 +167,12 @@ export async function generateMonthlyReportDOCX(report: MonthlyReportSummary): P
               new Paragraph({
                 alignment: AlignmentType.CENTER,
                 children: [
-                  new TextRun({ text: 'Calendar Days\n', size: 16, color: '64748B' }),
-                  new TextRun({ text: String(report.stats.totalCalendarDays), bold: true, size: 26 }),
+                  new TextRun({ text: 'Calendar Days / Attended\n', size: 15, color: '64748B' }),
+                  new TextRun({
+                    text: `${report.stats.totalCalendarDays} / ${statsAny.daysAttended ?? 0}`,
+                    bold: true,
+                    size: 24,
+                  }),
                 ],
               }),
             ],
@@ -173,11 +183,11 @@ export async function generateMonthlyReportDOCX(report: MonthlyReportSummary): P
               new Paragraph({
                 alignment: AlignmentType.CENTER,
                 children: [
-                  new TextRun({ text: 'Submitted Reports\n', size: 16, color: '166534' }),
+                  new TextRun({ text: 'Activities (Done/Total)\n', size: 15, color: '166534' }),
                   new TextRun({
-                    text: String(report.stats.submittedReportDays),
+                    text: `${statsAny.completedActivities ?? 0} / ${statsAny.totalActivities ?? 0}`,
                     bold: true,
-                    size: 26,
+                    size: 24,
                     color: '166534',
                   }),
                 ],
@@ -190,11 +200,11 @@ export async function generateMonthlyReportDOCX(report: MonthlyReportSummary): P
               new Paragraph({
                 alignment: AlignmentType.CENTER,
                 children: [
-                  new TextRun({ text: 'Approved Reports\n', size: 16, color: '059669' }),
+                  new TextRun({ text: 'Approved / Corrections\n', size: 15, color: '059669' }),
                   new TextRun({
-                    text: String(report.stats.approvedReportDays),
+                    text: `${report.stats.approvedReportDays} / ${statsAny.daysRequiringCorrection ?? 0}`,
                     bold: true,
-                    size: 26,
+                    size: 24,
                     color: '059669',
                   }),
                 ],
@@ -207,29 +217,12 @@ export async function generateMonthlyReportDOCX(report: MonthlyReportSummary): P
               new Paragraph({
                 alignment: AlignmentType.CENTER,
                 children: [
-                  new TextRun({ text: 'Approved Leaves\n', size: 16, color: '7E22CE' }),
+                  new TextRun({ text: 'Leaves / Missing\n', size: 15, color: '7E22CE' }),
                   new TextRun({
-                    text: String(report.stats.approvedLeaveDays),
+                    text: `${report.stats.approvedLeaveDays} / ${report.stats.missingReportDays}`,
                     bold: true,
-                    size: 26,
+                    size: 24,
                     color: '7E22CE',
-                  }),
-                ],
-              }),
-            ],
-          }),
-          new TableCell({
-            shading: { type: ShadingType.CLEAR, fill: 'F8FAF9' },
-            children: [
-              new Paragraph({
-                alignment: AlignmentType.CENTER,
-                children: [
-                  new TextRun({ text: 'Missing Reports\n', size: 16, color: 'D97706' }),
-                  new TextRun({
-                    text: String(report.stats.missingReportDays),
-                    bold: true,
-                    size: 26,
-                    color: 'D97706',
                   }),
                 ],
               }),
@@ -266,7 +259,7 @@ export async function generateMonthlyReportDOCX(report: MonthlyReportSummary): P
       new TableCell({
         width: { size: 8, type: WidthType.PERCENTAGE },
         shading: { type: ShadingType.CLEAR, fill: '166534' },
-        children: [new Paragraph({ children: [new TextRun({ text: 'Time', bold: true, color: 'FFFFFF', size: 17 })] })],
+        children: [new Paragraph({ children: [new TextRun({ text: 'Time (IST)', bold: true, color: 'FFFFFF', size: 17 })] })],
       }),
       new TableCell({
         width: { size: 10, type: WidthType.PERCENTAGE },
@@ -276,7 +269,7 @@ export async function generateMonthlyReportDOCX(report: MonthlyReportSummary): P
       new TableCell({
         width: { size: 12, type: WidthType.PERCENTAGE },
         shading: { type: ShadingType.CLEAR, fill: '166534' },
-        children: [new Paragraph({ children: [new TextRun({ text: 'Remarks & Evidence', bold: true, color: 'FFFFFF', size: 17 })] })],
+        children: [new Paragraph({ children: [new TextRun({ text: 'Remarks & Media', bold: true, color: 'FFFFFF', size: 17 })] })],
       }),
     ],
   });
@@ -302,7 +295,7 @@ export async function generateMonthlyReportDOCX(report: MonthlyReportSummary): P
         new Paragraph({
           children: [
             new TextRun({
-              text: `[📷 ${photos} photo${photos === 1 ? '' : 's'}${videos > 0 ? `, 🎥 ${videos} video${videos === 1 ? '' : 's'}` : ''}]`,
+              text: `[Photos: ${photos}, Videos: ${videos}]`,
               size: 14,
               color: '166534',
               bold: true,
@@ -352,6 +345,72 @@ export async function generateMonthlyReportDOCX(report: MonthlyReportSummary): P
     rows: [tableHeaderRow, ...dailyRows],
   });
 
+  // Complete Day-by-Day Activity Details section (no truncation)
+  const detailedActivityChildren: any[] = [];
+  const daysWithActivities = report.days.filter(
+    (d: any) => Array.isArray(d.activitiesList) && d.activitiesList.length > 0
+  );
+
+  if (daysWithActivities.length > 0) {
+    detailedActivityChildren.push(
+      new Paragraph({ text: '', pageBreakBefore: true, spacing: { after: 100 } }),
+      new Paragraph({
+        text: 'COMPLETE DAY-BY-DAY FIELD ACTIVITY DETAILS',
+        heading: HeadingLevel.HEADING_1,
+        spacing: { after: 120 },
+      })
+    );
+
+    for (const day of daysWithActivities as any[]) {
+      detailedActivityChildren.push(
+        new Paragraph({
+          spacing: { before: 160, after: 60 },
+          children: [
+            new TextRun({
+              text: `${day.date} (${day.dayOfWeek}) — Status: ${day.reportStatus}${day.crpCode ? ` | CRP: ${day.crpCode}` : ''}${day.blockTaluka ? ` | Block: ${day.blockTaluka}` : ''}`,
+              bold: true,
+              size: 20,
+              color: '166534',
+            }),
+          ],
+        })
+      );
+
+      for (const act of day.activitiesList) {
+        const supportList = Array.isArray(act.supportProvided) ? act.supportProvided.join(', ') : 'None';
+        const lines = [
+          `Slot #${act.slotNumber}: ${act.activityNameLabel || act.activityName}${act.activityOther ? ` (${act.activityOther})` : ''} | Category: ${act.activityType}`,
+          `Village: ${act.village || '—'} | Wadi: ${act.wadi || '—'} | Timing (IST): ${act.startTime || '—'} - ${act.endTime || '—'} (${act.durationMinutes || 0} mins)`,
+          `Farmer / Lead: ${act.farmerName || '—'} | Participants: ${act.participants ?? 0} (M: ${act.maleParticipants ?? 0}, F: ${act.femaleParticipants ?? 0})${act.groupDetails ? ` | Group Details: ${act.groupDetails}` : ''}`,
+          `Observations: ${act.observations || '—'}`,
+          `Farmer Issues: ${act.issues || 'None reported'}`,
+          `Support Provided: ${supportList}${act.supportOther ? ` | Other: ${act.supportOther}` : ''}`,
+          `Follow-up: ${act.followUpRequired ? `Yes${act.followUpDate ? ` (${act.followUpDate})` : ''} — ${act.followUpDetails || ''}` : 'No'}`,
+          `Start Location: ${act.startLocationName || 'Location unavailable'} | End Location: ${act.endLocationName || 'Location unavailable'}`,
+          act.photoUrls?.length ? `Photo URLs: ${act.photoUrls.join(', ')}` : '',
+          act.videoUrls?.length ? `Video URLs: ${act.videoUrls.join(', ')}` : '',
+        ].filter(Boolean);
+
+        detailedActivityChildren.push(
+          ...lines.map(
+            (txt, lineIdx) =>
+              new Paragraph({
+                spacing: { after: lineIdx === lines.length - 1 ? 120 : 30 },
+                children: [
+                  new TextRun({
+                    text: txt,
+                    bold: lineIdx === 0,
+                    size: lineIdx === 0 ? 18 : 16,
+                    color: lineIdx === 0 ? '0F172A' : '334155',
+                  }),
+                ],
+              })
+          )
+        );
+      }
+    }
+  }
+
   const evidenceChildren: any[] = [];
 
   if (dayMediaGroups.length > 0) {
@@ -372,16 +431,6 @@ export async function generateMonthlyReportDOCX(report: MonthlyReportSummary): P
           }),
         ],
         spacing: { after: 120 },
-      }),
-      new Paragraph({
-        children: [
-          new TextRun({
-            text: `Official photographic field evidence and media documentation submitted by ${report.employee.fullName} (${report.employee.employeeId}) for activity verification during ${report.monthName}.`,
-            size: 18,
-            color: '64748B',
-          }),
-        ],
-        spacing: { after: 200 },
       })
     );
 
@@ -390,7 +439,7 @@ export async function generateMonthlyReportDOCX(report: MonthlyReportSummary): P
         new Paragraph({
           children: [
             new TextRun({
-              text: `📅 Date: ${group.date} (${group.dayOfWeek}) — Status: ${group.reportStatus}`,
+              text: `Date: ${group.date} (${group.dayOfWeek}) — Status: ${group.reportStatus}`,
               bold: true,
               size: 21,
               color: '166534',
@@ -414,10 +463,7 @@ export async function generateMonthlyReportDOCX(report: MonthlyReportSummary): P
       for (const item of group.items) {
         if (!item.isVideo && !item.isUnavailable && item.buffer) {
           const targetWidth = 320;
-          const targetHeight = Math.min(
-            240,
-            Math.round(targetWidth / (item.aspectRatio || 1.33))
-          );
+          const targetHeight = Math.min(240, Math.round(targetWidth / (item.aspectRatio || 1.33)));
 
           evidenceChildren.push(
             new Paragraph({
@@ -453,29 +499,21 @@ export async function generateMonthlyReportDOCX(report: MonthlyReportSummary): P
             })
           );
         } else if (item.isVideo) {
-          const sizeMb = item.fileSize
-            ? `${(item.fileSize / (1024 * 1024)).toFixed(1)} MB`
-            : 'Recorded';
+          const sizeMb = item.fileSize ? `${(item.fileSize / (1024 * 1024)).toFixed(1)} MB` : 'Recorded';
           evidenceChildren.push(
             new Paragraph({
               spacing: { before: 80, after: 120 },
               children: [
                 new TextRun({
-                  text: '🎥 Video Evidence: ',
+                  text: 'Video Evidence: ',
                   bold: true,
                   size: 18,
                   color: '4338CA',
                 }),
                 new TextRun({
-                  text: `${item.originalFilename} (${sizeMb})`,
+                  text: `${item.originalFilename} (${sizeMb})${item.downloadUrl ? ` — ${item.downloadUrl}` : ''}`,
                   size: 17,
                   color: '1E293B',
-                }),
-                new TextRun({
-                  text: ' — Video file is securely archived in the Agricart ERP system and can be reviewed online.',
-                  size: 16,
-                  italics: true,
-                  color: '64748B',
                 }),
               ],
             })
@@ -486,7 +524,7 @@ export async function generateMonthlyReportDOCX(report: MonthlyReportSummary): P
               spacing: { before: 80, after: 120 },
               children: [
                 new TextRun({
-                  text: `⚠️ [Photo Attachment: ${item.originalFilename} — File securely preserved in Agricart ERP storage]`,
+                  text: `[Photo Attachment: ${item.originalFilename}${item.downloadUrl ? ` — ${item.downloadUrl}` : ''}]`,
                   size: 16,
                   color: 'D97706',
                   italics: true,
@@ -504,12 +542,7 @@ export async function generateMonthlyReportDOCX(report: MonthlyReportSummary): P
       {
         properties: {
           page: {
-            margin: {
-              top: 720,
-              right: 720,
-              bottom: 720,
-              left: 720,
-            },
+            margin: { top: 720, right: 720, bottom: 720, left: 720 },
           },
         },
         children: [
@@ -520,6 +553,7 @@ export async function generateMonthlyReportDOCX(report: MonthlyReportSummary): P
           metricsTable,
           new Paragraph({ text: '', spacing: { after: 160 } }),
           mainActivityTable,
+          ...detailedActivityChildren,
           ...evidenceChildren,
         ],
       },

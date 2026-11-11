@@ -29,6 +29,7 @@ import { VertixRecentActivities } from '@/components/dashboard/VertixRecentActiv
 import { Button } from '@/components/ui/button';
 import { ReportReviewModal } from '@/components/reports/ReportReviewModal';
 import { getTodayDateString } from '@/lib/utils/date-utils';
+import { isActivityInProgress } from '@/lib/utils/field-activity-calculations';
 import { StaffDashboardAttendanceCard } from '@/components/attendance/StaffDashboardAttendanceCard';
 
 export default function StaffDashboardPage() {
@@ -164,7 +165,7 @@ export default function StaffDashboardPage() {
       : Array.isArray((todayReport as any)?.activities)
       ? (todayReport as any).activities
       : [];
-    const inProgressActivity = activitiesList.find((a: any) => a?.activityStatus === 'in_progress');
+    const inProgressActivity = activitiesList.find((a: any) => isActivityInProgress(a));
     if (inProgressActivity) {
       return (
         <div className="p-5 rounded-[22px] bg-emerald-50/90 dark:bg-[#132B1C] border border-emerald-300 dark:border-[#1E4A2E] flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-2xs">

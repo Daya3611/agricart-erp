@@ -41,18 +41,35 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
     const finalDetails = data!.finalDetails
       ? {
+          slotNumber: data!.finalDetails.slotNumber,
+          reportDate: data!.finalDetails.reportDate,
+          activityName: data!.finalDetails.activityName as any,
+          activityNameLabel: data!.finalDetails.activityNameLabel,
+          activityOther: data!.finalDetails.activityOther ?? undefined,
           village: data!.finalDetails.village ?? undefined,
           wadi: data!.finalDetails.wadi ?? undefined,
+          activityType: data!.finalDetails.activityType,
+          participantType: data!.finalDetails.activityType,
           farmerName: data!.finalDetails.farmerName ?? undefined,
+          groupDetails: data!.finalDetails.groupDetails ?? undefined,
           observations: data!.finalDetails.observations ?? undefined,
           farmerIssues: data!.finalDetails.farmerIssues ?? undefined,
           supportProvided: data!.finalDetails.supportProvided,
+          supportOther: data!.finalDetails.supportOther ?? undefined,
+          followUpRequired: data!.finalDetails.followUpRequired,
+          followUpDetails: data!.finalDetails.followUpDetails ?? undefined,
+          followUpDate: data!.finalDetails.followUpDate ?? undefined,
           photoUrl: data!.finalDetails.photoUrl ?? undefined,
+          photoEvidence: data!.finalDetails.photoEvidence,
           videoUrl: data!.finalDetails.videoUrl ?? undefined,
+          videoEvidence: data!.finalDetails.videoEvidence,
           totalParticipants: data!.finalDetails.totalParticipants,
           maleParticipants: data!.finalDetails.maleParticipants,
           femaleParticipants: data!.finalDetails.femaleParticipants,
+          activityEndAt: data!.clientTimestamp || undefined,
         }
+      : data!.clientTimestamp
+      ? { activityEndAt: data!.clientTimestamp }
       : undefined;
 
     const result = await endFieldActivity(user, activityId, {

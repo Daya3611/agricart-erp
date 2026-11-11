@@ -1,8 +1,9 @@
 import { fetchCollection, fetchDocument } from '@/lib/firebase/firestore';
 import { ERP_COLLECTIONS } from '@/lib/firebase/collections';
 import {
-  FieldReport,
   AttendanceSession,
+  FieldActivityRecord,
+  FieldReport,
   MonthlyReportDay,
   MonthlyReportSummary,
   ReportAttachment,
@@ -10,6 +11,16 @@ import {
 } from '@/types';
 import { getApprovedLeavesForMonth } from '@/lib/services/leave-service';
 import { getGlobalReportingSettings } from '@/lib/services/settings-service';
+import { formatDateTimeIST, formatTimeIST } from '@/lib/utils/date-utils';
+import {
+  calculateActivitiesSummary,
+  getHumanPlaceName,
+  isSingleFarmerActivity,
+  mergeDayActivities,
+  mergeEvidenceUrls,
+  resolveActivityNameLabel,
+  resolveSupportLabels,
+} from '@/lib/utils/field-activity-calculations';
 
 const MONTH_NAMES = [
   'January',
@@ -28,16 +39,29 @@ const MONTH_NAMES = [
 
 const DAYS_OF_WEEK = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
-function getHumanPlaceName(loc?: { placeName?: string } | null): string {
-  if (!loc || !loc.placeName || loc.placeName.trim() === '' || loc.placeName === 'Location name unavailable') {
-    return 'Location unavailable';
+function inferFilenameFromUrl(url: string, fallback: string): string {
+  try {
+    if (url.includes('/api/uploads/view')) {
+      const parsed = new URL(url, 'http://localhost');
+      const pathParam = parsed.searchParams.get('path') || '';
+      const base = pathParam.split('/').pop();
+      if (base) return decodeURIComponent(base);
+    }
+    if (!url.startsWith('data:')) {
+      const parsed = new URL(url, 'http://localhost');
+      const base = parsed.pathname.split('/').pop();
+      if (base && base !== 'view') return decodeURIComponent(base);
+    }
+  } catch {
+    // fallback below
   }
-  return loc.placeName.trim();
+  return fallback;
 }
 
 /**
  * Deterministically generates a monthly activity report for a specific employee and calendar month
- * exclusively using the new Field Activity Reporting system (erp_field_reports, erp_attendance_sessions, erp_leave_records).
+ * exclusively using the new Field Activity Reporting system
+ * (erp_field_reports, erp_field_activities, erp_attendance_sessions, erp_leave_records).
  * Never queries legacy Daily Report collections.
  */
 export async function generateMonthlyReport(
@@ -67,24 +91,36 @@ export async function generateMonthlyReport(
   const monthStart = `${year}-${String(month).padStart(2, '0')}-01`;
   const monthEnd = `${year}-${String(month).padStart(2, '0')}-${String(totalCalendarDays).padStart(2, '0')}`;
 
-  // 4. Fetch NEW Field Reports exclusively
-  const allFieldReports = (await fetchCollection(ERP_COLLECTIONS.fieldReports, [
-    { field: 'staffUid', op: '==', value: staffUid },
-  ])) as FieldReport[];
+  // 4. Fetch NEW Field Reports & standalone Field Activities exclusively
+  const [allFieldReports, allStandaloneActivities, allAttendance, approvedLeaves] = await Promise.all([
+    fetchCollection(ERP_COLLECTIONS.fieldReports, [
+      { field: 'staffUid', op: '==', value: staffUid },
+    ]) as Promise<FieldReport[]>,
+    fetchCollection(ERP_COLLECTIONS.fieldActivities, [
+      { field: 'staffUid', op: '==', value: staffUid },
+    ]) as Promise<FieldActivityRecord[]>,
+    fetchCollection(ERP_COLLECTIONS.attendanceSessions, [
+      { field: 'employeeUid', op: '==', value: staffUid },
+    ]) as Promise<AttendanceSession[]>,
+    getApprovedLeavesForMonth(staffUid, year, month),
+  ]);
 
   const monthReports = allFieldReports.filter(
-    (r) => r.reportDate >= monthStart && r.reportDate <= monthEnd && r.status !== 'draft'
+    (r) => r.reportDate >= monthStart && r.reportDate <= monthEnd
   );
-
   const reportByDate = new Map<string, FieldReport>();
   for (const r of monthReports) {
     reportByDate.set(r.reportDate, r);
   }
 
-  // 5. Fetch Attendance Sessions exclusively
-  const allAttendance = (await fetchCollection(ERP_COLLECTIONS.attendanceSessions, [
-    { field: 'employeeUid', op: '==', value: staffUid },
-  ])) as AttendanceSession[];
+  const activitiesByDate = new Map<string, FieldActivityRecord[]>();
+  for (const rec of allStandaloneActivities) {
+    if (rec.reportDate >= monthStart && rec.reportDate <= monthEnd) {
+      const list = activitiesByDate.get(rec.reportDate) || [];
+      list.push(rec);
+      activitiesByDate.set(rec.reportDate, list);
+    }
+  }
 
   const monthAttendance = allAttendance.filter((s) => s.date >= monthStart && s.date <= monthEnd);
   const attendanceByDate = new Map<string, AttendanceSession>();
@@ -92,10 +128,7 @@ export async function generateMonthlyReport(
     attendanceByDate.set(a.date, a);
   }
 
-  // 6. Fetch Approved Leaves
-  const approvedLeaves = await getApprovedLeavesForMonth(staffUid, year, month);
-
-  // 7. Calculate aggregate statistics
+  // 5. Calculate aggregate statistics across every calendar day
   let daysAttended = 0;
   let daysWithActivities = 0;
   let totalActivities = 0;
@@ -129,11 +162,20 @@ export async function generateMonthlyReport(
     const isHoliday = Boolean(holiday);
 
     const report = reportByDate.get(dateStr);
+    const standaloneForDay = activitiesByDate.get(dateStr) || [];
+    const mergedActivities = mergeDayActivities(report?.activities || [], standaloneForDay);
+
     const attendance = attendanceByDate.get(dateStr);
     const leave = approvedLeaves.find((l) => dateStr >= l.startDate && dateStr <= l.endDate);
 
-    const hasActivities = Boolean(report && Array.isArray(report.activities) && report.activities.length > 0);
-    const hasReport = Boolean(report && report.status !== 'draft');
+    const hasActivities = mergedActivities.length > 0;
+    const isSubmittedReport = Boolean(
+      report &&
+        (report.finalized ||
+          ['submitted', 'under_review', 'approved', 'rejected', 'correction_requested', 'edit_requested', 'resubmitted'].includes(
+            report.status
+          ))
+    );
 
     if (attendance) {
       daysAttended++;
@@ -141,100 +183,143 @@ export async function generateMonthlyReport(
       missingAttendanceDays++;
     }
 
-    if (hasActivities) {
-      daysWithActivities++;
-      const acts = report!.activities || [];
-      totalActivities += acts.length;
-      completedActivities += acts.filter((a) => !a.activityEnd || a.activityEnd.trim() !== '').length;
+    const daySummary = hasActivities ? calculateActivitiesSummary(mergedActivities, false).summary : null;
 
-      const summary = report!.summary;
-      totalActivityMinutes += summary?.totalActivityMinutes || acts.reduce((acc, a) => acc + (a.durationMinutes || 0), 0);
-      totalWorkingPeriodMinutes += summary?.totalWorkingPeriodMinutes || 0;
-      totalFarmerContacts += summary?.totalParticipantContacts || acts.reduce((acc, a) => acc + (a.totalParticipants || 0), 0);
-      maleParticipants += summary?.totalMaleParticipants || acts.reduce((acc, a) => acc + (a.maleParticipants || 0), 0);
-      femaleParticipants += summary?.totalFemaleParticipants || acts.reduce((acc, a) => acc + (a.femaleParticipants || 0), 0);
+    if (hasActivities && daySummary) {
+      daysWithActivities++;
+      totalActivities += mergedActivities.length;
+      completedActivities += mergedActivities.filter(
+        (a) =>
+          a.activityStatus === 'COMPLETED' ||
+          a.activityStatus === 'completed' ||
+          Boolean((a.activityEndAt || a.activityEnd)?.trim())
+      ).length;
+
+      totalActivityMinutes += daySummary.totalActivityMinutes || 0;
+      totalWorkingPeriodMinutes +=
+        daySummary.totalWorkingPeriodMinutes || attendance?.attendanceDurationMinutes || attendance?.durationMinutes || 0;
+      totalFarmerContacts += daySummary.totalParticipantContacts || 0;
+      maleParticipants += daySummary.totalMaleParticipants || 0;
+      femaleParticipants += daySummary.totalFemaleParticipants || 0;
+    } else if (attendance) {
+      totalWorkingPeriodMinutes += attendance.attendanceDurationMinutes || attendance.durationMinutes || 0;
     }
 
     if (leave) {
       approvedLeaveDays++;
     }
 
-    if (hasReport) {
+    if (isSubmittedReport && report) {
       submittedReportDays++;
-      if (report!.status === 'approved') approvedReportDays++;
-      else if (['rejected', 'correction_requested', 'edit_requested'].includes(report!.status)) daysRequiringCorrection++;
-      else if (['submitted', 'under_review', 'resubmitted'].includes(report!.status)) pendingReviewDays++;
+      if (report.status === 'approved') approvedReportDays++;
+      else if (['rejected', 'correction_requested', 'edit_requested'].includes(report.status)) {
+        daysRequiringCorrection++;
+      } else if (['submitted', 'under_review', 'resubmitted'].includes(report.status)) {
+        pendingReviewDays++;
+      }
     } else if (!leave && !isWeeklyOff && !isHoliday) {
       missingReportDays++;
     }
 
-    const hasConflict = Boolean(hasReport && leave);
+    const hasConflict = Boolean(isSubmittedReport && leave);
     if (hasConflict) conflictDays++;
 
-    // Format Times & Locations
-    const loginTime = attendance?.loginTimestamp
-      ? new Date(attendance.loginTimestamp).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
-      : '—';
-    const logoutTime = attendance?.logoutTimestamp
-      ? new Date(attendance.logoutTimestamp).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
-      : '—';
+    // Format Times & Locations strictly in Asia/Kolkata
+    const loginTime = formatTimeIST(attendance?.loginTimestamp);
+    const logoutTime = formatTimeIST(attendance?.logoutTimestamp);
 
     const loginLoc = getHumanPlaceName(attendance?.loginGps);
-    const logoutLoc = attendance?.logoutType === 'automatic_midnight'
-      ? 'Auto-closed at midnight (Location unavailable)'
-      : getHumanPlaceName(attendance?.logoutGps);
+    const logoutLoc =
+      attendance?.logoutType === 'automatic_midnight'
+        ? 'Auto-closed at midnight (Location unavailable)'
+        : getHumanPlaceName(attendance?.logoutGps);
 
-    // Build Activity Summary & List
     let summaryText = 'No activities recorded';
     const activitiesList: any[] = [];
     const attachments: ReportAttachment[] = [];
 
     if (hasActivities) {
-      const actNames = report!.activities.map((a) => a.activityNameLabel || a.activityName?.replace(/_/g, ' '));
-      summaryText = `${report!.activities.length} activit${report!.activities.length === 1 ? 'y' : 'ies'}: ${actNames.join(', ')}`;
+      const actNames = mergedActivities.map((a) => {
+        const base = resolveActivityNameLabel(a);
+        return a.activityOther?.trim() ? `${base} (${a.activityOther.trim()})` : base;
+      });
+      summaryText = `${mergedActivities.length} activit${mergedActivities.length === 1 ? 'y' : 'ies'}: ${actNames.join(', ')}`;
 
-      report!.activities.forEach((act) => {
+      mergedActivities.forEach((act) => {
         const startLoc = getHumanPlaceName(act.activityStartLocation || act.activityStartGps);
         const endLoc = getHumanPlaceName(act.activityEndLocation || act.activityEndGps);
+        const photos = mergeEvidenceUrls(act.photoUrl, act.photoEvidence);
+        const videos = mergeEvidenceUrls(act.videoUrl, act.videoEvidence);
+        const isSingle = isSingleFarmerActivity(act);
+        const title = resolveActivityNameLabel(act);
+        const durMins = act.activityDurationMinutes ?? act.durationMinutes ?? 0;
 
         activitiesList.push({
           slotNumber: act.slotNumber,
+          activityStatus: act.activityStatus,
           activityName: act.activityName,
-          activityNameLabel: act.activityNameLabel || act.activityName?.replace(/_/g, ' '),
-          activityType: act.activityType === 'single_farmer' ? 'Single Farmer' : (act.activityName === 'desk_job' ? 'Office' : 'Group'),
+          activityNameLabel: title,
+          activityOther: act.activityOther || '',
+          activityType:
+            act.activityName === 'desk_job' ? 'Office' : isSingle ? 'Single Farmer' : 'Group',
           village: act.village || '—',
           wadi: act.wadi || '—',
           farmerName: act.farmerName || '—',
-          startTime: act.activityStart ? new Date(act.activityStart).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '—',
-          endTime: act.activityEnd ? new Date(act.activityEnd).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '—',
-          durationMinutes: act.durationMinutes || 0,
+          groupDetails: act.groupDetails || '',
+          startTime: formatTimeIST(act.activityStartAt || act.activityStart),
+          endTime: formatTimeIST(act.activityEndAt || act.activityEnd),
+          startTimeIso: act.activityStartAt || act.activityStart || '',
+          endTimeIso: act.activityEndAt || act.activityEnd || '',
+          durationMinutes: durMins,
           participants: act.totalParticipants || 0,
           maleParticipants: act.maleParticipants || 0,
           femaleParticipants: act.femaleParticipants || 0,
           observations: act.observations || '—',
           issues: act.farmerIssues || '—',
-          supportProvided: act.supportProvided || [],
+          supportProvided: resolveSupportLabels(act),
+          supportOther: act.supportOther || '',
           followUpRequired: Boolean(act.followUpRequired),
-          followUpDetails: act.followUpDetails || undefined,
+          followUpDetails: act.followUpDetails || '',
+          followUpDate: act.followUpDate || '',
           startLocationName: startLoc,
           endLocationName: endLoc,
-          photoUrls: [...(act.photoEvidence || []), ...(act.photoUrl ? [act.photoUrl] : [])],
+          startLocation: act.activityStartLocation || act.activityStartGps || null,
+          endLocation: act.activityEndLocation || act.activityEndGps || null,
+          photoUrls: photos,
+          videoUrls: videos,
         });
 
-        // Collect photo attachments for PDF generator
-        const photos = [...(act.photoEvidence || []), ...(act.photoUrl ? [act.photoUrl] : [])];
+        // Collect photo attachments
         photos.forEach((url, pIdx) => {
           attachments.push({
-            id: `att_${report!.id}_${act.slotNumber}_${pIdx}`,
-            reportId: report!.id,
+            id: `att_${report?.id || dateStr}_${act.slotNumber}_p${pIdx}`,
+            reportId: report?.id || `field_rep_${staffUid}_${dateStr}`,
             staffUid,
             uploadedByUid: staffUid,
             storagePath: url,
             downloadUrl: url,
-            originalFilename: `Photo_${act.slotNumber}_${pIdx + 1}.jpg`,
-            fileSize: 500000,
+            originalFilename: inferFilenameFromUrl(url, `Activity_${act.slotNumber}_Photo_${pIdx + 1}.jpg`),
+            caption: `Slot #${act.slotNumber}: ${title}${act.village ? ` (${act.village})` : ''}`,
+            fileSize: 0,
             mimeType: 'image/jpeg',
-            uploadedAt: act.activityStart || new Date().toISOString(),
+            uploadedAt: act.activityEndAt || act.activityStartAt || new Date().toISOString(),
+          });
+        });
+
+        // Collect video attachments
+        videos.forEach((url, vIdx) => {
+          attachments.push({
+            id: `att_${report?.id || dateStr}_${act.slotNumber}_v${vIdx}`,
+            reportId: report?.id || `field_rep_${staffUid}_${dateStr}`,
+            staffUid,
+            uploadedByUid: staffUid,
+            storagePath: url,
+            downloadUrl: url,
+            originalFilename: inferFilenameFromUrl(url, `Activity_${act.slotNumber}_Video_${vIdx + 1}.mp4`),
+            caption: `Slot #${act.slotNumber}: ${title} Video`,
+            fileSize: 0,
+            mimeType: 'video/mp4',
+            uploadedAt: act.activityEndAt || act.activityStartAt || new Date().toISOString(),
           });
         });
       });
@@ -248,12 +333,16 @@ export async function generateMonthlyReport(
       summaryText = 'Attended - No field activities logged';
     }
 
-    // Determine Status Label
     let statusLabel: MonthlyReportDay['reportStatus'] = 'Missing';
-    if (hasReport) {
-      if (report!.status === 'approved') statusLabel = 'Approved';
-      else if (['rejected', 'correction_requested', 'edit_requested'].includes(report!.status)) statusLabel = 'Correction Requested';
-      else if (['submitted', 'under_review', 'resubmitted'].includes(report!.status)) statusLabel = 'Submitted';
+    if (isSubmittedReport && report) {
+      if (report.status === 'approved') statusLabel = 'Approved';
+      else if (['rejected', 'correction_requested', 'edit_requested'].includes(report.status)) {
+        statusLabel = 'Correction Requested';
+      } else if (['submitted', 'under_review', 'resubmitted'].includes(report.status)) {
+        statusLabel = 'Submitted';
+      }
+    } else if (hasActivities) {
+      statusLabel = 'In Progress' as any;
     } else if (leave) {
       statusLabel = 'On Leave';
     } else if (isHoliday) {
@@ -262,21 +351,23 @@ export async function generateMonthlyReport(
       statusLabel = 'Weekly Off' as any;
     }
 
-    // Reviewer & Remarks
     const reviewerName = report?.reviewerName;
     const reviewStatusText = reviewerName
       ? `${report?.status === 'approved' ? 'Approved' : 'Reviewed'} by ${reviewerName}`
-      : (report?.status === 'approved' ? 'Approved' : (hasReport ? 'Pending Review' : '—'));
+      : report?.status === 'approved'
+      ? 'Approved'
+      : isSubmittedReport
+      ? 'Pending Review'
+      : '—';
 
-    let remarksText = report?.reviewComments || '—';
+    let remarksText = report?.reviewComments || report?.editRequest?.reason || '—';
     if (hasConflict) {
-      remarksText = `[CONFLICT] Activity reported on approved ${leave?.leaveType?.toUpperCase()} leave. ${remarksText !== '—' ? remarksText : ''}`;
+      remarksText = `[CONFLICT] Activity reported on approved ${leave?.leaveType?.toUpperCase()} leave. ${
+        remarksText !== '—' ? remarksText : ''
+      }`;
     }
 
-    let subTime = '—';
-    if (report?.submittedAt) {
-      subTime = new Date(report.submittedAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
-    }
+    const subTime = report?.submittedAt ? formatTimeIST(report.submittedAt) : '—';
 
     days.push({
       date: dateStr,
@@ -285,29 +376,46 @@ export async function generateMonthlyReport(
       dailyActivity: summaryText,
       reportStatus: statusLabel,
       submissionTime: subTime,
+      submittedAt: report?.submittedAt ? formatDateTimeIST(report.submittedAt) : undefined,
       reviewStatus: reviewStatusText,
+      reviewerName: report?.reviewerName,
       remarks: remarksText,
       reportId: report?.id,
       leaveId: leave?.id,
       leaveType: leave?.leaveType,
-      farmersVisited: report?.summary?.totalParticipantContacts || (report?.activities?.reduce((acc, a) => acc + (a.totalParticipants || 0), 0) || 0),
-      meetingsConducted: report?.activities?.filter((a) => a.activityType === 'group' || a.activityName === 'training').length || 0,
+      crpCode: report?.crpCode || '',
+      blockTaluka: report?.blockTaluka || '',
+      farmersVisited: daySummary?.totalParticipantContacts || 0,
+      meetingsConducted: mergedActivities.filter(
+        (a) => !isSingleFarmerActivity(a) && a.activityName !== 'desk_job'
+      ).length,
       hasConflict,
-      conflictDetails: hasConflict ? `Conflict: Report submitted on approved ${leave?.leaveType} leave date.` : undefined,
+      conflictDetails: hasConflict
+        ? `Conflict: Report submitted on approved ${leave?.leaveType} leave date.`
+        : undefined,
       attachments,
-      // Extra fields for rich table & PDF
-      attendanceStatus: attendance ? (attendance.status === 'active' ? 'Active' : 'Present') : (leave ? 'On Leave' : (isHoliday ? 'Holiday' : (isWeeklyOff ? 'Weekly Off' : 'Absent'))),
+      attendanceStatus: attendance
+        ? attendance.status === 'active'
+          ? 'Active'
+          : 'Present'
+        : leave
+        ? 'On Leave'
+        : isHoliday
+        ? 'Holiday'
+        : isWeeklyOff
+        ? 'Weekly Off'
+        : 'Absent',
       loginTime,
       logoutTime,
       loginLocationName: loginLoc,
       logoutLocationName: logoutLoc,
-      activitiesCount: report?.activities?.length || 0,
+      activitiesCount: mergedActivities.length,
       activitiesList,
-      activityDurationMinutes: report?.summary?.totalActivityMinutes || 0,
-      workingPeriodMinutes: report?.summary?.totalWorkingPeriodMinutes || 0,
-      participantCount: report?.summary?.totalParticipantContacts || 0,
-      maleParticipants: report?.summary?.totalMaleParticipants || 0,
-      femaleParticipants: report?.summary?.totalFemaleParticipants || 0,
+      activityDurationMinutes: daySummary?.totalActivityMinutes || 0,
+      workingPeriodMinutes: daySummary?.totalWorkingPeriodMinutes || 0,
+      participantCount: daySummary?.totalParticipantContacts || 0,
+      maleParticipants: daySummary?.totalMaleParticipants || 0,
+      femaleParticipants: daySummary?.totalFemaleParticipants || 0,
       leaveStatus: leave ? (leave.leaveType ? leave.leaveType.toUpperCase() : 'LEAVE') : 'None',
     } as any);
   }

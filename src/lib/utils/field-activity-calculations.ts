@@ -1,4 +1,333 @@
-import { FieldActivitySlot, FieldReportDailySummary } from '@/types';
+import {
+  ACTIVITY_CHOICES,
+  ActivityChoiceKey,
+  CanonicalActivityStatus,
+  FieldActivityRecord,
+  FieldActivitySlot,
+  FieldReportDailySummary,
+  SUPPORT_PROVIDED_OPTIONS,
+} from '@/types/field-activity';
+
+const STATUS_PRECEDENCE: Record<CanonicalActivityStatus, number> = {
+  COMPLETED: 4,
+  CANCELLED: 3,
+  IN_PROGRESS: 2,
+  NOT_STARTED: 1,
+};
+
+function resolveActivityStartIso(obj?: Record<string, any> | null): string {
+  if (!obj) return '';
+  const val =
+    obj.activityStartAt ||
+    obj.activityStart ||
+    obj.activityStartGps?.capturedAt ||
+    obj.activityStartLocation?.capturedAt ||
+    obj.startGps?.capturedAt ||
+    obj.startTime ||
+    '';
+  return typeof val === 'string' ? val.trim() : '';
+}
+
+function resolveActivityEndIso(obj?: Record<string, any> | null): string {
+  if (!obj) return '';
+  const val =
+    obj.activityEndAt ||
+    obj.activityEnd ||
+    obj.completedAt ||
+    obj.activityEndGps?.capturedAt ||
+    obj.activityEndLocation?.capturedAt ||
+    obj.endGps?.capturedAt ||
+    obj.endTime ||
+    '';
+  return typeof val === 'string' ? val.trim() : '';
+}
+
+/**
+ * Normalize any activity status or record/slot into a canonical uppercase enum:
+ * NOT_STARTED | IN_PROGRESS | COMPLETED | CANCELLED.
+ * Never treats COMPLETED, CANCELLED, or NOT_STARTED activities as active.
+ */
+export function normalizeActivityStatus(
+  slotOrStatus?:
+    | string
+    | null
+    | Partial<FieldActivitySlot>
+    | Partial<FieldActivityRecord>
+    | Record<string, any>
+): CanonicalActivityStatus {
+  if (!slotOrStatus) return 'NOT_STARTED';
+
+  if (typeof slotOrStatus === 'string') {
+    const upper = slotOrStatus.trim().toUpperCase().replace(/\s+/g, '_');
+    if (upper === 'COMPLETED') return 'COMPLETED';
+    if (upper === 'CANCELLED' || upper === 'CANCELED') return 'CANCELLED';
+    if (upper === 'IN_PROGRESS') return 'IN_PROGRESS';
+    return 'NOT_STARTED';
+  }
+
+  const obj = slotOrStatus as Record<string, any>;
+  const rawUpper = String(obj.activityStatus || '')
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, '_');
+
+  const endIso = resolveActivityEndIso(obj);
+  const startIso = resolveActivityStartIso(obj);
+
+  // Explicit terminal or non-started markers take strict precedence over timestamp heuristics
+  if (rawUpper === 'CANCELLED' || rawUpper === 'CANCELED') {
+    return 'CANCELLED';
+  }
+  if (rawUpper === 'COMPLETED') {
+    return 'COMPLETED';
+  }
+  if (rawUpper === 'NOT_STARTED') {
+    return 'NOT_STARTED';
+  }
+
+  // Even if rawStatus stayed IN_PROGRESS/empty, non-empty completion/end timestamps mean completed
+  if (endIso) {
+    return 'COMPLETED';
+  }
+
+  if (rawUpper === 'IN_PROGRESS') {
+    return 'IN_PROGRESS';
+  }
+
+  // Fallback for legacy objects missing activityStatus
+  if (startIso && !endIso) {
+    return 'IN_PROGRESS';
+  }
+
+  return 'NOT_STARTED';
+}
+
+export function isActivityInProgress(input?: Parameters<typeof normalizeActivityStatus>[0]): boolean {
+  return normalizeActivityStatus(input) === 'IN_PROGRESS';
+}
+
+export function isActivityCompleted(input?: Parameters<typeof normalizeActivityStatus>[0]): boolean {
+  return normalizeActivityStatus(input) === 'COMPLETED';
+}
+
+export function isActivityCancelled(input?: Parameters<typeof normalizeActivityStatus>[0]): boolean {
+  return normalizeActivityStatus(input) === 'CANCELLED';
+}
+
+export function isActivityNotStarted(input?: Parameters<typeof normalizeActivityStatus>[0]): boolean {
+  return normalizeActivityStatus(input) === 'NOT_STARTED';
+}
+
+function getRecordRecencyMs(rec: Record<string, any>): number {
+  const candidates = [rec.completedAt, rec.activityEndAt, rec.updatedAt, rec.createdAt];
+  for (const c of candidates) {
+    if (c) {
+      const t = new Date(c).getTime();
+      if (!Number.isNaN(t) && t > 0) return t;
+    }
+  }
+  return 0;
+}
+
+/**
+ * Deduplicate activity records per key (defaulting to `${reportDate}__${slotNumber}`),
+ * preferring terminal statuses (COMPLETED > CANCELLED > IN_PROGRESS > NOT_STARTED)
+ * so orphaned stale IN_PROGRESS docs never mask completed activities.
+ */
+export function deduplicateActivityRecords<T extends Record<string, any>>(
+  records: T[],
+  keyFn: (rec: T) => string = (r) => `${r.reportDate || ''}__${Number(r.slotNumber) || 1}`
+): (T & { activityStatus: CanonicalActivityStatus })[] {
+  const byKey = new Map<string, T & { activityStatus: CanonicalActivityStatus }>();
+
+  for (const rec of records) {
+    const key = keyFn(rec);
+    const normStatus = normalizeActivityStatus(rec);
+    const normalizedRec = { ...rec, activityStatus: normStatus } as T & {
+      activityStatus: CanonicalActivityStatus;
+    };
+
+    const prev = byKey.get(key);
+    if (!prev) {
+      byKey.set(key, normalizedRec);
+      continue;
+    }
+
+    const prevRank = STATUS_PRECEDENCE[normalizeActivityStatus(prev)];
+    const curRank = STATUS_PRECEDENCE[normStatus];
+
+    if (curRank > prevRank) {
+      byKey.set(key, normalizedRec);
+    } else if (curRank === prevRank) {
+      if (getRecordRecencyMs(normalizedRec) >= getRecordRecencyMs(prev)) {
+        byKey.set(key, normalizedRec);
+      }
+    }
+  }
+
+  return Array.from(byKey.values()).sort(
+    (a, b) => (Number(a.slotNumber) || 0) - (Number(b.slotNumber) || 0)
+  );
+}
+
+export interface StaleOrphanResolution {
+  activityId: string;
+  targetStatus: 'COMPLETED' | 'CANCELLED';
+  source?: Partial<FieldActivitySlot | FieldActivityRecord>;
+}
+
+export interface ActiveConflictResolution {
+  blockingActivity: (FieldActivityRecord & { activityStatus: CanonicalActivityStatus }) | null;
+  targetSlotCompleted: boolean;
+  existingInProgressForTargetSlot:
+    | (FieldActivityRecord & { activityStatus: CanonicalActivityStatus })
+    | null;
+  staleOrphansToHeal: StaleOrphanResolution[];
+}
+
+/**
+ * Reconcile actual Firestore activity records + parent FieldReport slots to decide
+ * whether starting targetSlotNumber is blocked by another genuinely IN_PROGRESS activity.
+ */
+export function resolveBlockingActiveActivity(params: {
+  docsForDate: FieldActivityRecord[];
+  parentReport?: { activities?: FieldActivitySlot[]; finalized?: boolean; status?: string } | null;
+  targetSlotNumber: number;
+  targetActivityId?: string;
+}): ActiveConflictResolution {
+  const { docsForDate, parentReport, targetSlotNumber, targetActivityId } = params;
+
+  const parentTerminalBySlot = new Map<
+    number,
+    { status: 'COMPLETED' | 'CANCELLED'; slot: FieldActivitySlot }
+  >();
+  for (const s of parentReport?.activities || []) {
+    const sNum = Number(s.slotNumber) || 0;
+    if (sNum <= 0) continue;
+    const norm = normalizeActivityStatus(s);
+    if (norm === 'COMPLETED' || norm === 'CANCELLED') {
+      parentTerminalBySlot.set(sNum, { status: norm, slot: s });
+    }
+  }
+
+  const docsBySlot = new Map<number, FieldActivityRecord[]>();
+  for (const doc of docsForDate) {
+    const sNum = Number(doc.slotNumber) || 1;
+    const arr = docsBySlot.get(sNum) || [];
+    arr.push(doc);
+    docsBySlot.set(sNum, arr);
+  }
+
+  const staleOrphansToHeal: StaleOrphanResolution[] = [];
+  let blockingActivity: (FieldActivityRecord & { activityStatus: CanonicalActivityStatus }) | null =
+    null;
+  let existingInProgressForTargetSlot:
+    | (FieldActivityRecord & { activityStatus: CanonicalActivityStatus })
+    | null = null;
+  let targetSlotCompleted =
+    parentTerminalBySlot.get(targetSlotNumber)?.status === 'COMPLETED';
+
+  for (const [sNum, group] of docsBySlot.entries()) {
+    const [winner] = deduplicateActivityRecords(group, () => String(sNum));
+    const winnerStatus = normalizeActivityStatus(winner);
+    const parentTerminal = parentTerminalBySlot.get(sNum);
+
+    const terminalStatus: 'COMPLETED' | 'CANCELLED' | null =
+      winnerStatus === 'COMPLETED' || winnerStatus === 'CANCELLED'
+        ? winnerStatus
+        : parentTerminal?.status || null;
+
+    if (terminalStatus) {
+      if (sNum === targetSlotNumber && terminalStatus === 'COMPLETED') {
+        targetSlotCompleted = true;
+      }
+      // Heal any doc in this slot still carrying stale IN_PROGRESS in Firestore
+      for (const doc of group) {
+        const rawUpper = String(doc.activityStatus || '').trim().toUpperCase();
+        const docId = doc.activityId || doc.id;
+        if (docId && (rawUpper === 'IN_PROGRESS' || rawUpper === 'IN PROGRESS' || doc.activityStatus !== terminalStatus && normalizeActivityStatus(doc) === terminalStatus)) {
+          staleOrphansToHeal.push({
+            activityId: docId,
+            targetStatus: terminalStatus,
+            source: winnerStatus === terminalStatus ? winner : parentTerminal?.slot,
+          });
+        }
+      }
+      continue;
+    }
+
+    if (winnerStatus === 'IN_PROGRESS') {
+      const winnerId = winner.activityId || winner.id;
+      if (sNum === targetSlotNumber) {
+        existingInProgressForTargetSlot = winner;
+      } else if (!blockingActivity && winnerId !== targetActivityId) {
+        blockingActivity = winner;
+      }
+    }
+  }
+
+  return {
+    blockingActivity,
+    targetSlotCompleted,
+    existingInProgressForTargetSlot,
+    staleOrphansToHeal,
+  };
+}
+
+/**
+ * Reconcile authoritative server slots with local offline/cached slots on reload or sync.
+ * Strictly prevents local stale IN_PROGRESS / NOT_STARTED entries from overwriting
+ * COMPLETED or CANCELLED activities in Firestore.
+ */
+export function reconcileRemoteAndLocalSlots(
+  remoteSlots: FieldActivitySlot[],
+  localSlots: FieldActivitySlot[]
+): FieldActivitySlot[] {
+  const mergedBySlot = new Map<number, FieldActivitySlot>();
+
+  for (const rs of remoteSlots) {
+    const norm = normalizeActivityStatus(rs);
+    const cur = mergedBySlot.get(rs.slotNumber);
+    if (!cur || STATUS_PRECEDENCE[norm] > STATUS_PRECEDENCE[normalizeActivityStatus(cur)]) {
+      mergedBySlot.set(rs.slotNumber, { ...rs, activityStatus: norm });
+    }
+  }
+
+  for (const ls of localSlots) {
+    const localNorm = normalizeActivityStatus(ls);
+    const localNormalizedSlot: FieldActivitySlot = { ...ls, activityStatus: localNorm };
+    const existingRemote = mergedBySlot.get(ls.slotNumber);
+
+    if (!existingRemote) {
+      mergedBySlot.set(ls.slotNumber, localNormalizedSlot);
+      continue;
+    }
+
+    const remoteNorm = normalizeActivityStatus(existingRemote);
+    const hasUnsyncedLocal =
+      ls.syncStatus === 'pending_sync' || ls.syncStatus === 'saved_offline';
+
+    // Never downgrade remote COMPLETED or CANCELLED back to IN_PROGRESS / NOT_STARTED
+    if (remoteNorm === 'COMPLETED' || remoteNorm === 'CANCELLED') {
+      continue;
+    }
+
+    // Offline completion always wins over remote IN_PROGRESS / NOT_STARTED
+    if (localNorm === 'COMPLETED') {
+      mergedBySlot.set(ls.slotNumber, localNormalizedSlot);
+      continue;
+    }
+
+    // Preserve genuinely newer offline edits only while neither slot has completed
+    if (hasUnsyncedLocal && STATUS_PRECEDENCE[localNorm] >= STATUS_PRECEDENCE[remoteNorm]) {
+      mergedBySlot.set(ls.slotNumber, localNormalizedSlot);
+    }
+  }
+
+  return Array.from(mergedBySlot.values()).sort(
+    (a, b) => (Number(a.slotNumber) || 0) - (Number(b.slotNumber) || 0)
+  );
+}
 
 /**
  * Validate and calculate metrics for an array of activity slots (max 20 slots).
@@ -38,42 +367,19 @@ export function calculateActivitiesSummary(
     const slot = boundedActivities[idx];
     const slotNum = idx + 1;
 
-    // Normalize status (handles uppercase COMPLETED / IN_PROGRESS and lowercase completed / in_progress)
-    const rawStatus = (slot.activityStatus || '').toLowerCase();
-    const startIso =
-      slot.activityStartAt ||
-      slot.activityStart ||
-      (slot as any).activityStartGps?.capturedAt ||
-      (slot as any).activityStartLocation?.capturedAt ||
-      (slot as any).startGps?.capturedAt ||
-      (slot as any).startTime ||
-      '';
-    const endIso =
-      slot.activityEndAt ||
-      slot.activityEnd ||
-      (slot as any).activityEndGps?.capturedAt ||
-      (slot as any).activityEndLocation?.capturedAt ||
-      (slot as any).endGps?.capturedAt ||
-      (slot as any).endTime ||
-      '';
+    // Canonical status normalization: COMPLETED | IN_PROGRESS | CANCELLED | NOT_STARTED
+    const canonicalStatus = normalizeActivityStatus(slot);
+    const status: 'not_started' | 'in_progress' | 'completed' | 'cancelled' =
+      canonicalStatus === 'COMPLETED'
+        ? 'completed'
+        : canonicalStatus === 'IN_PROGRESS'
+        ? 'in_progress'
+        : canonicalStatus === 'CANCELLED'
+        ? 'cancelled'
+        : 'not_started';
 
-    const hasDuration =
-      Number(slot.durationMinutes) > 0 || Number(slot.activityDurationMinutes) > 0;
-
-    const isCompleted =
-      rawStatus === 'completed' ||
-      Boolean(endIso && startIso && hasDuration) ||
-      Boolean(rawStatus === 'completed');
-
-    const isInProgress =
-      !isCompleted &&
-      (rawStatus === 'in_progress' || Boolean(startIso && !endIso));
-
-    const status: 'not_started' | 'in_progress' | 'completed' = isCompleted
-      ? 'completed'
-      : isInProgress
-      ? 'in_progress'
-      : 'not_started';
+    const startIso = resolveActivityStartIso(slot);
+    const endIso = resolveActivityEndIso(slot);
 
     if (status === 'in_progress') {
       inProgressCount++;
@@ -86,13 +392,23 @@ export function calculateActivitiesSummary(
       );
     }
 
-    // If finalizing and slot is not started, skip if not the only slot
-    if (isFinalizing && status === 'not_started') {
+    // If finalizing and slot is not started or cancelled, skip continuation slots
+    if (isFinalizing && (status === 'not_started' || status === 'cancelled')) {
       if (boundedActivities.length > 1) {
-        continue; // ignore unstarted continuation slot
-      } else {
+        continue;
+      } else if (status === 'not_started') {
         errors.push(`Activity 1 has not been started. Please start and complete your activity.`);
       }
+    }
+
+    // Cancelled slots are preserved in drafts without requiring completion fields
+    if (status === 'cancelled') {
+      validatedActivities.push({
+        ...slot,
+        slotNumber: slotNum,
+        activityStatus: 'CANCELLED',
+      });
+      continue;
     }
 
     // Start & End time checks
@@ -153,15 +469,16 @@ export function calculateActivitiesSummary(
       }
 
       // Participant validation
-      if (slot.activityType === 'single_farmer') {
+      const rawType = slot.activityType || slot.participantType || 'group';
+      if (isSingleFarmerActivity(rawType)) {
         if ((isFinalizing || status === 'completed') && (!slot.farmerName || !slot.farmerName.trim())) {
           errors.push(`Activity ${slotNum}: Farmer Name is required for single farmer activity.`);
         }
         calculatedTotal = 1;
-        calculatedMale = 0;
-        calculatedFemale = 0;
+        calculatedMale = Number(slot.maleParticipants) || 0;
+        calculatedFemale = Number(slot.femaleParticipants) || 0;
       } else {
-        // Group activity
+        // Group / community activity
         const tot = Number(slot.totalParticipants) || 0;
         const male = Number(slot.maleParticipants) || 0;
         const female = Number(slot.femaleParticipants) || 0;
@@ -229,11 +546,30 @@ export function calculateActivitiesSummary(
     // Normalize start/end location objects with coordinates
     const startLoc = slot.activityStartLocation || slot.activityStartGps || null;
     const endLoc = slot.activityEndLocation || slot.activityEndGps || null;
+    const mergedPhotos = mergeEvidenceUrls(slot.photoUrl, slot.photoEvidence);
+    const mergedVideos = mergeEvidenceUrls(slot.videoUrl, slot.videoEvidence);
+    const effectiveType = slot.activityType || slot.participantType || 'group';
 
     validatedActivities.push({
       ...slot,
       slotNumber: slotNum,
-      activityStatus: isCompleted ? 'COMPLETED' : isInProgress ? 'IN_PROGRESS' : 'not_started',
+      activityStatus: canonicalStatus,
+      activityType: effectiveType,
+      participantType: slot.participantType || effectiveType,
+      activityOther: slot.activityOther || '',
+      wadi: slot.wadi || '',
+      farmerName: slot.farmerName || '',
+      groupDetails: slot.groupDetails || '',
+      farmerIssues: slot.farmerIssues || '',
+      supportProvided: Array.isArray(slot.supportProvided) ? slot.supportProvided : [],
+      supportOther: slot.supportOther || '',
+      followUpRequired: Boolean(slot.followUpRequired),
+      followUpDetails: slot.followUpDetails || '',
+      followUpDate: slot.followUpDate || '',
+      photoUrl: mergedPhotos[0] || '',
+      photoEvidence: mergedPhotos,
+      videoUrl: mergedVideos[0] || '',
+      videoEvidence: mergedVideos,
       activityStartAt: startIso,
       activityStart: startIso,
       activityStartLocation: startLoc,
@@ -289,4 +625,198 @@ export function calculateActivitiesSummary(
   };
 
   return { summary, validatedActivities, errors };
+}
+
+export function isSingleFarmerActivity(
+  val?: string | Pick<FieldActivitySlot, 'participantType' | 'activityType'> | null
+): boolean {
+  if (val && typeof val === 'object') {
+    const resolved = val.participantType || val.activityType;
+    return String(resolved || '').trim() === 'single_farmer';
+  }
+  return String(val || '').trim() === 'single_farmer';
+}
+
+export function mergeEvidenceUrls(singleUrl?: string | null, list?: unknown): string[] {
+  const result: string[] = [];
+  const add = (val: unknown) => {
+    if (typeof val === 'string') {
+      const trimmed = val.trim();
+      if (trimmed && !result.includes(trimmed)) {
+        result.push(trimmed);
+      }
+    }
+  };
+  if (Array.isArray(list)) {
+    for (const item of list) add(item);
+  }
+  add(singleUrl);
+  return result;
+}
+
+export function resolveActivityNameLabel(
+  act: Pick<FieldActivitySlot, 'activityName' | 'activityNameLabel'>
+): string {
+  const mapped = ACTIVITY_CHOICES.find((c) => c.key === act.activityName)?.label;
+  return (
+    act.activityNameLabel ||
+    mapped ||
+    (act.activityName ? act.activityName.replace(/_/g, ' ') : 'Activity')
+  );
+}
+
+export function resolveSupportLabels(
+  act: Pick<FieldActivitySlot, 'supportProvided' | 'supportOther'>
+): string[] {
+  const keys = Array.isArray(act.supportProvided) ? act.supportProvided : [];
+  const labels = keys.map(
+    (k) => SUPPORT_PROVIDED_OPTIONS.find((opt) => opt.key === k)?.label || k.replace(/_/g, ' ')
+  );
+  if (act.supportOther?.trim()) {
+    labels.push(`Other: ${act.supportOther.trim()}`);
+  }
+  return labels;
+}
+
+export function resolveSupportText(
+  act: Pick<FieldActivitySlot, 'supportProvided' | 'supportOther'>
+): string {
+  const labels = resolveSupportLabels(act);
+  return labels.length > 0 ? labels.join(', ') : 'None selected';
+}
+
+export function getHumanPlaceName(loc?: { placeName?: string } | null): string {
+  if (!loc || !loc.placeName || loc.placeName.trim() === '' || loc.placeName === 'Location name unavailable') {
+    return 'Location unavailable';
+  }
+  return loc.placeName.trim();
+}
+
+export function formatLocationDisplay(
+  loc?: { latitude?: number; longitude?: number; placeName?: string } | null,
+  includeCoords = true
+): string {
+  if (!loc) return 'Location unavailable';
+  const place =
+    loc.placeName && loc.placeName.trim() !== '' && loc.placeName !== 'Location name unavailable'
+      ? loc.placeName.trim()
+      : '';
+  const hasCoords =
+    typeof loc.latitude === 'number' &&
+    typeof loc.longitude === 'number' &&
+    !Number.isNaN(loc.latitude) &&
+    !Number.isNaN(loc.longitude);
+
+  if (includeCoords && hasCoords) {
+    const coordStr = `${loc.latitude!.toFixed(5)}, ${loc.longitude!.toFixed(5)}`;
+    return place ? `${place} (${coordStr})` : `Coordinates: ${coordStr}`;
+  }
+  return place || 'Location unavailable';
+}
+
+export function convertRecordToSlot(rec: FieldActivityRecord): FieldActivitySlot {
+  const photos = mergeEvidenceUrls(rec.photoUrl, rec.photoEvidence);
+  const videos = mergeEvidenceUrls(rec.videoUrl, rec.videoEvidence);
+  const resolvedType = rec.participantType || rec.activityType || 'single_farmer';
+  return {
+    activityId: rec.activityId || rec.id,
+    id: rec.activityId || rec.id,
+    slotNumber: rec.slotNumber,
+    activityStatus: normalizeActivityStatus(rec),
+    activityName: (rec.activityName || 'farmer_visit') as ActivityChoiceKey,
+    activityNameLabel: rec.activityNameLabel || undefined,
+    activityOther: rec.activityOther || undefined,
+    village: rec.village || '',
+    wadi: rec.wadi || '',
+    activityType: resolvedType,
+    participantType: resolvedType,
+    farmerName: rec.farmerName || '',
+    groupDetails: rec.groupDetails || '',
+    totalParticipants: rec.totalParticipants || 0,
+    maleParticipants: rec.maleParticipants || 0,
+    femaleParticipants: rec.femaleParticipants || 0,
+    observations: rec.observations || '',
+    farmerIssues: rec.farmerIssues || '',
+    supportProvided: rec.supportProvided || [],
+    supportOther: rec.supportOther || '',
+    followUpRequired: Boolean(rec.followUpRequired),
+    followUpDetails: rec.followUpDetails || '',
+    followUpDate: rec.followUpDate || '',
+    photoUrl: photos[0] || '',
+    videoUrl: videos[0] || '',
+    photoEvidence: photos,
+    videoEvidence: videos,
+    activityStart: rec.activityStartAt || (rec as any).activityStart || '',
+    activityStartAt: rec.activityStartAt || (rec as any).activityStart || '',
+    activityStartLocation: rec.activityStartLocation || rec.activityStartGps || null,
+    activityStartGps: rec.activityStartLocation || rec.activityStartGps || null,
+    activityStartLocationStatus: rec.activityStartLocationStatus || undefined,
+    activityEnd: rec.activityEndAt || (rec as any).activityEnd || '',
+    activityEndAt: rec.activityEndAt || (rec as any).activityEnd || '',
+    activityEndLocation: rec.activityEndLocation || rec.activityEndGps || null,
+    activityEndGps: rec.activityEndLocation || rec.activityEndGps || null,
+    activityEndLocationStatus: rec.activityEndLocationStatus || undefined,
+    durationMinutes: rec.activityDurationMinutes ?? rec.durationMinutes ?? 0,
+    activityDurationMinutes: rec.activityDurationMinutes ?? rec.durationMinutes ?? 0,
+    completedAt: (rec as any).completedAt ?? null,
+    updatedAt: rec.updatedAt,
+    syncStatus: 'synced',
+  };
+}
+
+export function mergeDayActivities(
+  reportActs: FieldActivitySlot[] = [],
+  standaloneRecords: FieldActivityRecord[] = []
+): FieldActivitySlot[] {
+  const bySlot = new Map<number, FieldActivitySlot>();
+  for (const act of reportActs) {
+    bySlot.set(act.slotNumber, {
+      ...act,
+      activityStatus: normalizeActivityStatus(act),
+    });
+  }
+  const dedupedStandalone = deduplicateActivityRecords(
+    standaloneRecords,
+    (r) => String(r.slotNumber || 1)
+  );
+  for (const rec of dedupedStandalone) {
+    const slotFromRec = convertRecordToSlot(rec);
+    const existing = bySlot.get(rec.slotNumber);
+    if (!existing) {
+      bySlot.set(rec.slotNumber, slotFromRec);
+      continue;
+    }
+    const recStatus = normalizeActivityStatus(rec);
+    const existingStatus = normalizeActivityStatus(existing);
+    const recRank = STATUS_PRECEDENCE[recStatus];
+    const existingRank = STATUS_PRECEDENCE[existingStatus];
+    const recUpdatedMs = getRecordRecencyMs(rec);
+    const existingUpdatedMs = getRecordRecencyMs(existing);
+
+    // Never allow a non-completed / stale standalone doc to downgrade a COMPLETED or CANCELLED slot
+    const shouldTakeStandalone =
+      recRank > existingRank ||
+      (recRank === existingRank && recUpdatedMs >= existingUpdatedMs);
+
+    if (shouldTakeStandalone) {
+      bySlot.set(rec.slotNumber, {
+        ...existing,
+        ...slotFromRec,
+        activityStatus: recStatus,
+        groupDetails: slotFromRec.groupDetails || existing.groupDetails,
+        supportOther: slotFromRec.supportOther || existing.supportOther,
+        activityOther: slotFromRec.activityOther || existing.activityOther,
+        followUpDate: slotFromRec.followUpDate || existing.followUpDate,
+        photoEvidence: mergeEvidenceUrls(existing.photoUrl, [
+          ...(existing.photoEvidence || []),
+          ...(slotFromRec.photoEvidence || []),
+        ]),
+        videoEvidence: mergeEvidenceUrls(existing.videoUrl, [
+          ...(existing.videoEvidence || []),
+          ...(slotFromRec.videoEvidence || []),
+        ]),
+      });
+    }
+  }
+  return Array.from(bySlot.values()).sort((a, b) => (a.slotNumber || 0) - (b.slotNumber || 0));
 }

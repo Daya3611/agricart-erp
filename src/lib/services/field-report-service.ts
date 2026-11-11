@@ -13,7 +13,13 @@ import {
 import { checkIfLateSubmission, normalizeReportDate } from '@/lib/utils/date-utils';
 import { logAuditAction } from '@/lib/services/audit-service';
 
-import { calculateActivitiesSummary } from '@/lib/utils/field-activity-calculations';
+import {
+  calculateActivitiesSummary,
+  deduplicateActivityRecords,
+  mergeDayActivities,
+  mergeEvidenceUrls,
+  normalizeActivityStatus,
+} from '@/lib/utils/field-activity-calculations';
 export { calculateActivitiesSummary };
 
 /**
@@ -88,20 +94,6 @@ export async function createOrUpdateFieldReport(
     const reportDate = normalizeReportDate(data.reportDate);
     const docId = `field_rep_${staffUser.uid}_${reportDate}`;
 
-    // Validate activities and compute summary
-    const { summary, validatedActivities, errors } = calculateActivitiesSummary(
-      data.activities || [],
-      Boolean(data.finalizeNow)
-    );
-
-    if (errors.length > 0 && (data.finalizeNow || errors.some(e => e.includes('IN PROGRESS at a time')))) {
-      return { success: false, error: errors[0] };
-    }
-
-    if (data.finalizeNow && validatedActivities.length === 0) {
-      return { success: false, error: 'At least one completed activity slot must be recorded to finalize the daily report.' };
-    }
-
     const existingCheck = await checkExistingFieldReport(staffUser.uid, reportDate);
     const existingDoc = existingCheck.report;
 
@@ -123,36 +115,124 @@ export async function createOrUpdateFieldReport(
       }
     }
 
-    // Prevent non-admin employees from tampering with already completed activity timestamps & locations
-    if (existingDoc && staffUser.role === 'staff' && existingDoc.activities) {
-      const existingCompletedMap = new Map(
-        existingDoc.activities
-          .filter((a) => a.activityStatus === 'completed')
-          .map((a) => [a.slotNumber, a])
-      );
+    // Lookup existing individual activities to preserve IDs, prevent duplicates, and guard completed state
+    const existingActDocs = (await fetchCollection(ERP_COLLECTIONS.fieldActivities, [
+      { field: 'staffUid', op: '==', value: staffUser.uid },
+      { field: 'reportDate', op: '==', value: reportDate },
+    ])) as any[];
+    const existingActById = new Map<string, any>();
+    for (const a of existingActDocs) {
+      const aid = a.activityId || a.id;
+      if (aid) existingActById.set(aid, a);
+    }
+    const existingActBySlot = new Map<number, any>();
+    for (const canonicalDoc of deduplicateActivityRecords(
+      existingActDocs,
+      (a) => String(Number(a.slotNumber) || 1)
+    )) {
+      const s = Number(canonicalDoc.slotNumber);
+      if (s > 0) existingActBySlot.set(s, canonicalDoc);
+    }
 
-      for (const act of validatedActivities) {
-        const old = existingCompletedMap.get(act.slotNumber);
-        if (old) {
-          act.activityStart = old.activityStart;
-          act.activityStartAt = old.activityStartAt || old.activityStart;
-          act.activityStartGps = old.activityStartGps;
-          act.activityStartLocation = old.activityStartLocation || old.activityStartGps;
-          act.activityEnd = old.activityEnd;
-          act.activityEndAt = old.activityEndAt || old.activityEnd;
-          act.activityEndGps = old.activityEndGps;
-          act.activityEndLocation = old.activityEndLocation || old.activityEndGps;
-          act.durationMinutes = old.durationMinutes;
-          act.activityDurationMinutes = old.activityDurationMinutes || old.durationMinutes;
-          act.activityStatus = 'completed';
-        }
+    // Build authoritative map of already COMPLETED slots across both erp_field_reports and erp_field_activities
+    const existingCompletedMap = new Map<number, any>();
+    for (const a of existingDoc?.activities || []) {
+      if (normalizeActivityStatus(a) === 'COMPLETED') {
+        existingCompletedMap.set(Number(a.slotNumber), a);
       }
+    }
+    for (const [slotNum, a] of existingActBySlot.entries()) {
+      if (normalizeActivityStatus(a) === 'COMPLETED' && !existingCompletedMap.has(slotNum)) {
+        existingCompletedMap.set(slotNum, a);
+      }
+    }
+
+    // Guard against offline sync or stale client drafts attempting to downgrade COMPLETED activities back to IN_PROGRESS
+    const sanitizedInputActivities: FieldActivitySlot[] = (data.activities || []).map((incoming) => {
+      const slotNum = Number(incoming.slotNumber) || 1;
+      const existingCompleted = existingCompletedMap.get(slotNum);
+      if (!existingCompleted) {
+        return {
+          ...incoming,
+          activityStatus: normalizeActivityStatus(incoming),
+        };
+      }
+
+      const incomingStatus = normalizeActivityStatus(incoming);
+      const canonicalId =
+        existingCompleted.activityId || existingCompleted.id || incoming.activityId || incoming.id;
+
+      // Stale client sent IN_PROGRESS / NOT_STARTED for an activity already COMPLETED in Firestore: keep Firestore's completed record intact
+      if (incomingStatus !== 'COMPLETED') {
+        return {
+          ...incoming,
+          ...existingCompleted,
+          activityId: canonicalId,
+          id: canonicalId,
+          slotNumber: slotNum,
+          activityStatus: 'COMPLETED',
+        };
+      }
+
+      // Client also shows COMPLETED (e.g. reopened correction mode): preserve verified start/end timestamps & GPS for staff
+      if (staffUser.role === 'staff' && (existingCompleted.activityStartAt || existingCompleted.activityStart)) {
+        return {
+          ...incoming,
+          activityId: canonicalId,
+          id: canonicalId,
+          slotNumber: slotNum,
+          activityStatus: 'COMPLETED',
+          activityStart: existingCompleted.activityStart || existingCompleted.activityStartAt || '',
+          activityStartAt: existingCompleted.activityStartAt || existingCompleted.activityStart || '',
+          activityStartGps: existingCompleted.activityStartGps ?? existingCompleted.activityStartLocation ?? null,
+          activityStartLocation: existingCompleted.activityStartLocation ?? existingCompleted.activityStartGps ?? null,
+          activityStartLocationStatus: existingCompleted.activityStartLocationStatus || incoming.activityStartLocationStatus,
+          activityEnd: existingCompleted.activityEnd || existingCompleted.activityEndAt || '',
+          activityEndAt: existingCompleted.activityEndAt || existingCompleted.activityEnd || '',
+          activityEndGps: existingCompleted.activityEndGps ?? existingCompleted.activityEndLocation ?? null,
+          activityEndLocation: existingCompleted.activityEndLocation ?? existingCompleted.activityEndGps ?? null,
+          activityEndLocationStatus: existingCompleted.activityEndLocationStatus || incoming.activityEndLocationStatus,
+          durationMinutes: existingCompleted.durationMinutes || existingCompleted.activityDurationMinutes || incoming.durationMinutes,
+          activityDurationMinutes: existingCompleted.activityDurationMinutes || existingCompleted.durationMinutes || incoming.activityDurationMinutes,
+        };
+      }
+
+      return {
+        ...incoming,
+        activityId: canonicalId,
+        id: canonicalId,
+        slotNumber: slotNum,
+        activityStatus: 'COMPLETED',
+      };
+    });
+
+    // Validate sanitized activities and compute summary
+    const { summary, validatedActivities, errors } = calculateActivitiesSummary(
+      sanitizedInputActivities,
+      Boolean(data.finalizeNow)
+    );
+
+    if (errors.length > 0 && (data.finalizeNow || errors.some(e => e.includes('IN PROGRESS at a time')))) {
+      return { success: false, error: errors[0] };
+    }
+
+    if (data.finalizeNow && validatedActivities.length === 0) {
+      return { success: false, error: 'At least one completed activity slot must be recorded to finalize the daily report.' };
+    }
+
+    // Assign canonical activityId on each validated slot before saving parent report
+    for (const act of validatedActivities) {
+      const matchedDoc = existingActById.get(act.activityId || act.id || '') || existingActBySlot.get(act.slotNumber);
+      const canonicalId = act.activityId || act.id || matchedDoc?.activityId || matchedDoc?.id || `act_${docId}_${act.slotNumber}`;
+      act.activityId = canonicalId;
+      act.id = canonicalId;
+      act.activityStatus = normalizeActivityStatus(act);
     }
 
     const now = new Date().toISOString();
     const isLate = data.finalizeNow ? checkIfLateSubmission(reportDate, now) : false;
     const isEditResubmission = Boolean(existingDoc && (existingDoc.status === 'edit_requested' || existingDoc.status === 'correction_requested'));
-    const revisionNumber = (existingDoc?.revisionNumber || 1) + (isEditResubmission ? 1 : 0);
+    const revisionNumber = (existingDoc?.revisionNumber || 1) + (isEditResubmission && data.finalizeNow ? 1 : 0);
 
     const newStatus: ReportStatus = data.finalizeNow
       ? (isEditResubmission ? 'resubmitted' : 'submitted')
@@ -173,7 +253,20 @@ export async function createOrUpdateFieldReport(
       }
     } catch { }
 
-    const reportRecord: FieldReport = {
+    let resolvedEditRequest = existingDoc?.editRequest;
+    let resolvedEditHistory = existingDoc?.editRequestHistory ? [...existingDoc.editRequestHistory] : [];
+    if (isEditResubmission && data.finalizeNow && resolvedEditRequest) {
+      resolvedEditRequest = {
+        ...resolvedEditRequest,
+        status: 'resolved',
+        resolvedAt: now,
+      };
+      resolvedEditHistory = resolvedEditHistory.map((er) =>
+        er.id === resolvedEditRequest!.id ? resolvedEditRequest! : er
+      );
+    }
+
+    const rawRecord: Record<string, any> = {
       id: docId,
       staffUid: staffUser.uid,
       employeeId: staffUser.employeeId || '',
@@ -184,15 +277,17 @@ export async function createOrUpdateFieldReport(
       centerId: staffUser.assignedCenterIds?.[0] || 'center_default',
       centerName: staffUser.assignedCenterNames?.[0] || 'Primary Center',
       reportDate,
-      crpCode: data.crpCode || '',
-      blockTaluka: data.blockTaluka || '',
+      crpCode: data.crpCode !== undefined ? data.crpCode : (existingDoc?.crpCode || ''),
+      blockTaluka: data.blockTaluka !== undefined ? data.blockTaluka : (existingDoc?.blockTaluka || ''),
       activities: validatedActivities,
       summary,
       status: newStatus,
-      finalized: data.finalizeNow,
+      finalized: data.finalizeNow ? true : Boolean(existingDoc?.finalized),
       finalizationTimestamp: data.finalizeNow ? (existingDoc?.finalizationTimestamp || now) : existingDoc?.finalizationTimestamp,
-      finalizationGps: data.finalizeNow ? (data.finalizationGps || null) : (existingDoc?.finalizationGps || null),
-      finalizationLocationStatus: data.finalizeNow ? (data.finalizationLocationStatus || (data.finalizationGps ? 'captured' : 'unavailable')) : existingDoc?.finalizationLocationStatus,
+      finalizationGps: data.finalizeNow ? (data.finalizationGps ?? null) : (existingDoc?.finalizationGps ?? null),
+      finalizationLocationStatus: data.finalizeNow
+        ? (data.finalizationLocationStatus || (data.finalizationGps ? 'captured' : 'unavailable'))
+        : existingDoc?.finalizationLocationStatus,
       submittedAt: data.finalizeNow ? (existingDoc?.submittedAt || now) : existingDoc?.submittedAt,
       resubmittedAt: isEditResubmission && data.finalizeNow ? now : existingDoc?.resubmittedAt,
       isLate,
@@ -200,14 +295,23 @@ export async function createOrUpdateFieldReport(
       conflictDetails,
       reviewerUid: existingDoc?.reviewerUid,
       reviewerName: existingDoc?.reviewerName,
+      reviewerRole: existingDoc?.reviewerRole,
       reviewedAt: existingDoc?.reviewedAt,
       reviewComments: existingDoc?.reviewComments,
+      editRequest: resolvedEditRequest,
+      editRequestHistory: resolvedEditHistory.length > 0 ? resolvedEditHistory : undefined,
+      lastApproval: existingDoc?.lastApproval,
+      approvalHistory: existingDoc?.approvalHistory,
       revisionNumber,
       createdAt: existingDoc?.createdAt || now,
       updatedAt: now,
       syncStatus: 'synced',
       idempotencyKey: data.idempotencyKey || `key_${docId}_${Date.now()}`,
     };
+
+    const reportRecord = Object.fromEntries(
+      Object.entries(rawRecord).filter(([, v]) => v !== undefined)
+    ) as unknown as FieldReport;
 
     // Concurrency safe transaction
     if (hasValidAdminCredentials) {
@@ -250,23 +354,68 @@ export async function createOrUpdateFieldReport(
       });
     }
 
-    // Also persist each activity slot in erp_field_activities for granular queries
+    // Persist started/completed/cancelled activity slots in erp_field_activities (never write NOT_STARTED placeholders or leave stale IN_PROGRESS duplicates)
     for (const act of validatedActivities) {
-      const actId = `act_${docId}_${act.slotNumber}`;
+      const actStatus = normalizeActivityStatus(act);
+      const actId = act.activityId || `act_${docId}_${act.slotNumber}`;
+      if (actStatus === 'NOT_STARTED' && !existingActById.has(actId)) {
+        continue;
+      }
+      const mergedPhotos = mergeEvidenceUrls(act.photoUrl, act.photoEvidence);
+      const mergedVideos = mergeEvidenceUrls(act.videoUrl, act.videoEvidence);
       await saveDocument(ERP_COLLECTIONS.fieldActivities, actId, {
+        ...act,
+        activityStatus: actStatus,
+        activityId: actId,
         id: actId,
         reportId: docId,
         staffUid: staffUser.uid,
+        employeeUid: staffUser.uid,
         employeeId: staffUser.employeeId || '',
-        staffName: staffUser.fullName || '',
+        employeeName: staffUser.fullName || 'Staff Member',
+        staffName: staffUser.fullName || 'Staff Member',
         departmentId: staffUser.departmentId || '',
         departmentName: staffUser.departmentName || '',
         centerId: staffUser.assignedCenterIds?.[0] || '',
         centerName: staffUser.assignedCenterNames?.[0] || '',
         reportDate,
-        ...act,
+        crpCode: reportRecord.crpCode || '',
+        blockTaluka: reportRecord.blockTaluka || '',
+        participantType: act.participantType || act.activityType || 'group',
+        activityType: act.activityType || act.participantType || 'group',
+        photoUrl: mergedPhotos[0] || '',
+        photoEvidence: mergedPhotos,
+        videoUrl: mergedVideos[0] || '',
+        videoEvidence: mergedVideos,
+        syncStatus: 'synced',
         updatedAt: now,
       });
+
+      // Reconcile any duplicate sibling IN_PROGRESS doc for this slot if this slot is COMPLETED or CANCELLED
+      if (actStatus === 'COMPLETED' || actStatus === 'CANCELLED') {
+        for (const dup of existingActDocs) {
+          const dupId = dup.activityId || dup.id;
+          if (
+            dupId &&
+            dupId !== actId &&
+            (Number(dup.slotNumber) || 1) === (Number(act.slotNumber) || 1) &&
+            normalizeActivityStatus(dup) === 'IN_PROGRESS'
+          ) {
+            await updateDocument(ERP_COLLECTIONS.fieldActivities, dupId, {
+              activityStatus: actStatus,
+              ...(actStatus === 'COMPLETED'
+                ? {
+                    activityEndAt: act.activityEndAt || act.activityEnd || now,
+                    completedAt: act.completedAt || act.activityEndAt || act.activityEnd || now,
+                    activityDurationMinutes: act.activityDurationMinutes ?? act.durationMinutes ?? 1,
+                    durationMinutes: act.durationMinutes ?? act.activityDurationMinutes ?? 1,
+                  }
+                : {}),
+              updatedAt: now,
+            });
+          }
+        }
+      }
     }
 
     await logAuditAction({
@@ -287,12 +436,12 @@ export async function createOrUpdateFieldReport(
 }
 
 /**
- * Review a Field Report (approve, reject, or request correction).
+ * Review a Field Report (approve, reject, request correction, or request edit).
  */
 export async function reviewFieldReport(
   reviewer: UserProfile,
   reportId: string,
-  actionStatus: 'approved' | 'correction_requested' | 'rejected',
+  actionStatus: 'approved' | 'correction_requested' | 'edit_requested' | 'rejected',
   comment: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
@@ -311,13 +460,71 @@ export async function reviewFieldReport(
 
     const now = new Date().toISOString();
     const targetDocId = report.id || reportId;
+    const trimmedComment = (comment || '').trim();
+    const isReopened = actionStatus === 'correction_requested' || actionStatus === 'edit_requested';
+
+    let lastApproval = report.lastApproval;
+    const approvalHistory = [...(report.approvalHistory || [])];
+    let editRequest = report.editRequest;
+    const editRequestHistory = [...(report.editRequestHistory || [])];
+
+    if (actionStatus === 'approved' || actionStatus === 'rejected') {
+      const approvalEntry = {
+        reviewerUid: reviewer.uid,
+        reviewerName: reviewer.fullName,
+        reviewerRole: reviewer.role,
+        decision: actionStatus,
+        decidedAt: now,
+        comments: trimmedComment,
+        revisionNumber: report.revisionNumber || 1,
+      };
+      lastApproval = approvalEntry;
+      approvalHistory.push(approvalEntry);
+      if (editRequest && editRequest.status === 'pending') {
+        editRequest = { ...editRequest, status: 'resolved', resolvedAt: now };
+      }
+    } else if (isReopened) {
+      // Preserve lastApproval if it was previously approved
+      if (report.status === 'approved' && !lastApproval && report.reviewerUid) {
+        lastApproval = {
+          reviewerUid: report.reviewerUid,
+          reviewerName: report.reviewerName || 'Reviewer',
+          reviewerRole: report.reviewerRole || 'reviewer',
+          decision: 'approved',
+          decidedAt: report.reviewedAt || report.updatedAt || now,
+          comments: report.reviewComments || '',
+          revisionNumber: report.revisionNumber || 1,
+        };
+        if (approvalHistory.length === 0) approvalHistory.push(lastApproval);
+      }
+
+      const editRec = {
+        id: `edr_${targetDocId}_${Date.now()}`,
+        reportId: targetDocId,
+        reason: trimmedComment || (actionStatus === 'edit_requested' ? 'Edit requested by supervisor.' : 'Correction requested by supervisor.'),
+        instructions: '',
+        requesterUid: reviewer.uid,
+        requesterName: reviewer.fullName,
+        requesterRole: reviewer.role,
+        requestedAt: now,
+        status: 'pending' as const,
+      };
+      editRequest = editRec;
+      editRequestHistory.push(editRec);
+    }
 
     const updatedFields: Partial<FieldReport> = {
       status: actionStatus as ReportStatus,
+      finalized: isReopened ? false : true,
       reviewerUid: reviewer.uid,
       reviewerName: reviewer.fullName,
+      reviewerRole: reviewer.role,
       reviewedAt: now,
-      reviewComments: comment || '',
+      reviewComments: trimmedComment,
+      lastApproval,
+      approvalHistory,
+      editRequest,
+      editRequestHistory,
       updatedAt: now,
     };
 
@@ -328,6 +535,20 @@ export async function reviewFieldReport(
       id: targetDocId,
     });
 
+    // Save comment entry for comment timeline if comment is present
+    if (trimmedComment) {
+      const commentId = `cmt_${targetDocId}_${Date.now()}`;
+      await saveDocument(ERP_COLLECTIONS.reportComments, commentId, {
+        id: commentId,
+        reportId: targetDocId,
+        authorUid: reviewer.uid,
+        authorName: reviewer.fullName,
+        authorRole: reviewer.role,
+        comment: isReopened ? `[${actionStatus.toUpperCase()}] ${trimmedComment}` : trimmedComment,
+        createdAt: now,
+      });
+    }
+
     // Also update legacy dailyReports if it existed
     try {
       const legacy = await fetchDocument(ERP_COLLECTIONS.dailyReports, targetDocId);
@@ -337,7 +558,11 @@ export async function reviewFieldReport(
           reviewerUid: reviewer.uid,
           reviewerName: reviewer.fullName,
           reviewedAt: now,
-          reviewComments: comment || '',
+          reviewComments: trimmedComment,
+          lastApproval,
+          approvalHistory,
+          editRequest,
+          editRequestHistory,
           updatedAt: now,
         });
       }
@@ -354,7 +579,7 @@ export async function reviewFieldReport(
       reviewerName: reviewer.fullName,
       reviewerRole: reviewer.role,
       decision: actionStatus,
-      comment: comment || '',
+      comment: trimmedComment,
       reviewedAt: now,
     });
 
@@ -371,6 +596,92 @@ export async function reviewFieldReport(
     return { success: true };
   } catch (err: any) {
     console.error('reviewFieldReport error:', err);
+    return { success: false, error: err.message };
+  }
+}
+
+/**
+ * Request an edit on a submitted/approved Field Report with reason & structured instructions.
+ */
+export async function requestFieldReportEdit(
+  reviewer: { uid: string; fullName: string; role: any },
+  reportId: string,
+  params: { reason: string; instructions?: string }
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    if (!['super_admin', 'admin', 'manager'].includes(reviewer.role)) {
+      return { success: false, error: 'FORBIDDEN: Only administrators and managers can request report edits.' };
+    }
+
+    const report = (await fetchDocument(ERP_COLLECTIONS.fieldReports, reportId)) as FieldReport | null
+      || await getFieldReportById(reportId);
+    if (!report) {
+      return { success: false, error: 'Field Report not found.' };
+    }
+
+    if (report.status === 'edit_requested' || (report.editRequest && report.editRequest.status === 'pending')) {
+      return { success: false, error: 'An edit request is already pending for this report.' };
+    }
+
+    if (!params.reason || !params.reason.trim()) {
+      return { success: false, error: 'A valid reason for requesting an edit is required.' };
+    }
+
+    const combinedComment = `${params.reason.trim()}${params.instructions?.trim() ? `\nInstructions: ${params.instructions.trim()}` : ''}`;
+    const res = await reviewFieldReport(reviewer as UserProfile, report.id || reportId, 'edit_requested', combinedComment);
+    if (!res.success) return res;
+
+    // Enrich editRequest instructions on the stored document
+    const targetDocId = report.id || reportId;
+    const updatedReport = (await fetchDocument(ERP_COLLECTIONS.fieldReports, targetDocId)) as FieldReport | null;
+    if (updatedReport?.editRequest) {
+      const updatedReq = {
+        ...updatedReport.editRequest,
+        reason: params.reason.trim(),
+        instructions: params.instructions?.trim() || '',
+      };
+      const updatedHistory = (updatedReport.editRequestHistory || []).map((er) =>
+        er.id === updatedReq.id ? updatedReq : er
+      );
+      await updateDocument(ERP_COLLECTIONS.fieldReports, targetDocId, {
+        editRequest: updatedReq,
+        editRequestHistory: updatedHistory,
+      });
+    }
+
+    // Send email notification to employee
+    let staffEmail = (report as any).staffEmail;
+    if (!staffEmail && report.staffUid) {
+      const emp = (await fetchDocument(ERP_COLLECTIONS.employees, report.staffUid)) as UserProfile | null;
+      staffEmail = emp?.email || '';
+    }
+    if (staffEmail) {
+      try {
+        const { getReportReviewStatusEmail } = await import('@/lib/email/templates');
+        const { sendEmail } = await import('@/lib/email/resend');
+        const { subject, html } = getReportReviewStatusEmail({
+          recipientName: report.staffName,
+          reportDate: report.reportDate,
+          status: 'correction_requested',
+          reviewerName: reviewer.fullName,
+          comments: combinedComment,
+        });
+        await sendEmail({
+          to: staffEmail,
+          subject: `Action Required: Edit Requested on Daily Field Report (${report.reportDate})`,
+          html,
+          emailType: 'correction_requested',
+          staffUid: report.staffUid,
+          reportId: targetDocId,
+        });
+      } catch (emailErr) {
+        console.warn('Failed to send field report edit request email notification:', emailErr);
+      }
+    }
+
+    return { success: true };
+  } catch (err: any) {
+    console.error('requestFieldReportEdit error:', err);
     return { success: false, error: err.message };
   }
 }
@@ -463,9 +774,28 @@ function adaptLegacyReportToFieldReport(legacy: any): FieldReport {
  *    so downloading today's / draft daily report never fails with 404!
  */
 export async function getFieldReportById(reportId: string): Promise<FieldReport | null> {
+  const enrichWithStandaloneActivities = async (rep: FieldReport): Promise<FieldReport> => {
+    try {
+      const actsQuery = (await fetchCollection(ERP_COLLECTIONS.fieldActivities, [
+        { field: 'staffUid', op: '==', value: rep.staffUid },
+        { field: 'reportDate', op: '==', value: rep.reportDate },
+      ])) as any[];
+      const mergedActs = mergeDayActivities(rep.activities || [], actsQuery);
+      if (mergedActs.length === 0) return rep;
+      const { summary } = calculateActivitiesSummary(mergedActs, false);
+      return {
+        ...rep,
+        activities: mergedActs,
+        summary,
+      };
+    } catch {
+      return rep;
+    }
+  };
+
   // Tier 1: Direct fetch in erp_field_reports
   const report = (await fetchDocument(ERP_COLLECTIONS.fieldReports, reportId)) as FieldReport | null;
-  if (report) return report;
+  if (report) return enrichWithStandaloneActivities(report);
 
   // Tier 2: Direct fetch in erp_daily_reports (legacy)
   const legacyDirect = (await fetchDocument(ERP_COLLECTIONS.dailyReports, reportId)) as any;
@@ -485,7 +815,7 @@ export async function getFieldReportById(reportId: string): Promise<FieldReport 
       { field: 'reportDate', op: '==', value: reportDate },
     ])) as FieldReport[];
     if (fieldQuery.length > 0) {
-      return fieldQuery[0];
+      return enrichWithStandaloneActivities(fieldQuery[0]);
     }
 
     // Check erp_daily_reports by query
@@ -511,7 +841,7 @@ export async function getFieldReportById(reportId: string): Promise<FieldReport 
 
       const defaultSlot: FieldActivitySlot = {
         slotNumber: 1,
-        activityStatus: 'not_started',
+        activityStatus: 'NOT_STARTED',
         activityStart: `${reportDate}T09:00:00`,
         activityStartAt: `${reportDate}T09:00:00`,
         activityStartLocation: null,
@@ -535,7 +865,7 @@ export async function getFieldReportById(reportId: string): Promise<FieldReport 
         activityDurationMinutes: 0,
       };
 
-      const finalActivities = actsQuery.length > 0 ? actsQuery : [defaultSlot];
+      const finalActivities = actsQuery.length > 0 ? mergeDayActivities([], actsQuery as any) : [defaultSlot];
       const { summary } = calculateActivitiesSummary(finalActivities, false);
 
       const syntheticReport: FieldReport = {

@@ -1,7 +1,11 @@
 import { NextResponse } from 'next/server';
 import { requireMobileAuth, apiSuccess, apiError } from '@/lib/api/v1-helper';
 import { getStaffActivitiesForDate } from '@/lib/services/field-activity-service';
-import { calculateActivitiesSummary } from '@/lib/utils/field-activity-calculations';
+import {
+  calculateActivitiesSummary,
+  isActivityCompleted,
+  isActivityInProgress,
+} from '@/lib/utils/field-activity-calculations';
 import { getOperationalDateString, normalizeReportDate } from '@/lib/utils/date-utils';
 import { getTodayAttendanceSession } from '@/lib/services/attendance-service';
 
@@ -31,8 +35,8 @@ export async function GET(req: Request) {
       employeeUid: targetUid,
       summary,
       activitiesCount: activities.length,
-      inProgressCount: activities.filter((a) => a.activityStatus === 'IN_PROGRESS').length,
-      completedCount: activities.filter((a) => a.activityStatus === 'COMPLETED').length,
+      inProgressCount: activities.filter((a) => isActivityInProgress(a)).length,
+      completedCount: activities.filter((a) => isActivityCompleted(a)).length,
       validationErrors: errors,
       attendance: attendanceSession ? {
         status: attendanceSession.status,

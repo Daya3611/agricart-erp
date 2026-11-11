@@ -2,15 +2,26 @@ import { fetchCollection } from '@/lib/firebase/firestore';
 import { ERP_COLLECTIONS } from '@/lib/firebase/collections';
 import {
   AttendanceSession,
-  FieldReport,
-  FieldActivitySlot,
-  MonthlyReportsDataset,
-  EmployeeMonthlySummaryItem,
-  EmployeeDailyRecordItem,
   EmployeeDailyActivityDetail,
+  EmployeeDailyRecordItem,
+  EmployeeMonthlySummaryItem,
+  FieldActivityRecord,
+  FieldReport,
+  MonthlyReportsDataset,
   UserProfile,
 } from '@/types';
-import { formatGpsCoordinates, formatGpsCompact, getGoogleMapsUrl } from '@/lib/utils/geolocation';
+import { formatGpsCompact } from '@/lib/utils/geolocation';
+import { formatDateTimeIST, formatTimeIST } from '@/lib/utils/date-utils';
+import {
+  calculateActivitiesSummary,
+  getHumanPlaceName,
+  isSingleFarmerActivity,
+  mergeDayActivities,
+  mergeEvidenceUrls,
+  normalizeActivityStatus,
+  resolveActivityNameLabel,
+  resolveSupportLabels,
+} from '@/lib/utils/field-activity-calculations';
 import { getGlobalReportingSettings } from '@/lib/services/settings-service';
 
 const MONTH_NAMES = [
@@ -30,17 +41,10 @@ const MONTH_NAMES = [
 
 const DAYS_OF_WEEK = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
-function getHumanPlaceName(loc?: { placeName?: string } | null): string {
-  if (!loc || !loc.placeName || loc.placeName.trim() === '' || loc.placeName === 'Location name unavailable') {
-    return 'Location unavailable';
-  }
-  return loc.placeName.trim();
-}
-
 /**
- * Builds a complete monthly dataset combining Employees, Field Reports, Attendance Sessions, and Leaves.
- * Purely and exclusively calculated from the new Field Activity Reporting system in Firestore.
- * Does NOT query or combine legacy Daily Report collections.
+ * Builds a complete monthly dataset combining Employees, Field Reports,
+ * standalone Field Activity slots, Attendance Sessions, and Leaves.
+ * Uses strictly Asia/Kolkata formatting and zero truncation across every exported/UI field.
  */
 export async function buildMonthlyReportsDataset(params: {
   year: number;
@@ -57,6 +61,7 @@ export async function buildMonthlyReportsDataset(params: {
   const reportingConfig = await getGlobalReportingSettings();
   const workingDaysConfig = reportingConfig.workingDays || [1, 2, 3, 4, 5, 6];
   const holidaysConfig = reportingConfig.holidays || [];
+  const includeGps = reportingConfig.includeGpsInExports !== false;
 
   const daysInMonth = new Date(year, month, 0).getDate();
   const startDateStr = `${year}-${String(month).padStart(2, '0')}-01`;
@@ -70,33 +75,46 @@ export async function buildMonthlyReportsDataset(params: {
     employees = employees.filter((e) => e.departmentId === params.departmentId);
   }
   if (params.centerId && params.centerId !== 'all') {
-    employees = employees.filter((e) => Array.isArray(e.assignedCenterIds) && e.assignedCenterIds.includes(params.centerId!));
+    employees = employees.filter(
+      (e) => Array.isArray(e.assignedCenterIds) && e.assignedCenterIds.includes(params.centerId!)
+    );
   }
   if (params.employeeUid && params.employeeUid !== 'all') {
     employees = employees.filter((e) => e.uid === params.employeeUid);
   }
 
-  // 2. Fetch NEW field reports in this month range exclusively (no legacy dailyReports)
-  const allFieldReports = (await fetchCollection(ERP_COLLECTIONS.fieldReports)) as FieldReport[];
-  const monthReports = allFieldReports.filter((r) => r.reportDate >= startDateStr && r.reportDate <= endDateStr);
+  // 2. Fetch NEW Field Reports, standalone Field Activities, Attendance Sessions, and Approved Leaves in parallel
+  const [allFieldReports, allStandaloneActivities, allAttendance, allLeaves] = await Promise.all([
+    fetchCollection(ERP_COLLECTIONS.fieldReports) as Promise<FieldReport[]>,
+    fetchCollection(ERP_COLLECTIONS.fieldActivities) as Promise<FieldActivityRecord[]>,
+    fetchCollection(ERP_COLLECTIONS.attendanceSessions) as Promise<AttendanceSession[]>,
+    fetchCollection(ERP_COLLECTIONS.leaveRecords) as Promise<any[]>,
+  ]);
 
-  // 3. Fetch attendance sessions in this month range exclusively
-  const allAttendance = (await fetchCollection(ERP_COLLECTIONS.attendanceSessions)) as AttendanceSession[];
+  const monthReports = allFieldReports.filter(
+    (r) => r.reportDate >= startDateStr && r.reportDate <= endDateStr
+  );
+  const monthStandalone = allStandaloneActivities.filter(
+    (a) => a.reportDate >= startDateStr && a.reportDate <= endDateStr
+  );
   const monthAttendance = allAttendance.filter((s) => s.date >= startDateStr && s.date <= endDateStr);
-
-  // 4. Fetch approved leaves in this month range
-  const allLeaves = (await fetchCollection(ERP_COLLECTIONS.leaveRecords)) as any[];
   const monthLeaves = allLeaves.filter(
     (l) => l.approvalStatus === 'approved' && l.startDate <= endDateStr && l.endDate >= startDateStr
   );
 
-  // Group reports by staffUid_reportDate
   const reportsByEmpDate = new Map<string, FieldReport>();
   for (const r of monthReports) {
     reportsByEmpDate.set(`${r.staffUid}_${r.reportDate}`, r);
   }
 
-  // Group attendance by employeeUid_date
+  const standaloneByEmpDate = new Map<string, FieldActivityRecord[]>();
+  for (const rec of monthStandalone) {
+    const key = `${rec.staffUid}_${rec.reportDate}`;
+    const list = standaloneByEmpDate.get(key) || [];
+    list.push(rec);
+    standaloneByEmpDate.set(key, list);
+  }
+
   const attendanceByEmpDate = new Map<string, AttendanceSession>();
   for (const s of monthAttendance) {
     attendanceByEmpDate.set(`${s.employeeUid}_${s.date}`, s);
@@ -149,11 +167,21 @@ export async function buildMonthlyReportsDataset(params: {
       }
 
       const report = reportsByEmpDate.get(`${emp.uid}_${dateStr}`);
+      const standaloneForDay = standaloneByEmpDate.get(`${emp.uid}_${dateStr}`) || [];
+      const mergedActivities = mergeDayActivities(report?.activities || [], standaloneForDay);
       const attendance = attendanceByEmpDate.get(`${emp.uid}_${dateStr}`);
-      const leave = monthLeaves.find((l) => l.staffUid === emp.uid && dateStr >= l.startDate && dateStr <= l.endDate);
+      const leave = monthLeaves.find(
+        (l) => l.staffUid === emp.uid && dateStr >= l.startDate && dateStr <= l.endDate
+      );
 
-      const hasActivities = Boolean(report && Array.isArray(report.activities) && report.activities.length > 0);
-      const hasReport = Boolean(report && report.status !== 'draft');
+      const hasActivities = mergedActivities.length > 0;
+      const hasSubmittedReport = Boolean(
+        report &&
+          (report.finalized ||
+            ['submitted', 'under_review', 'approved', 'rejected', 'correction_requested', 'edit_requested', 'resubmitted'].includes(
+              report.status
+            ))
+      );
 
       if (leave) {
         leaveDays++;
@@ -181,10 +209,10 @@ export async function buildMonthlyReportsDataset(params: {
           employeeId: emp.employeeId,
           employeeName: emp.fullName,
           attendanceDate: dateStr,
-          loginTimestamp: attendance.loginTimestamp ? new Date(attendance.loginTimestamp).toLocaleTimeString('en-IN') : '—',
-          logoutTimestamp: attendance.logoutTimestamp ? new Date(attendance.logoutTimestamp).toLocaleTimeString('en-IN') : '—',
-          loginGps: formatGpsCompact(attendance.loginGps),
-          logoutGps: formatGpsCompact(attendance.logoutGps),
+          loginTimestamp: formatTimeIST(attendance.loginTimestamp),
+          logoutTimestamp: formatTimeIST(attendance.logoutTimestamp),
+          loginGps: includeGps ? formatGpsCompact(attendance.loginGps) : getHumanPlaceName(attendance.loginGps),
+          logoutGps: includeGps ? formatGpsCompact(attendance.logoutGps) : getHumanPlaceName(attendance.logoutGps),
           loginAccuracy: attendance.loginGps?.accuracy ? `${attendance.loginGps.accuracy}m` : '—',
           logoutAccuracy: attendance.logoutGps?.accuracy ? `${attendance.logoutGps.accuracy}m` : '—',
           logoutType: attendance.logoutType || '—',
@@ -195,117 +223,211 @@ export async function buildMonthlyReportsDataset(params: {
         missingAttendanceDays++;
       }
 
+      const daySummary = hasActivities ? calculateActivitiesSummary(mergedActivities, false).summary : null;
       const activitiesDetailList: EmployeeDailyActivityDetail[] = [];
 
-      if (hasActivities) {
-        daysWithActivities++;
-        const acts = report!.activities || [];
-        totalActivities += acts.length;
-        completedActivities += acts.filter((a) => Boolean(a.activityEnd && a.activityEnd.trim() !== '')).length;
+      const reportStatusNormalized = report?.status
+        ? report.status.replace(/_/g, ' ').toUpperCase()
+        : hasActivities
+        ? 'DRAFT / IN PROGRESS'
+        : '—';
+      const correctionHistoryText = report
+        ? (report.revisionNumber || 1) > 1
+          ? `Revision #${report.revisionNumber}${report.editRequest?.reason ? ` (${report.editRequest.reason})` : ''}`
+          : report.editRequest?.reason
+          ? `Edit Requested (${report.editRequest.reason})`
+          : 'Initial Submission'
+        : '—';
 
-        const summary = report!.summary;
-        totalActivityMinutes += summary?.totalActivityMinutes || acts.reduce((acc, a) => acc + (a.durationMinutes || 0), 0);
-        totalWorkingPeriodMinutes += summary?.totalWorkingPeriodMinutes || 0;
-        totalDeskJobMinutes += summary?.totalDeskJobMinutes || 0;
-        totalFieldActivityMinutes += summary?.totalFieldActivityMinutes || 0;
-        totalFarmerContacts += summary?.totalParticipantContacts || acts.reduce((acc, a) => acc + (a.totalParticipants || 0), 0);
-        totalMaleParticipants += summary?.totalMaleParticipants || acts.reduce((acc, a) => acc + (a.maleParticipants || 0), 0);
-        totalFemaleParticipants += summary?.totalFemaleParticipants || acts.reduce((acc, a) => acc + (a.femaleParticipants || 0), 0);
-
-        if (report!.status === 'approved') {
+      if (hasSubmittedReport && report) {
+        if (report.status === 'approved') {
           reportsApproved++;
-        } else if (report!.status === 'rejected') {
+        } else if (report.status === 'rejected') {
           reportsRejected++;
           reportsRequiringCorrection++;
-        } else if (report!.status === 'correction_requested' || report!.status === 'edit_requested') {
+        } else if (report.status === 'correction_requested' || report.status === 'edit_requested') {
           reportsRequiringCorrection++;
-        } else if (['submitted', 'under_review', 'resubmitted'].includes(report!.status)) {
+        } else if (['submitted', 'under_review', 'resubmitted'].includes(report.status)) {
           reportsPendingReview++;
         }
 
-        if (report!.isLate) lateSubmissions++;
+        if (report.isLate) lateSubmissions++;
 
-        // Add review history entry
-        if (report!.reviewerName || report!.status === 'approved' || report!.reviewComments) {
+        if (
+          report.reviewerName ||
+          report.status === 'approved' ||
+          report.reviewComments ||
+          report.editRequest
+        ) {
           reviewHistoryRows.push({
             employeeId: emp.employeeId,
             employeeName: emp.fullName,
             reportDate: dateStr,
-            submittedTimestamp: report!.submittedAt ? new Date(report!.submittedAt).toLocaleString('en-IN') : '—',
-            reviewTimestamp: report!.reviewedAt ? new Date(report!.reviewedAt).toLocaleString('en-IN') : '—',
-            reviewer: report!.reviewerName || (report!.status === 'approved' ? 'Supervisor Verified' : 'Pending'),
-            reviewStatus: report!.status.replace(/_/g, ' ').toUpperCase(),
-            remarks: report!.reviewComments || '—',
-            correctionHistory: report!.revisionNumber > 1 ? `Revision #${report!.revisionNumber}` : 'Initial Submission',
+            submittedTimestamp: report.submittedAt ? formatDateTimeIST(report.submittedAt) : '—',
+            reviewTimestamp: report.reviewedAt ? formatDateTimeIST(report.reviewedAt) : '—',
+            reviewer:
+              report.reviewerName ||
+              report.editRequest?.requesterName ||
+              (report.status === 'approved' ? 'Supervisor Verified' : 'Pending'),
+            reviewStatus: report.status.replace(/_/g, ' ').toUpperCase(),
+            remarks:
+              report.reviewComments ||
+              (report.editRequest
+                ? `${report.editRequest.reason}${report.editRequest.instructions ? ` (${report.editRequest.instructions})` : ''}`
+                : '—'),
+            correctionHistory: correctionHistoryText,
           });
         }
+      }
 
-        // Add activities detail rows for Sheet 3 & UI expandable drawer
-        acts.forEach((act) => {
-          const startLocName = getHumanPlaceName(act.activityStartLocation || act.activityStartGps);
-          const endLocName = getHumanPlaceName(act.activityEndLocation || act.activityEndGps);
-          const startGpsCoord = formatGpsCompact(act.activityStartLocation || act.activityStartGps);
-          const endGpsCoord = formatGpsCompact(act.activityEndLocation || act.activityEndGps);
+      if (hasActivities && daySummary) {
+        daysWithActivities++;
+        totalActivities += mergedActivities.length;
+        completedActivities += mergedActivities.filter(
+          (a) =>
+            a.activityStatus === 'COMPLETED' ||
+            a.activityStatus === 'completed' ||
+            Boolean((a.activityEndAt || a.activityEnd)?.trim())
+        ).length;
 
-          const photos = [...(act.photoEvidence || []), ...(act.photoUrl ? [act.photoUrl] : [])];
+        totalActivityMinutes += daySummary.totalActivityMinutes || 0;
+        totalWorkingPeriodMinutes +=
+          daySummary.totalWorkingPeriodMinutes || attendance?.attendanceDurationMinutes || attendance?.durationMinutes || 0;
+        totalDeskJobMinutes += daySummary.totalDeskJobMinutes || 0;
+        totalFieldActivityMinutes += daySummary.totalFieldActivityMinutes || 0;
+        totalFarmerContacts += daySummary.totalParticipantContacts || 0;
+        totalMaleParticipants += daySummary.totalMaleParticipants || 0;
+        totalFemaleParticipants += daySummary.totalFemaleParticipants || 0;
+
+        mergedActivities.forEach((act) => {
+          const startLocObj = act.activityStartLocation || act.activityStartGps;
+          const endLocObj = act.activityEndLocation || act.activityEndGps;
+          const startLocName = getHumanPlaceName(startLocObj);
+          const endLocName = getHumanPlaceName(endLocObj);
+          const startGpsCoord = includeGps ? formatGpsCompact(startLocObj) : 'Hidden by policy';
+          const endGpsCoord = includeGps ? formatGpsCompact(endLocObj) : 'Hidden by policy';
+
+          const photos = mergeEvidenceUrls(act.photoUrl, act.photoEvidence);
+          const videos = mergeEvidenceUrls(act.videoUrl, act.videoEvidence);
+          const supportLabels = resolveSupportLabels(act);
+          const supportText = supportLabels.length > 0 ? supportLabels.join(', ') : 'None';
+          const isSingle = isSingleFarmerActivity(act);
+          const activityTypeLabel =
+            act.activityName === 'desk_job' ? 'Office' : isSingle ? 'Single Farmer' : 'Group';
+          const title = resolveActivityNameLabel(act);
+          const durMins = act.activityDurationMinutes ?? act.durationMinutes ?? 0;
+          const startTimeIST = formatTimeIST(act.activityStartAt || act.activityStart);
+          const endTimeIST = formatTimeIST(act.activityEndAt || act.activityEnd);
+          const startTimeIso = act.activityStartAt || act.activityStart || '';
+          const endTimeIso = act.activityEndAt || act.activityEnd || '';
+          const normSlotStatus = normalizeActivityStatus(act);
+          const slotStatusText =
+            normSlotStatus === 'COMPLETED'
+              ? 'Completed'
+              : normSlotStatus === 'IN_PROGRESS'
+              ? 'In Progress'
+              : normSlotStatus === 'CANCELLED'
+              ? 'Cancelled'
+              : 'Not Started';
+
+          const followUpDisplay = act.followUpRequired
+            ? `Yes${act.followUpDate ? ` [${act.followUpDate}]` : ''}${
+                act.followUpDetails ? `: ${act.followUpDetails}` : ''
+              }`
+            : 'No';
 
           activitiesDetailList.push({
             slotNumber: act.slotNumber,
             activityName: act.activityName,
-            activityNameLabel: act.activityNameLabel || act.activityName?.replace(/_/g, ' ') || 'Activity',
-            activityType: act.activityType === 'single_farmer' ? 'Single Farmer' : (act.activityName === 'desk_job' ? 'Office' : 'Group'),
+            activityNameLabel: title,
+            activityOther: act.activityOther || '',
+            activityType: activityTypeLabel,
             village: act.village || '—',
             wadi: act.wadi || '—',
             farmerName: act.farmerName || '—',
-            startTime: act.activityStart ? new Date(act.activityStart).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '—',
-            endTime: act.activityEnd ? new Date(act.activityEnd).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '—',
-            durationMinutes: act.durationMinutes || 0,
+            groupDetails: act.groupDetails || '',
+            startTime: startTimeIST,
+            endTime: endTimeIST,
+            durationMinutes: durMins,
             participants: act.totalParticipants || 0,
             maleParticipants: act.maleParticipants || 0,
             femaleParticipants: act.femaleParticipants || 0,
             observations: act.observations || '—',
             issues: act.farmerIssues || '—',
-            supportProvided: act.supportProvided || [],
+            supportProvided: supportLabels,
+            supportOther: act.supportOther || '',
             followUpRequired: Boolean(act.followUpRequired),
             followUpDetails: act.followUpDetails || undefined,
+            followUpDate: act.followUpDate || undefined,
             startLocationName: startLocName,
             endLocationName: endLocName,
             photoUrls: photos,
-            status: act.activityStatus || 'completed',
+            videoUrls: videos,
+            status: slotStatusText,
           });
 
           allActivitiesRows.push({
             reportDate: dateStr,
             employeeId: emp.employeeId,
             employeeName: emp.fullName,
+            departmentName: emp.departmentName || 'Field Operations',
+            centerName: emp.assignedCenterNames?.[0] || 'Nashik Center',
+            crpCode: report?.crpCode || '—',
+            blockTaluka: report?.blockTaluka || '—',
             slotNumber: act.slotNumber,
-            activityName: act.activityNameLabel || act.activityName?.replace(/_/g, ' ') || 'Activity',
-            activityType: act.activityType === 'single_farmer' ? 'Single Farmer' : (act.activityName === 'desk_job' ? 'Office' : 'Group'),
+            activityStatus: slotStatusText,
+            activityName: title,
+            activityOther: act.activityOther || '—',
+            activityType: activityTypeLabel,
             village: act.village || '—',
             wadi: act.wadi || '—',
             farmerName: act.farmerName || '—',
-            startTime: act.activityStart ? new Date(act.activityStart).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '—',
-            endTime: act.activityEnd ? new Date(act.activityEnd).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) : '—',
-            durationMinutes: act.durationMinutes || 0,
+            groupDetails: act.groupDetails || '—',
+            startTime: startTimeIST,
+            endTime: endTimeIST,
+            startTimeIso,
+            endTimeIso,
+            durationMinutes: durMins,
             participants: act.totalParticipants || 0,
             maleParticipants: act.maleParticipants || 0,
             femaleParticipants: act.femaleParticipants || 0,
             observations: act.observations || '—',
             issues: act.farmerIssues || '—',
-            supportProvided: Array.isArray(act.supportProvided) ? act.supportProvided.join(', ') : 'None',
-            followUp: act.followUpRequired ? `Yes (${act.followUpDetails || ''})` : 'No',
-            startGps: startLocName !== 'Location unavailable' ? `${startLocName} (${startGpsCoord})` : startGpsCoord,
+            supportProvided: supportText,
+            supportOther: act.supportOther || '—',
+            followUpRequired: Boolean(act.followUpRequired),
+            followUpDetails: act.followUpDetails || '—',
+            followUpDate: act.followUpDate || '—',
+            followUp: followUpDisplay,
+            startGps:
+              startLocName !== 'Location unavailable' && includeGps
+                ? `${startLocName} (${startGpsCoord})`
+                : includeGps
+                ? startGpsCoord
+                : startLocName,
             startGpsCoords: startGpsCoord,
             startGpsLocationName: startLocName,
-            endGps: endLocName !== 'Location unavailable' ? `${endLocName} (${endGpsCoord})` : endGpsCoord,
+            endGps:
+              endLocName !== 'Location unavailable' && includeGps
+                ? `${endLocName} (${endGpsCoord})`
+                : includeGps
+                ? endGpsCoord
+                : endLocName,
             endGpsCoords: endGpsCoord,
             endGpsLocationName: endLocName,
-            photoEvidenceRefs: photos.length > 0 ? `${photos.length} photo(s)` : 'None',
+            photoEvidenceRefs: photos.length > 0 ? photos.join('\n') : 'None',
+            photoUrls: photos,
+            videoEvidenceRefs: videos.length > 0 ? videos.join('\n') : 'None',
+            videoUrls: videos,
+            reviewStatus: reportStatusNormalized,
+            reviewerName: report?.reviewerName || '—',
+            reviewComments: report?.reviewComments || report?.editRequest?.reason || '—',
+            correctionHistory: correctionHistoryText,
           });
         });
       }
 
-      if (hasReport) {
+      if (hasSubmittedReport) {
         daysReportSubmitted++;
       } else if (!leave && !isWeeklyOff && !isHoliday) {
         daysReportMissing++;
@@ -314,10 +436,10 @@ export async function buildMonthlyReportsDataset(params: {
         }
       }
 
-      // Accurate Attendance Status
       let attendanceStatus = 'Absent';
       if (attendance) {
-        attendanceStatus = attendance.status === 'active' ? 'Active' : (attendance.systemClosed ? 'Auto-Closed' : 'Present');
+        attendanceStatus =
+          attendance.status === 'active' ? 'Active' : attendance.systemClosed ? 'Auto-Closed' : 'Present';
       } else if (leave) {
         attendanceStatus = 'On Leave';
       } else if (isHoliday) {
@@ -326,25 +448,24 @@ export async function buildMonthlyReportsDataset(params: {
         attendanceStatus = 'Weekly Off';
       }
 
-      // Times and Locations
-      const loginTime = attendance?.loginTimestamp
-        ? new Date(attendance.loginTimestamp).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
-        : '—';
-      const logoutTime = attendance?.logoutTimestamp
-        ? new Date(attendance.logoutTimestamp).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
-        : '—';
-
+      const loginTime = formatTimeIST(attendance?.loginTimestamp);
+      const logoutTime = formatTimeIST(attendance?.logoutTimestamp);
       const loginLoc = getHumanPlaceName(attendance?.loginGps);
-      const logoutLoc = attendance?.logoutType === 'automatic_midnight'
-        ? 'Auto-closed at midnight (Location unavailable)'
-        : getHumanPlaceName(attendance?.logoutGps);
+      const logoutLoc =
+        attendance?.logoutType === 'automatic_midnight'
+          ? 'Auto-closed at midnight (Location unavailable)'
+          : getHumanPlaceName(attendance?.logoutGps);
       const finalLoc = getHumanPlaceName(report?.finalizationGps);
 
-      // Activity Summary
       let activitySummaryText = 'No activities recorded';
       if (hasActivities) {
-        const actNames = report!.activities.map((a) => a.activityNameLabel || a.activityName?.replace(/_/g, ' '));
-        activitySummaryText = `${report!.activities.length} activit${report!.activities.length === 1 ? 'y' : 'ies'}: ${actNames.join(', ')}`;
+        const actNames = mergedActivities.map((a) => {
+          const base = resolveActivityNameLabel(a);
+          return a.activityOther?.trim() ? `${base} (${a.activityOther.trim()})` : base;
+        });
+        activitySummaryText = `${mergedActivities.length} activit${
+          mergedActivities.length === 1 ? 'y' : 'ies'
+        }: ${actNames.join(', ')}`;
       } else if (leave) {
         activitySummaryText = `Approved Leave: ${leave.leaveType?.toUpperCase() || 'LEAVE'}`;
       } else if (isHoliday) {
@@ -355,12 +476,15 @@ export async function buildMonthlyReportsDataset(params: {
         activitySummaryText = 'Attended — No activities logged';
       }
 
-      // Accurate Overall Status
       let overallReportStatus = 'Missing';
-      if (hasReport) {
-        if (report!.status === 'approved') overallReportStatus = 'Approved';
-        else if (report!.status === 'correction_requested' || report!.status === 'edit_requested') overallReportStatus = 'Correction Required';
+      if (hasSubmittedReport && report) {
+        if (report.status === 'approved') overallReportStatus = 'Approved';
+        else if (report.status === 'correction_requested' || report.status === 'edit_requested') {
+          overallReportStatus = 'Correction Required';
+        } else if (report.status === 'rejected') overallReportStatus = 'Rejected';
         else overallReportStatus = 'Submitted';
+      } else if (hasActivities) {
+        overallReportStatus = 'In Progress';
       } else if (leave) {
         overallReportStatus = 'On Leave';
       } else if (isHoliday) {
@@ -368,42 +492,61 @@ export async function buildMonthlyReportsDataset(params: {
       } else if (isWeeklyOff) {
         overallReportStatus = 'Weekly Off';
       } else if (attendance) {
-        overallReportStatus = hasActivities ? 'Activities Recorded' : 'Present';
+        overallReportStatus = 'Present';
       } else {
         overallReportStatus = 'Missing Attendance';
       }
 
-      // Numeric metrics
-      const actCount = report?.activities?.length || 0;
-      const totalActMins = report?.summary?.totalActivityMinutes || 0;
-      const totalActDurFormatted = totalActMins > 0 ? `${Math.floor(totalActMins / 60)}h ${totalActMins % 60}m` : '0m';
+      const actCount = mergedActivities.length;
+      const totalActMins = daySummary?.totalActivityMinutes || 0;
+      const totalActDurFormatted =
+        totalActMins > 0 ? `${Math.floor(totalActMins / 60)}h ${totalActMins % 60}m` : '0m';
 
-      const wpMins = report?.summary?.totalWorkingPeriodMinutes || (attendance?.durationMinutes || 0);
+      const wpMins = daySummary?.totalWorkingPeriodMinutes || attendance?.durationMinutes || 0;
       const wpFormatted = wpMins > 0 ? `${(wpMins / 60).toFixed(1)} hrs` : '0 hrs';
 
-      const totalParts = report?.summary?.totalParticipantContacts || (report?.activities?.reduce((acc, a) => acc + (a.totalParticipants || 0), 0) || 0);
-      const maleParts = report?.summary?.totalMaleParticipants || 0;
-      const femaleParts = report?.summary?.totalFemaleParticipants || 0;
-
-      const fieldMins = report?.summary?.totalFieldActivityMinutes || 0;
-      const deskMins = report?.summary?.totalDeskJobMinutes || 0;
+      const totalParts = daySummary?.totalParticipantContacts || 0;
+      const maleParts = daySummary?.totalMaleParticipants || 0;
+      const femaleParts = daySummary?.totalFemaleParticipants || 0;
+      const fieldMins = daySummary?.totalFieldActivityMinutes || 0;
+      const deskMins = daySummary?.totalDeskJobMinutes || 0;
 
       const leaveStatus = leave ? (leave.leaveType ? leave.leaveType.toUpperCase() : 'APPROVED LEAVE') : 'None';
-      const submissionStatus = hasReport ? (report!.status === 'draft' ? 'Draft' : 'Submitted') : (leave ? 'On Leave' : (isHoliday ? 'Holiday' : (isWeeklyOff ? 'Weekly Off' : 'Missing')));
-      const activityCompletionStatus = hasActivities ? (report!.finalized ? 'Completed' : 'In Progress') : (attendance ? 'No Activities Recorded' : 'N/A');
+      const submissionStatus = hasSubmittedReport
+        ? 'Submitted'
+        : hasActivities
+        ? 'Draft'
+        : leave
+        ? 'On Leave'
+        : isHoliday
+        ? 'Holiday'
+        : isWeeklyOff
+        ? 'Weekly Off'
+        : 'Missing';
+      const activityCompletionStatus = hasActivities
+        ? report?.finalized
+          ? 'Completed'
+          : 'In Progress'
+        : attendance
+        ? 'No Activities Recorded'
+        : 'N/A';
 
       let reviewStatus = '—';
-      if (hasReport) {
-        if (report!.status === 'approved') reviewStatus = 'Approved';
-        else if (report!.status === 'correction_requested' || report!.status === 'edit_requested') reviewStatus = 'Correction Required';
-        else if (report!.status === 'rejected') reviewStatus = 'Rejected';
+      if (hasSubmittedReport && report) {
+        if (report.status === 'approved') reviewStatus = 'Approved';
+        else if (report.status === 'correction_requested' || report.status === 'edit_requested') {
+          reviewStatus = 'Correction Required';
+        } else if (report.status === 'rejected') reviewStatus = 'Rejected';
         else reviewStatus = 'Pending Review';
       } else if (leave) {
         reviewStatus = 'Approved';
       }
 
       const reviewer = report?.reviewerName || (leave?.approvedByName ? `Leave: ${leave.approvedByName}` : '—');
-      const reviewRemarks = report?.reviewComments || (leave?.reason ? `Leave: ${leave.reason}` : '—');
+      const reviewRemarks =
+        report?.reviewComments ||
+        report?.editRequest?.reason ||
+        (leave?.reason ? `Leave: ${leave.reason}` : '—');
 
       let gpsAvailability = 'None';
       if (attendance?.loginGps && attendance?.logoutGps) {
@@ -412,14 +555,14 @@ export async function buildMonthlyReportsDataset(params: {
         gpsAvailability = 'Login Only';
       } else if (report?.finalizationGps) {
         gpsAvailability = 'Report Finalized';
-      } else if (hasActivities && report!.activities.some((a) => a.activityStartGps || a.activityEndGps)) {
+      } else if (
+        hasActivities &&
+        mergedActivities.some((a) => a.activityStartGps || a.activityStartLocation || a.activityEndGps || a.activityEndLocation)
+      ) {
         gpsAvailability = 'Activities GPS';
       }
 
-      let subTime = '—';
-      if (report?.submittedAt) {
-        subTime = new Date(report.submittedAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
-      }
+      const subTime = report?.submittedAt ? formatTimeIST(report.submittedAt) : '—';
 
       dailyRecords.push({
         date: dateStr,
@@ -458,8 +601,8 @@ export async function buildMonthlyReportsDataset(params: {
         loginGps: attendance?.loginGps || null,
         logoutGps: attendance?.logoutGps || null,
         logoutType: attendance?.logoutType || null,
-        firstActivityStart: report?.summary?.firstActivityStart || '—',
-        lastActivityEnd: report?.summary?.lastActivityEnd || '—',
+        firstActivityStart: daySummary?.firstActivityStart || '—',
+        lastActivityEnd: daySummary?.lastActivityEnd || '—',
         submissionTimestamp: subTime,
         reportStatus: overallReportStatus,
         finalizationLocation: finalLoc,

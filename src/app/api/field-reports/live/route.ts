@@ -4,6 +4,11 @@ import { fetchCollection } from '@/lib/firebase/firestore';
 import { ERP_COLLECTIONS } from '@/lib/firebase/collections';
 import { FieldReport, FieldActivitySlot, FieldActivityRecord } from '@/types/field-activity';
 import { getOperationalDateString } from '@/lib/utils/date-utils';
+import {
+  deduplicateActivityRecords,
+  isActivityCompleted,
+  isActivityInProgress,
+} from '@/lib/utils/field-activity-calculations';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,16 +33,18 @@ export async function GET(req: Request) {
     const departmentId = searchParams.get('departmentId');
     const centerId = searchParams.get('centerId');
 
-    // 1. Fetch live in-progress activities directly from erp_field_activities
-    const liveActivities = (await fetchCollection(ERP_COLLECTIONS.fieldActivities, [
-      { field: 'activityStatus', op: '==', value: 'IN_PROGRESS' },
+    // Fetch all activities for today from erp_field_activities, deduplicated by staffUid + slotNumber
+    const rawDayActivities = (await fetchCollection(ERP_COLLECTIONS.fieldActivities, [
+      { field: 'reportDate', op: '==', value: date },
     ])) as FieldActivityRecord[];
 
-    // 2. Fetch completed activities for today from erp_field_activities
-    const completedActivities = (await fetchCollection(ERP_COLLECTIONS.fieldActivities, [
-      { field: 'reportDate', op: '==', value: date },
-      { field: 'activityStatus', op: '==', value: 'COMPLETED' },
-    ])) as FieldActivityRecord[];
+    const dedupedDayActivities = deduplicateActivityRecords(
+      rawDayActivities,
+      (act) => `${act.staffUid || act.employeeUid}_${act.reportDate}_${Number(act.slotNumber) || 1}`
+    );
+
+    const liveActivities = dedupedDayActivities.filter((a) => isActivityInProgress(a));
+    const completedActivities = dedupedDayActivities.filter((a) => isActivityCompleted(a));
 
     const activeList: any[] = [];
     const completedList: any[] = [];
@@ -61,7 +68,7 @@ export async function GET(req: Request) {
         reportDate: act.reportDate,
         activeActivity: {
           slotNumber: act.slotNumber,
-          activityStatus: 'in_progress',
+          activityStatus: 'IN_PROGRESS',
           activityName: act.activityName,
           activityNameLabel: act.activityNameLabel || act.activityName,
           village: act.village,
@@ -94,7 +101,7 @@ export async function GET(req: Request) {
         reportDate: act.reportDate,
         activity: {
           slotNumber: act.slotNumber,
-          activityStatus: 'completed',
+          activityStatus: 'COMPLETED',
           activityName: act.activityName,
           activityNameLabel: act.activityNameLabel || act.activityName,
           village: act.village,

@@ -1,5 +1,5 @@
 import Dexie, { type Table } from 'dexie';
-import { FieldReport, FieldActivitySlot } from '@/types';
+import { ActivitySlotStatus, FieldReport, FieldActivitySlot } from '@/types';
 
 export interface OfflineReportDraft {
   id: string; // usually `field_rep_${staffUid}_${reportDate}`
@@ -52,7 +52,7 @@ export interface OfflineActivityItem {
   employeeName: string;
   reportDate: string;
   slotNumber: number;
-  activityStatus: 'IN_PROGRESS' | 'COMPLETED' | 'in_progress' | 'completed';
+  activityStatus: ActivitySlotStatus;
   activityData: any;
   syncStatus: 'saved_offline' | 'pending_sync' | 'synced' | 'sync_failed';
   updatedAt: string;

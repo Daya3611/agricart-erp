@@ -31,7 +31,7 @@ export async function GET(req: Request) {
       return apiError('Invalid year parameter.', 400);
     }
 
-    const report = await generateMonthlyReport(targetUid, month, year);
+    const report = await generateMonthlyReport(targetUid, year, month);
 
     return apiSuccess(report, undefined, {
       month,

@@ -19,6 +19,7 @@ import {
 import { UserProfile, UserRole } from '@/types';
 import { Tooltip } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils/cn';
+import { resolveActiveNavHref } from '@/lib/utils/navigation';
 
 interface AppSidebarProps {
   user: UserProfile;
@@ -64,6 +65,7 @@ export function AppSidebar({ user, onNavigate, className }: AppSidebarProps) {
   };
 
   const dockItems = getDockItems(user.role);
+  const activeHref = resolveActiveNavHref(pathname, dockItems);
 
   return (
     <aside
@@ -78,9 +80,7 @@ export function AppSidebar({ user, onNavigate, className }: AppSidebarProps) {
         <div className="pointer-events-auto bg-card border border-border rounded-[22px] p-2 flex flex-col items-center gap-2 shadow-2xs card-saas-shadow">
         {dockItems.map((item) => {
           const Icon = item.icon;
-          const isActive = item.exact
-            ? pathname === item.href
-            : pathname === item.href || pathname.startsWith(item.href + '/');
+          const isActive = item.href === activeHref;
 
           return (
             <Tooltip key={item.href} content={item.label} side="right">

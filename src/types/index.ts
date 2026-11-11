@@ -167,6 +167,10 @@ export interface DailyReport {
   editRequestHistory?: EditRequestRecord[];
   lastApproval?: ApprovalHistoryRecord;
   approvalHistory?: ApprovalHistoryRecord[];
+  crpCode?: string;
+  blockTaluka?: string;
+  fieldReport?: any;
+  activitiesList?: any[];
   createdAt: string;
   updatedAt: string;
 }

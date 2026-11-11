@@ -30,6 +30,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog } from '@/components/ui/dialog';
 import { formatReadableDate, formatReadableDateTime } from '@/lib/utils/date-utils';
+import { FieldActivityReviewList } from '@/components/reports/FieldActivityReviewList';
 
 function formatSubmissionTime(isoStr?: string): string {
   if (!isoStr) return '';
@@ -606,8 +607,9 @@ export default function StaffReportHistoryPage() {
           onOpenChange={() => setViewingReport(null)}
           title={`Daily Report - ${formatReadableDate(viewingReport.reportDate)}`}
           description={`Work location: ${viewingReport.workLocation || 'Field'} | Status: ${viewingReport.status.toUpperCase()}${viewingReport.revisionNumber > 1 ? ` (Revision #${viewingReport.revisionNumber})` : ''}`}
+          maxWidth="max-w-4xl"
         >
-          <div className="space-y-4 max-h-[70vh] overflow-y-auto text-xs pr-1">
+          <div className="space-y-4 max-h-[75vh] overflow-y-auto text-xs pr-1">
             {/* Status & Reviewer feedback */}
             {(viewingReport.editRequest?.reason || viewingReport.reviewComments) && (
               <div className="p-3 bg-amber-50 rounded-xl border border-amber-200 space-y-1">
@@ -623,68 +625,76 @@ export default function StaffReportHistoryPage() {
               </div>
             )}
 
-            <div className="grid grid-cols-2 gap-3 p-3 bg-slate-50 rounded-xl">
-              <div>
-                <span className="text-slate-500 font-medium block">Working Hours:</span>
-                <span className="font-bold text-slate-800">{viewingReport.workStartTime || '09:00'} - {viewingReport.workEndTime || '18:00'}</span>
-              </div>
-              <div>
-                <span className="text-slate-500 font-medium block">Farmers / Meetings:</span>
-                <span className="font-bold text-emerald-800">{viewingReport.farmersVisited || 0} farmers | {viewingReport.meetingsConducted || 0} meetings</span>
-              </div>
-            </div>
-
-            <div>
-              <span className="font-bold text-slate-800 block mb-1">Activities Performed:</span>
-              <p className="p-3 bg-slate-50 rounded-xl text-slate-700 whitespace-pre-wrap">{viewingReport.activities}</p>
-            </div>
-
-            <div>
-              <span className="font-bold text-slate-800 block mb-1">Completed Tasks:</span>
-              <p className="p-3 bg-slate-50 rounded-xl text-slate-700 whitespace-pre-wrap">{viewingReport.completedTasks}</p>
-            </div>
-
-            {viewingReport.achievements && (
-              <div>
-                <span className="font-bold text-slate-800 block mb-1">Achievements & Results:</span>
-                <p className="p-3 bg-slate-50 rounded-xl text-slate-700">{viewingReport.achievements}</p>
-              </div>
-            )}
-
-            {viewingReport.challenges && (
-              <div>
-                <span className="font-bold text-amber-900 block mb-1">Challenges Faced:</span>
-                <p className="p-3 bg-amber-50 rounded-xl text-slate-700">{viewingReport.challenges}</p>
-              </div>
-            )}
-
-            {viewingReport.nextDayPlan && (
-              <div>
-                <span className="font-bold text-slate-800 block mb-1">Next Day Plan:</span>
-                <p className="p-3 bg-slate-50 rounded-xl text-slate-700">{viewingReport.nextDayPlan}</p>
-              </div>
-            )}
-
-            {/* Attachments */}
-            {viewingReport.attachments && viewingReport.attachments.length > 0 && (
-              <div>
-                <span className="font-bold text-slate-800 block mb-1">
-                  Uploaded Evidence Attachments ({viewingReport.attachments.length}):
-                </span>
-                <div className="grid grid-cols-2 gap-2">
-                  {viewingReport.attachments.map((att: ReportAttachment) => (
-                    <div key={att.id} className="p-2.5 bg-slate-50 rounded-xl border border-slate-200">
-                      <span className="font-bold text-slate-800 block truncate">{att.originalFilename}</span>
-                      {att.caption && <span className="text-[10px] text-emerald-700 italic block">{att.caption}</span>}
-                      {att.downloadUrl && (
-                        <a href={att.downloadUrl} target="_blank" rel="noopener noreferrer" className="text-emerald-600 underline font-bold mt-1 inline-block">
-                          View Attachment
-                        </a>
-                      )}
-                    </div>
-                  ))}
+            {(viewingReport as any).fieldReport &&
+            Array.isArray((viewingReport as any).fieldReport.activities) &&
+            (viewingReport as any).fieldReport.activities.length > 0 ? (
+              <FieldActivityReviewList fieldReport={(viewingReport as any).fieldReport} />
+            ) : (
+              <>
+                <div className="grid grid-cols-2 gap-3 p-3 bg-slate-50 rounded-xl">
+                  <div>
+                    <span className="text-slate-500 font-medium block">Working Hours:</span>
+                    <span className="font-bold text-slate-800">{viewingReport.workStartTime || '09:00'} - {viewingReport.workEndTime || '18:00'}</span>
+                  </div>
+                  <div>
+                    <span className="text-slate-500 font-medium block">Farmers / Meetings:</span>
+                    <span className="font-bold text-emerald-800">{viewingReport.farmersVisited || 0} farmers | {viewingReport.meetingsConducted || 0} meetings</span>
+                  </div>
                 </div>
-              </div>
+
+                <div>
+                  <span className="font-bold text-slate-800 block mb-1">Activities Performed:</span>
+                  <p className="p-3 bg-slate-50 rounded-xl text-slate-700 whitespace-pre-wrap">{viewingReport.activities}</p>
+                </div>
+
+                <div>
+                  <span className="font-bold text-slate-800 block mb-1">Completed Tasks:</span>
+                  <p className="p-3 bg-slate-50 rounded-xl text-slate-700 whitespace-pre-wrap">{viewingReport.completedTasks}</p>
+                </div>
+
+                {viewingReport.achievements && (
+                  <div>
+                    <span className="font-bold text-slate-800 block mb-1">Achievements & Results:</span>
+                    <p className="p-3 bg-slate-50 rounded-xl text-slate-700">{viewingReport.achievements}</p>
+                  </div>
+                )}
+
+                {viewingReport.challenges && (
+                  <div>
+                    <span className="font-bold text-amber-900 block mb-1">Challenges Faced:</span>
+                    <p className="p-3 bg-amber-50 rounded-xl text-slate-700">{viewingReport.challenges}</p>
+                  </div>
+                )}
+
+                {viewingReport.nextDayPlan && (
+                  <div>
+                    <span className="font-bold text-slate-800 block mb-1">Next Day Plan:</span>
+                    <p className="p-3 bg-slate-50 rounded-xl text-slate-700">{viewingReport.nextDayPlan}</p>
+                  </div>
+                )}
+
+                {/* Attachments */}
+                {viewingReport.attachments && viewingReport.attachments.length > 0 && (
+                  <div>
+                    <span className="font-bold text-slate-800 block mb-1">
+                      Uploaded Evidence Attachments ({viewingReport.attachments.length}):
+                    </span>
+                    <div className="grid grid-cols-2 gap-2">
+                      {viewingReport.attachments.map((att: ReportAttachment) => (
+                        <div key={att.id} className="p-2.5 bg-slate-50 rounded-xl border border-slate-200">
+                          <span className="font-bold text-slate-800 block truncate">{att.originalFilename}</span>
+                          {att.caption && <span className="text-[10px] text-emerald-700 italic block">{att.caption}</span>}
+                          {att.downloadUrl && (
+                            <a href={att.downloadUrl} target="_blank" rel="noopener noreferrer" className="text-emerald-600 underline font-bold mt-1 inline-block">
+                              View Attachment
+                            </a>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
             )}
 
             <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
@@ -694,7 +704,7 @@ export default function StaffReportHistoryPage() {
                 onClick={() => window.open(`/api/field-reports/${viewingReport.id}/pdf`, '_blank')}
                 className="bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs h-9 rounded-xl"
               >
-                <Download className="h-3.5 w-3.5 mr-1.5" /> Download Daily PDF (1 Page)
+                <Download className="h-3.5 w-3.5 mr-1.5" /> Download Full Daily PDF
               </Button>
               <Button
                 type="button"

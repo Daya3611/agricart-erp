@@ -29,7 +29,7 @@ export async function GET(req: Request) {
     const year = yearParam ? parseInt(yearParam, 10) : now.getFullYear();
 
     if (format === 'pdf') {
-      const report = await generateMonthlyReport(targetUid, month, year);
+      const report = await generateMonthlyReport(targetUid, year, month);
       const pdfBuffer = await generateMonthlyReportPDF(report);
 
       const filename = `Agricart_Monthly_Report_${report.employee.employeeId}_${year}_${String(month).padStart(2, '0')}.pdf`;

@@ -429,9 +429,19 @@ export async function requestReportEdit(
   params: { reason: string; instructions?: string }
 ): Promise<{ success: boolean; error?: string }> {
   try {
+    if (reportId.startsWith('field_rep_')) {
+      const { requestFieldReportEdit } = await import('@/lib/services/field-report-service');
+      return requestFieldReportEdit(reviewer, reportId, params);
+    }
+
     const report = (await fetchDocument(ERP_COLLECTIONS.dailyReports, reportId)) as DailyReport | null;
 
     if (!report) {
+      const { requestFieldReportEdit } = await import('@/lib/services/field-report-service');
+      const fieldRes = await requestFieldReportEdit(reviewer, reportId, params);
+      if (fieldRes.success || fieldRes.error !== 'Field Report not found.') {
+        return fieldRes;
+      }
       return { success: false, error: 'Report not found.' };
     }
 

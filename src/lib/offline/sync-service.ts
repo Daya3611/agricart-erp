@@ -1,5 +1,10 @@
 import { getOfflineDb, OfflineReportDraft, OfflineMediaItem } from './db';
-import { FieldActivitySlot, GpsCoordinate, LocationCaptureStatus } from '@/types';
+import { ActivitySlotStatus, FieldActivitySlot, GpsCoordinate, LocationCaptureStatus } from '@/types';
+import {
+  convertRecordToSlot,
+  normalizeActivityStatus,
+  reconcileRemoteAndLocalSlots,
+} from '@/lib/utils/field-activity-calculations';
 
 /**
  * Save or update a field report draft in IndexedDB.
@@ -159,12 +164,26 @@ export async function syncPendingReportsToServer(): Promise<{
         }
       }
 
-      // 2. Submit the report to /api/field-reports
+      // 2. Reconcile against authoritative server activities so stale local IN_PROGRESS never overrides COMPLETED
+      let reconciledActivities = draft.activities;
+      try {
+        const remoteRes = await fetch(`/api/field-activities?date=${draft.reportDate}`);
+        const remoteData = await remoteRes.json().catch(() => ({}));
+        if (remoteRes.ok && remoteData.success && Array.isArray(remoteData.activities)) {
+          const remoteSlots = remoteData.activities.map(convertRecordToSlot);
+          reconciledActivities = reconcileRemoteAndLocalSlots(remoteSlots, draft.activities);
+          await db.fieldReportDrafts.update(draft.id, { activities: reconciledActivities });
+        }
+      } catch {
+        // Proceed cleanly with local draft activities if check fails; server enforces guard too
+      }
+
+      // 3. Submit the report to /api/field-reports
       const payload = {
         reportDate: draft.reportDate,
         crpCode: draft.crpCode,
         blockTaluka: draft.blockTaluka,
-        activities: draft.activities,
+        activities: reconciledActivities,
         finalizeNow: draft.finalized,
         finalizationGps: draft.finalizationGps,
         finalizationLocationStatus: draft.finalizationLocationStatus,
@@ -305,12 +324,16 @@ export async function saveActivityLocally(params: {
   employeeName: string;
   reportDate: string;
   slotNumber: number;
-  activityStatus: 'IN_PROGRESS' | 'COMPLETED' | 'in_progress' | 'completed';
+  activityStatus: ActivitySlotStatus;
   activityData: any;
   syncStatus?: 'saved_offline' | 'pending_sync' | 'synced';
 }) {
   const db = getOfflineDb();
   const now = new Date().toISOString();
+  const normalizedStatus = normalizeActivityStatus({
+    ...(params.activityData || {}),
+    activityStatus: params.activityStatus,
+  });
 
   await db.offlineActivities.put({
     activityId: params.activityId,
@@ -320,11 +343,80 @@ export async function saveActivityLocally(params: {
     employeeName: params.employeeName,
     reportDate: params.reportDate,
     slotNumber: params.slotNumber,
-    activityStatus: params.activityStatus,
-    activityData: params.activityData,
+    activityStatus: normalizedStatus,
+    activityData: {
+      ...(params.activityData || {}),
+      activityStatus: normalizedStatus,
+    },
     syncStatus: params.syncStatus || 'saved_offline',
     updatedAt: now,
   });
+
+  // Also clear stale in-memory status inside cached draft if activity is COMPLETED or CANCELLED
+  if (normalizedStatus === 'COMPLETED' || normalizedStatus === 'CANCELLED') {
+    const draftId = `field_rep_${params.staffUid}_${params.reportDate}`;
+    const existingDraft = await db.fieldReportDrafts.get(draftId);
+    if (existingDraft && Array.isArray(existingDraft.activities)) {
+      const updatedActs = existingDraft.activities.map((a) =>
+        a.slotNumber === params.slotNumber
+          ? {
+              ...a,
+              ...(params.activityData || {}),
+              activityId: params.activityId,
+              id: params.activityId,
+              activityStatus: normalizedStatus,
+            }
+          : a
+      );
+      await db.fieldReportDrafts.update(draftId, { activities: updatedActs, updatedAt: now });
+    }
+  }
+}
+
+/**
+ * Reconcile local Dexie offlineActivities & fieldReportDrafts against authoritative server slots
+ * so COMPLETED or CANCELLED activities are never restored locally as IN_PROGRESS on reload.
+ */
+export async function reconcileLocalOfflineCache(
+  staffUid: string,
+  reportDate: string,
+  serverSlots: FieldActivitySlot[]
+) {
+  if (typeof window === 'undefined') return;
+  const db = getOfflineDb();
+  const now = new Date().toISOString();
+  const serverBySlot = new Map<number, FieldActivitySlot>();
+  for (const s of serverSlots) {
+    serverBySlot.set(Number(s.slotNumber) || 1, {
+      ...s,
+      activityStatus: normalizeActivityStatus(s),
+    });
+  }
+
+  const localActs = await db.offlineActivities
+    .where('staffUid')
+    .equals(staffUid)
+    .filter((a) => a.reportDate === reportDate)
+    .toArray();
+
+  for (const la of localActs) {
+    const remoteSlot = serverBySlot.get(Number(la.slotNumber) || 1);
+    if (!remoteSlot) continue;
+    const remoteStatus = normalizeActivityStatus(remoteSlot);
+    const localStatus = normalizeActivityStatus(la.activityData || la);
+
+    if (
+      (remoteStatus === 'COMPLETED' || remoteStatus === 'CANCELLED') &&
+      localStatus !== remoteStatus
+    ) {
+      await db.offlineActivities.update(la.activityId, {
+        activityStatus: remoteStatus,
+        activityData: remoteSlot,
+        syncStatus: 'synced',
+        updatedAt: now,
+      });
+    }
+  }
 }
 
 /**
@@ -357,10 +449,56 @@ export async function syncPendingActivitiesToServer(): Promise<{ syncedCount: nu
 
   let syncedCount = 0;
   const errors: string[] = [];
+  const serverCache = new Map<string, FieldActivitySlot[]>();
+
+  const getServerSlotsForDate = async (reportDate: string): Promise<FieldActivitySlot[]> => {
+    if (serverCache.has(reportDate)) return serverCache.get(reportDate)!;
+    try {
+      const r = await fetch(`/api/field-activities?date=${reportDate}`);
+      const d = await r.json().catch(() => ({}));
+      const slots = r.ok && d.success && Array.isArray(d.activities)
+        ? d.activities.map(convertRecordToSlot)
+        : [];
+      serverCache.set(reportDate, slots);
+      return slots;
+    } catch {
+      return [];
+    }
+  };
 
   for (const item of pending) {
     try {
-      const isCompleted = item.activityStatus === 'COMPLETED' || item.activityStatus === 'completed';
+      const localStatus = normalizeActivityStatus(item.activityData || item);
+
+      if (localStatus === 'NOT_STARTED' || localStatus === 'CANCELLED') {
+        await db.offlineActivities.update(item.activityId, {
+          activityStatus: localStatus,
+          syncStatus: 'synced',
+          updatedAt: new Date().toISOString(),
+        });
+        continue;
+      }
+
+      const isCompleted = localStatus === 'COMPLETED';
+      if (!isCompleted) {
+        // Check actual Firestore state before replaying an offline IN_PROGRESS start
+        const remoteSlots = await getServerSlotsForDate(item.reportDate);
+        const match = remoteSlots.find(
+          (s) => s.activityId === item.activityId || s.slotNumber === item.slotNumber
+        );
+        const remoteStatus = match ? normalizeActivityStatus(match) : 'NOT_STARTED';
+        if (remoteStatus === 'COMPLETED' || remoteStatus === 'CANCELLED') {
+          await db.offlineActivities.update(item.activityId, {
+            activityStatus: remoteStatus,
+            activityData: match,
+            syncStatus: 'synced',
+            updatedAt: new Date().toISOString(),
+          });
+          syncedCount++;
+          continue;
+        }
+      }
+
       const endpoint = isCompleted ? '/api/field-activities/end' : '/api/field-activities/start';
 
       const payload = isCompleted
@@ -368,7 +506,11 @@ export async function syncPendingActivitiesToServer(): Promise<{ syncedCount: nu
             activityId: item.activityId,
             endGps: item.activityData?.activityEndLocation || item.activityData?.activityEndGps,
             locationStatus: item.activityData?.activityEndLocationStatus,
-            finalDetails: item.activityData,
+            finalDetails: {
+              ...item.activityData,
+              slotNumber: item.slotNumber,
+              reportDate: item.reportDate,
+            },
           }
         : {
             activityId: item.activityId,
@@ -376,8 +518,10 @@ export async function syncPendingActivitiesToServer(): Promise<{ syncedCount: nu
             reportDate: item.reportDate,
             activityName: item.activityData?.activityName,
             activityNameLabel: item.activityData?.activityNameLabel,
+            activityOther: item.activityData?.activityOther,
             village: item.activityData?.village,
             wadi: item.activityData?.wadi,
+            activityStartAt: item.activityData?.activityStartAt || item.activityData?.activityStart,
             gps: item.activityData?.activityStartLocation || item.activityData?.activityStartGps,
             locationStatus: item.activityData?.activityStartLocationStatus,
             initialDetails: item.activityData,
@@ -390,14 +534,36 @@ export async function syncPendingActivitiesToServer(): Promise<{ syncedCount: nu
       });
 
       if (res.ok || res.status === 409) {
+        const resData = await res.json().catch(() => ({}));
+        const nextStatus = resData?.activity
+          ? normalizeActivityStatus(resData.activity)
+          : localStatus;
         await db.offlineActivities.update(item.activityId, {
+          activityStatus: nextStatus,
+          ...(resData?.activity ? { activityData: convertRecordToSlot(resData.activity) } : {}),
           syncStatus: 'synced',
           updatedAt: new Date().toISOString(),
         });
         syncedCount++;
       } else {
         const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.error || `Failed with status ${res.status}`);
+        const msg = errData.error || `Failed with status ${res.status}`;
+        if (!isCompleted && msg.includes('already been completed')) {
+          serverCache.delete(item.reportDate);
+          const refreshed = await getServerSlotsForDate(item.reportDate);
+          const match = refreshed.find(
+            (s) => s.activityId === item.activityId || s.slotNumber === item.slotNumber
+          );
+          await db.offlineActivities.update(item.activityId, {
+            activityStatus: 'COMPLETED',
+            ...(match ? { activityData: match } : {}),
+            syncStatus: 'synced',
+            updatedAt: new Date().toISOString(),
+          });
+          syncedCount++;
+        } else {
+          throw new Error(msg);
+        }
       }
     } catch (err: any) {
       errors.push(`${item.activityId}: ${err.message}`);

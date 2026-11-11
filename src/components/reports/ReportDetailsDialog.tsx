@@ -16,11 +16,12 @@ import {
   History,
   X,
 } from 'lucide-react';
-import { DailyReport, ReportAttachment } from '@/types';
+import { DailyReport, FieldReport, ReportAttachment } from '@/types';
 import { Dialog } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { formatReadableDate, formatReadableDateTime } from '@/lib/utils/date-utils';
+import { FieldActivityReviewList } from '@/components/reports/FieldActivityReviewList';
 
 interface ReportDetailsDialogProps {
   report: DailyReport | null;
@@ -35,7 +36,34 @@ export function ReportDetailsDialog({
   onOpenChange,
   showHistoryLink = true,
 }: ReportDetailsDialogProps) {
+  const [hydratedFieldReport, setHydratedFieldReport] = React.useState<FieldReport | null>(null);
+
+  React.useEffect(() => {
+    setHydratedFieldReport((report as any)?.fieldReport || null);
+    let cancelled = false;
+    if (report?.id && open) {
+      fetch(`/api/field-reports/${report.id}`)
+        .then((res) => res.json())
+        .then((data) => {
+          if (!cancelled && data.success && data.report) {
+            setHydratedFieldReport(data.report);
+          }
+        })
+        .catch(() => {});
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [report?.id, report, open]);
+
   if (!report) return null;
+
+  const effectiveFieldReport: FieldReport | null = hydratedFieldReport || (report as any).fieldReport || null;
+  const hasFieldActivities = Boolean(
+    effectiveFieldReport &&
+      Array.isArray(effectiveFieldReport.activities) &&
+      effectiveFieldReport.activities.length > 0
+  );
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -136,150 +164,156 @@ export function ReportDetailsDialog({
           </div>
         )}
 
-        {/* Schedule & Operational Metrics */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-          <div className="p-3 bg-white rounded-xl border border-slate-200 shadow-2xs">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block mb-1">
-              Work Location
-            </span>
-            <div className="flex items-center gap-1.5 text-slate-900 font-bold truncate">
-              <MapPin className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-              <span className="truncate">{report.workLocation || 'Field Operations'}</span>
-            </div>
-          </div>
-
-          <div className="p-3 bg-white rounded-xl border border-slate-200 shadow-2xs">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block mb-1">
-              Shift Timing
-            </span>
-            <div className="flex items-center gap-1.5 text-slate-900 font-bold">
-              <Clock className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-              <span>{report.workStartTime || '09:00'} — {report.workEndTime || '18:00'}</span>
-            </div>
-          </div>
-
-          <div className="p-3 bg-white rounded-xl border border-slate-200 shadow-2xs">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block mb-1">
-              Engagement Counts
-            </span>
-            <div className="flex items-center gap-1.5 text-emerald-800 font-bold">
-              <Users className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-              <span>{report.farmersVisited || 0} Farmers | {report.meetingsConducted || 0} Mtgs</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Activities Performed */}
-        <div>
-          <span className="text-[11px] font-bold text-slate-800 uppercase tracking-wider block mb-1">
-            Activities Performed
-          </span>
-          <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200/80 text-slate-800 whitespace-pre-wrap leading-relaxed">
-            {report.activities || 'No activities specified.'}
-          </div>
-        </div>
-
-        {/* Tasks Completed */}
-        <div>
-          <span className="text-[11px] font-bold text-slate-800 uppercase tracking-wider block mb-1">
-            Tasks Completed
-          </span>
-          <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200/80 text-slate-800 whitespace-pre-wrap leading-relaxed">
-            {report.completedTasks || 'No completed tasks specified.'}
-          </div>
-        </div>
-
-        {/* Achievements & Challenges Grid */}
-        {(report.achievements || report.challenges) && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-            {report.achievements && (
-              <div className="p-3 bg-emerald-50/50 rounded-xl border border-emerald-100">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-900 block mb-1">
-                  Key Achievements
-                </span>
-                <p className="text-slate-800 leading-relaxed">{report.achievements}</p>
-              </div>
-            )}
-            {report.challenges && (
-              <div className="p-3 bg-amber-50/50 rounded-xl border border-amber-200/70">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-amber-900 block mb-1">
-                  Challenges Encountered
-                </span>
-                <p className="text-slate-800 leading-relaxed">{report.challenges}</p>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Pending Work & Next Day Plan */}
-        {(report.pendingWork || report.nextDayPlan) && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-            {report.pendingWork && (
-              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/80">
+        {hasFieldActivities && effectiveFieldReport ? (
+          <FieldActivityReviewList fieldReport={effectiveFieldReport} />
+        ) : (
+          <>
+            {/* Schedule & Operational Metrics */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+              <div className="p-3 bg-white rounded-xl border border-slate-200 shadow-2xs">
                 <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block mb-1">
-                  Pending Work
+                  Work Location
                 </span>
-                <p className="text-slate-800 leading-relaxed">{report.pendingWork}</p>
-              </div>
-            )}
-            {report.nextDayPlan && (
-              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/80">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block mb-1">
-                  Plan for Next Working Day
-                </span>
-                <p className="text-slate-800 leading-relaxed">{report.nextDayPlan}</p>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Remarks */}
-        {report.remarks && (
-          <div>
-            <span className="text-[11px] font-bold text-slate-800 uppercase tracking-wider block mb-1">
-              General Remarks
-            </span>
-            <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/80 text-slate-700">
-              {report.remarks}
-            </div>
-          </div>
-        )}
-
-        {/* Attachments Section */}
-        {report.attachments && report.attachments.length > 0 && (
-          <div className="space-y-2">
-            <span className="text-[11px] font-bold text-slate-800 uppercase tracking-wider block">
-              Uploaded Evidence Attachments ({report.attachments.length})
-            </span>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-              {report.attachments.map((att: ReportAttachment) => (
-                <div
-                  key={att.id}
-                  className="p-3 bg-white rounded-xl border border-slate-200 shadow-2xs flex items-center justify-between gap-2"
-                >
-                  <div className="min-w-0 flex-1">
-                    <span className="font-bold text-slate-900 block truncate">{att.originalFilename}</span>
-                    {att.caption && (
-                      <span className="text-[10px] text-emerald-800 italic block truncate">
-                        "{att.caption}"
-                      </span>
-                    )}
-                  </div>
-                  {att.downloadUrl && (
-                    <a
-                      href={att.downloadUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 hover:text-emerald-800 hover:underline shrink-0"
-                    >
-                      <span>View</span>
-                      <ExternalLink className="h-3 w-3" />
-                    </a>
-                  )}
+                <div className="flex items-center gap-1.5 text-slate-900 font-bold truncate">
+                  <MapPin className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                  <span className="truncate">{report.workLocation || 'Field Operations'}</span>
                 </div>
-              ))}
+              </div>
+
+              <div className="p-3 bg-white rounded-xl border border-slate-200 shadow-2xs">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block mb-1">
+                  Shift Timing
+                </span>
+                <div className="flex items-center gap-1.5 text-slate-900 font-bold">
+                  <Clock className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                  <span>{report.workStartTime || '09:00'} — {report.workEndTime || '18:00'}</span>
+                </div>
+              </div>
+
+              <div className="p-3 bg-white rounded-xl border border-slate-200 shadow-2xs">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block mb-1">
+                  Engagement Counts
+                </span>
+                <div className="flex items-center gap-1.5 text-emerald-800 font-bold">
+                  <Users className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                  <span>{report.farmersVisited || 0} Farmers | {report.meetingsConducted || 0} Mtgs</span>
+                </div>
+              </div>
             </div>
-          </div>
+
+            {/* Activities Performed */}
+            <div>
+              <span className="text-[11px] font-bold text-slate-800 uppercase tracking-wider block mb-1">
+                Activities Performed
+              </span>
+              <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200/80 text-slate-800 whitespace-pre-wrap leading-relaxed">
+                {report.activities || 'No activities specified.'}
+              </div>
+            </div>
+
+            {/* Tasks Completed */}
+            <div>
+              <span className="text-[11px] font-bold text-slate-800 uppercase tracking-wider block mb-1">
+                Tasks Completed
+              </span>
+              <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200/80 text-slate-800 whitespace-pre-wrap leading-relaxed">
+                {report.completedTasks || 'No completed tasks specified.'}
+              </div>
+            </div>
+
+            {/* Achievements & Challenges Grid */}
+            {(report.achievements || report.challenges) && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                {report.achievements && (
+                  <div className="p-3 bg-emerald-50/50 rounded-xl border border-emerald-100">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-900 block mb-1">
+                      Key Achievements
+                    </span>
+                    <p className="text-slate-800 leading-relaxed">{report.achievements}</p>
+                  </div>
+                )}
+                {report.challenges && (
+                  <div className="p-3 bg-amber-50/50 rounded-xl border border-amber-200/70">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-amber-900 block mb-1">
+                      Challenges Encountered
+                    </span>
+                    <p className="text-slate-800 leading-relaxed">{report.challenges}</p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Pending Work & Next Day Plan */}
+            {(report.pendingWork || report.nextDayPlan) && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                {report.pendingWork && (
+                  <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/80">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block mb-1">
+                      Pending Work
+                    </span>
+                    <p className="text-slate-800 leading-relaxed">{report.pendingWork}</p>
+                  </div>
+                )}
+                {report.nextDayPlan && (
+                  <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/80">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block mb-1">
+                      Plan for Next Working Day
+                    </span>
+                    <p className="text-slate-800 leading-relaxed">{report.nextDayPlan}</p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Remarks */}
+            {report.remarks && (
+              <div>
+                <span className="text-[11px] font-bold text-slate-800 uppercase tracking-wider block mb-1">
+                  General Remarks
+                </span>
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/80 text-slate-700">
+                  {report.remarks}
+                </div>
+              </div>
+            )}
+
+            {/* Attachments Section */}
+            {report.attachments && report.attachments.length > 0 && (
+              <div className="space-y-2">
+                <span className="text-[11px] font-bold text-slate-800 uppercase tracking-wider block">
+                  Uploaded Evidence Attachments ({report.attachments.length})
+                </span>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  {report.attachments.map((att: ReportAttachment) => (
+                    <div
+                      key={att.id}
+                      className="p-3 bg-white rounded-xl border border-slate-200 shadow-2xs flex items-center justify-between gap-2"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <span className="font-bold text-slate-900 block truncate">{att.originalFilename}</span>
+                        {att.caption && (
+                          <span className="text-[10px] text-emerald-800 italic block truncate">
+                            "{att.caption}"
+                          </span>
+                        )}
+                      </div>
+                      {att.downloadUrl && (
+                        <a
+                          href={att.downloadUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 hover:text-emerald-800 hover:underline shrink-0"
+                        >
+                          <span>View</span>
+                          <ExternalLink className="h-3 w-3" />
+                        </a>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
         )}
 
         {/* Footer Actions */}

@@ -2,7 +2,11 @@ import { NextResponse } from 'next/server';
 import { requireMobileAuth, apiSuccess, apiError } from '@/lib/api/v1-helper';
 import { normalizeReportDate } from '@/lib/utils/date-utils';
 import { getStaffActivitiesForDate } from '@/lib/services/field-activity-service';
-import { calculateActivitiesSummary } from '@/lib/utils/field-activity-calculations';
+import {
+  calculateActivitiesSummary,
+  isActivityCompleted,
+  mergeDayActivities,
+} from '@/lib/utils/field-activity-calculations';
 import { fetchCollection, fetchDocument } from '@/lib/firebase/firestore';
 import { ERP_COLLECTIONS } from '@/lib/firebase/collections';
 import { AttendanceSession, FieldReport, UserProfile } from '@/types';
@@ -29,7 +33,7 @@ export async function GET(
       return apiError('FORBIDDEN: You can only view your own daily report.', 403);
     }
 
-    // 1. Fetch activities for this date
+    // 1. Fetch activities for this date (already deduplicated & normalized)
     const activities = await getStaffActivitiesForDate(targetUid, reportDate);
 
     // 2. Fetch attendance for this date
@@ -41,12 +45,23 @@ export async function GET(
     // 3. Fetch employee profile
     const empProfile = ((await fetchDocument(ERP_COLLECTIONS.employees, targetUid)) as unknown as UserProfile) || user;
 
-    // 4. Calculate summary
-    const { summary, errors } = calculateActivitiesSummary(activities as any);
-
-    // 5. Look for existing field report document
+    // 4. Look for existing field report document & merge with standalone activities so status never lags
     const reportDocId = `field_rep_${targetUid}_${reportDate}`;
     let fieldReport = (await fetchDocument(ERP_COLLECTIONS.fieldReports, reportDocId)) as FieldReport | null;
+
+    if (fieldReport) {
+      const mergedSlots = mergeDayActivities(fieldReport.activities || [], activities as any);
+      const mergedSummary = calculateActivitiesSummary(mergedSlots).summary;
+      fieldReport = {
+        ...fieldReport,
+        activities: mergedSlots,
+        summary: mergedSummary,
+      };
+    }
+
+    // 5. Calculate summary
+    const finalSlots = fieldReport ? fieldReport.activities : (activities as any);
+    const { summary, errors } = calculateActivitiesSummary(finalSlots);
 
     if (!fieldReport) {
       // Synthesize field report structure
@@ -63,8 +78,8 @@ export async function GET(
         reportDate,
         activities: activities as any,
         summary,
-        status: activities.some((a) => a.activityStatus === 'COMPLETED') ? 'submitted' : 'draft',
-        finalized: activities.length > 0 && activities.every((a) => a.activityStatus === 'COMPLETED'),
+        status: activities.some((a) => isActivityCompleted(a)) ? 'submitted' : 'draft',
+        finalized: activities.length > 0 && activities.every((a) => isActivityCompleted(a)),
         revisionNumber: 1,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),

@@ -4,6 +4,7 @@ import { fetchCollection } from '@/lib/firebase/firestore';
 import { ERP_COLLECTIONS } from '@/lib/firebase/collections';
 import { FieldActivityRecord } from '@/types';
 import { getOperationalDateString, normalizeReportDate } from '@/lib/utils/date-utils';
+import { deduplicateActivityRecords, normalizeActivityStatus } from '@/lib/utils/field-activity-calculations';
 
 export const dynamic = 'force-dynamic';
 
@@ -36,7 +37,13 @@ export async function GET(req: Request) {
       queryFilters.push({ field: 'reportDate', op: '==', value: normalizeReportDate(dateParam) });
     }
 
-    let activities = (await fetchCollection(ERP_COLLECTIONS.fieldActivities, queryFilters)) as FieldActivityRecord[];
+    let rawActivities = (await fetchCollection(ERP_COLLECTIONS.fieldActivities, queryFilters)) as FieldActivityRecord[];
+
+    // Deduplicate per (reportDate, slotNumber) preferring terminal states and normalize status
+    let activities = deduplicateActivityRecords(
+      rawActivities,
+      (a) => `${a.reportDate || ''}__${Number(a.slotNumber) || 1}`
+    );
 
     // Range filtering
     if (startDateParam || endDateParam) {
@@ -44,10 +51,11 @@ export async function GET(req: Request) {
       if (endDateParam) activities = activities.filter((a) => a.reportDate <= endDateParam);
     }
 
-    // Status filtering
+    // Status filtering (using canonical normalized status)
     if (statusParam && statusParam !== 'ALL') {
+      const targetStatus = normalizeActivityStatus(statusParam);
       activities = activities.filter(
-        (a) => (a.activityStatus?.toUpperCase() || '') === statusParam
+        (a) => normalizeActivityStatus(a) === targetStatus
       );
     }
 

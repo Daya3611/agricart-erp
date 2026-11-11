@@ -27,6 +27,8 @@ import { formatReadableDateTime } from '@/lib/utils/date-utils';
 import { RequestEditDialog } from './RequestEditDialog';
 import { formatGpsCoordinates, getGoogleMapsUrl } from '@/lib/utils/geolocation';
 import { LocationDisplayCard } from '@/components/reports/LocationDisplayCard';
+import { FieldActivityReviewList } from '@/components/reports/FieldActivityReviewList';
+import { mergeEvidenceUrls } from '@/lib/utils/field-activity-calculations';
 
 interface ReportReviewModalProps {
   report: DailyReport | null;
@@ -53,22 +55,45 @@ export function ReportReviewModal({
     setComment('');
     setFeedback(null);
     setRequestEditOpen(false);
-    setFieldReportDetails(null);
+    setFieldReportDetails((report as any)?.fieldReport || null);
 
+    let cancelled = false;
     if (report?.id && open) {
-      // Fetch full field report details if available
+      // Fetch full field report details (merged with standalone slot docs) if available
       fetch(`/api/field-reports/${report.id}`)
         .then((res) => res.json())
         .then((data) => {
-          if (data.success && data.report) {
+          if (!cancelled && data.success && data.report) {
             setFieldReportDetails(data.report);
           }
         })
         .catch(() => {});
     }
-  }, [report?.id, open]);
+    return () => {
+      cancelled = true;
+    };
+  }, [report?.id, report, open]);
 
   if (!report) return null;
+
+  const effectiveFieldReport: FieldReport | null = fieldReportDetails || (report as any).fieldReport || null;
+  const hasFieldActivities = Boolean(
+    effectiveFieldReport &&
+      Array.isArray(effectiveFieldReport.activities) &&
+      effectiveFieldReport.activities.length > 0
+  );
+
+  // Deduplicate attachments against URLs already rendered inline inside FieldActivityReviewList
+  const slotMediaUrlSet = new Set<string>();
+  if (hasFieldActivities && effectiveFieldReport) {
+    for (const act of effectiveFieldReport.activities) {
+      for (const u of mergeEvidenceUrls(act.photoUrl, act.photoEvidence)) slotMediaUrlSet.add(u);
+      for (const u of mergeEvidenceUrls(act.videoUrl, act.videoEvidence)) slotMediaUrlSet.add(u);
+    }
+  }
+  const extraAttachments = (report.attachments || []).filter(
+    (att) => !att.downloadUrl || !slotMediaUrlSet.has(att.downloadUrl)
+  );
 
   const isAuthorizedReviewer = ['super_admin', 'admin', 'manager'].includes(currentUser.role);
 
@@ -169,7 +194,7 @@ export function ReportReviewModal({
                 onClick={() => window.open(`/api/field-reports/${report.id}/pdf`, '_blank')}
                 className="bg-primary hover:bg-primary/90 text-white font-bold text-xs h-8 rounded-xl shadow-xs"
               >
-                <Download className="h-3.5 w-3.5 mr-1" /> Download Daily PDF (1 Page)
+                <Download className="h-3.5 w-3.5 mr-1" /> Download Full Daily PDF
               </Button>
               <div className="text-xs text-muted-foreground font-medium">
                 Submitted: <span className="font-bold text-foreground">{formatReadableDateTime(report.submittedAt)}</span>
@@ -207,144 +232,86 @@ export function ReportReviewModal({
             </div>
           </div>
 
-          {/* Field Activity Slots & GPS Tracking Breakdown */}
-          {fieldReportDetails && fieldReportDetails.activities && fieldReportDetails.activities.length > 0 && (
-            <div className="space-y-3">
-              <div className="flex items-center justify-between border-b border-border pb-1">
-                <h3 className="text-sm font-bold uppercase tracking-wider text-primary">
-                  Recorded Activity Slots ({fieldReportDetails.activities.length} Slots)
-                </h3>
-              </div>
-
-              {fieldReportDetails.finalizationGps && (
-                <LocationDisplayCard
-                  location={fieldReportDetails.finalizationGps}
-                  label="Daily Report Finalization Location"
-                  status={fieldReportDetails.finalizationLocationStatus}
-                />
+          {/* Field Activity Complete View (Primary) OR Legacy Daily Report Fallback */}
+          {hasFieldActivities && effectiveFieldReport ? (
+            <>
+              <FieldActivityReviewList fieldReport={effectiveFieldReport} />
+              {extraAttachments.length > 0 && (
+                <div className="space-y-2">
+                  <h3 className="text-sm font-bold uppercase tracking-wider text-primary border-b border-border pb-1">
+                    Additional Uploaded Attachments ({extraAttachments.length})
+                  </h3>
+                  <AttachmentGallery attachments={extraAttachments} />
+                </div>
               )}
+            </>
+          ) : (
+            <>
+              {/* Activity Details Breakdown (Legacy Read-Only Fallback) */}
+              <div className="space-y-4">
+                <h3 className="text-sm font-bold uppercase tracking-wider text-primary border-b border-border pb-1">
+                  Work Performed & Achievements
+                </h3>
 
-              <div className="space-y-2">
-                {fieldReportDetails.activities.map((act) => (
-                  <div key={act.slotNumber} className="p-3 bg-card rounded-xl border border-border text-xs space-y-1.5">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div className="flex items-center gap-2">
-                        <span className="h-5 w-5 rounded bg-primary text-white font-bold text-[10px] flex items-center justify-center">
-                          {act.slotNumber}
-                        </span>
-                        <span className="font-bold text-foreground">
-                          {act.activityNameLabel || act.activityName?.replace(/_/g, ' ')}
-                        </span>
-                        <Badge variant="outline" className="text-[10px]">
-                          {act.activityName === 'desk_job' ? 'Desk Job' : (act.village || 'Field')}
-                        </Badge>
-                      </div>
-
-                      <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
-                        <span>{act.activityStart ? act.activityStart.split('T')[1]?.slice(0, 5) : '—'} - {act.activityEnd ? act.activityEnd.split('T')[1]?.slice(0, 5) : '—'}</span>
-                        <span>•</span>
-                        <span className="font-bold text-primary">{act.durationMinutes || 0} mins</span>
-                        {act.activityName !== 'desk_job' && (
-                          <>
-                            <span>•</span>
-                            <span>{act.totalParticipants || 0} participants (M: {act.maleParticipants || 0}, F: {act.femaleParticipants || 0})</span>
-                          </>
-                        )}
-                      </div>
-                    </div>
-
-                    <p className="text-muted-foreground leading-relaxed">{act.observations}</p>
-
-                    {/* Start & End Location Cards with Human-Readable Addresses */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
-                      <LocationDisplayCard
-                        location={act.activityStartLocation || act.activityStartGps}
-                        label="Start Location"
-                        status={act.activityStartLocationStatus}
-                        variant="compact"
-                      />
-                      <LocationDisplayCard
-                        location={act.activityEndLocation || act.activityEndGps}
-                        label="End Location"
-                        status={act.activityEndLocationStatus}
-                        variant="compact"
-                      />
-                    </div>
-
-                    {act.followUpRequired && (
-                      <div className="text-[11px] text-amber-700 dark:text-amber-400 font-medium pt-1">
-                        Follow-up: {act.followUpDetails || 'Yes'} {act.followUpDate ? `(Target: ${act.followUpDate})` : ''}
-                      </div>
-                    )}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="p-3.5 bg-card rounded-xl border border-border">
+                    <span className="text-xs font-bold text-muted-foreground block mb-1">Activities Performed Today</span>
+                    <p className="text-sm text-foreground whitespace-pre-wrap">{report.activities || 'N/A'}</p>
                   </div>
-                ))}
+
+                  <div className="p-3.5 bg-card rounded-xl border border-border">
+                    <span className="text-xs font-bold text-muted-foreground block mb-1">Tasks Completed</span>
+                    <p className="text-sm text-foreground whitespace-pre-wrap">{report.completedTasks || 'N/A'}</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+                  <div className="p-3 bg-muted/40 rounded-xl border border-border">
+                    <span className="text-[11px] font-bold text-muted-foreground block uppercase">Farmers Visited</span>
+                    <span className="text-xl font-black text-primary">{report.farmersVisited || 0}</span>
+                  </div>
+                  <div className="p-3 bg-muted/40 rounded-xl border border-border">
+                    <span className="text-[11px] font-bold text-muted-foreground block uppercase">Meetings Conducted</span>
+                    <span className="text-xl font-black text-primary">{report.meetingsConducted || 0}</span>
+                  </div>
+                  <div className="p-3 bg-muted/40 rounded-xl border border-border">
+                    <span className="text-[11px] font-bold text-muted-foreground block uppercase">Work Start Time</span>
+                    <span className="text-sm font-bold text-foreground">{report.workStartTime || '09:00'}</span>
+                  </div>
+                  <div className="p-3 bg-muted/40 rounded-xl border border-border">
+                    <span className="text-[11px] font-bold text-muted-foreground block uppercase">Work End Time</span>
+                    <span className="text-sm font-bold text-foreground">{report.workEndTime || '18:00'}</span>
+                  </div>
+                </div>
+
+                {report.challenges && (
+                  <div className="p-3.5 bg-amber-50/60 dark:bg-amber-950/30 rounded-xl border border-amber-200 dark:border-amber-900/60">
+                    <span className="text-xs font-bold text-amber-900 dark:text-amber-200 flex items-center gap-1.5 mb-1">
+                      <AlertTriangle className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400 shrink-0" /> Challenges & Issues Faced
+                    </span>
+                    <p className="text-xs text-amber-900 dark:text-amber-200 whitespace-pre-wrap">{report.challenges}</p>
+                  </div>
+                )}
+
+                {report.nextDayPlan && (
+                  <div className="p-3.5 bg-muted/40 rounded-xl border border-border">
+                    <span className="text-xs font-bold text-foreground flex items-center gap-1.5 mb-1">
+                      <Calendar className="h-3.5 w-3.5 text-primary shrink-0" /> Plan for Next Working Day
+                    </span>
+                    <p className="text-xs text-foreground whitespace-pre-wrap">{report.nextDayPlan}</p>
+                  </div>
+                )}
               </div>
-            </div>
+
+              {/* Evidence Attachments */}
+              <div className="space-y-2">
+                <h3 className="text-sm font-bold uppercase tracking-wider text-primary border-b border-border pb-1">
+                  Work Photo & Video Evidence
+                </h3>
+                <AttachmentGallery attachments={report.attachments || []} />
+              </div>
+            </>
           )}
-
-          {/* Activity Details Breakdown (Read-Only) */}
-          <div className="space-y-4">
-            <h3 className="text-sm font-bold uppercase tracking-wider text-primary border-b border-border pb-1">
-              Work Performed & Achievements
-            </h3>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="p-3.5 bg-card rounded-xl border border-border">
-                <span className="text-xs font-bold text-muted-foreground block mb-1">Activities Performed Today</span>
-                <p className="text-sm text-foreground whitespace-pre-wrap">{report.activities || 'N/A'}</p>
-              </div>
-
-              <div className="p-3.5 bg-card rounded-xl border border-border">
-                <span className="text-xs font-bold text-muted-foreground block mb-1">Tasks Completed</span>
-                <p className="text-sm text-foreground whitespace-pre-wrap">{report.completedTasks || 'N/A'}</p>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
-              <div className="p-3 bg-muted/40 rounded-xl border border-border">
-                <span className="text-[11px] font-bold text-muted-foreground block uppercase">Farmers Visited</span>
-                <span className="text-xl font-black text-primary">{report.farmersVisited || 0}</span>
-              </div>
-              <div className="p-3 bg-muted/40 rounded-xl border border-border">
-                <span className="text-[11px] font-bold text-muted-foreground block uppercase">Meetings Conducted</span>
-                <span className="text-xl font-black text-primary">{report.meetingsConducted || 0}</span>
-              </div>
-              <div className="p-3 bg-muted/40 rounded-xl border border-border">
-                <span className="text-[11px] font-bold text-muted-foreground block uppercase">Work Start Time</span>
-                <span className="text-sm font-bold text-foreground">{report.workStartTime || '09:00'}</span>
-              </div>
-              <div className="p-3 bg-muted/40 rounded-xl border border-border">
-                <span className="text-[11px] font-bold text-muted-foreground block uppercase">Work End Time</span>
-                <span className="text-sm font-bold text-foreground">{report.workEndTime || '18:00'}</span>
-              </div>
-            </div>
-
-            {report.challenges && (
-              <div className="p-3.5 bg-amber-50/60 dark:bg-amber-950/30 rounded-xl border border-amber-200 dark:border-amber-900/60">
-                <span className="text-xs font-bold text-amber-900 dark:text-amber-200 flex items-center gap-1.5 mb-1">
-                  <AlertTriangle className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400 shrink-0" /> Challenges & Issues Faced
-                </span>
-                <p className="text-xs text-amber-900 dark:text-amber-200 whitespace-pre-wrap">{report.challenges}</p>
-              </div>
-            )}
-
-            {report.nextDayPlan && (
-              <div className="p-3.5 bg-muted/40 rounded-xl border border-border">
-                <span className="text-xs font-bold text-foreground flex items-center gap-1.5 mb-1">
-                  <Calendar className="h-3.5 w-3.5 text-primary shrink-0" /> Plan for Next Working Day
-                </span>
-                <p className="text-xs text-foreground whitespace-pre-wrap">{report.nextDayPlan}</p>
-              </div>
-            )}
-          </div>
-
-          {/* Evidence Attachments */}
-          <div className="space-y-2">
-            <h3 className="text-sm font-bold uppercase tracking-wider text-primary border-b border-border pb-1">
-              Work Photo & Video Evidence
-            </h3>
-            <AttachmentGallery attachments={report.attachments || []} />
-          </div>
 
           {/* Review Decision & Action Footer */}
           {report.status === 'approved' ? (

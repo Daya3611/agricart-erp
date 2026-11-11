@@ -1,4 +1,4 @@
-import { ReportStatus, UserRole } from './index';
+import { ReportStatus, UserRole, ApprovalHistoryRecord, EditRequestRecord } from './index';
 
 export interface GpsCoordinate {
   latitude: number;
@@ -16,12 +16,21 @@ export type LocationData = GpsCoordinate;
 
 export type LocationCaptureStatus = 'captured' | 'unavailable' | 'denied' | 'pending';
 
+export type CanonicalActivityStatus =
+  | 'NOT_STARTED'
+  | 'IN_PROGRESS'
+  | 'COMPLETED'
+  | 'CANCELLED';
+
 export type ActivitySlotStatus =
   | 'not_started'
   | 'in_progress'
   | 'completed'
+  | 'cancelled'
+  | 'NOT_STARTED'
   | 'IN_PROGRESS'
-  | 'COMPLETED';
+  | 'COMPLETED'
+  | 'CANCELLED';
 
 export type ActivityChoiceKey =
   | 'farmer_visit'
@@ -123,8 +132,10 @@ export interface FieldActivitySlot {
   activityOther?: string;
   village?: string;
   wadi?: string;
-  activityType?: 'single_farmer' | 'group';
+  activityType?: 'single_farmer' | 'group' | 'group_meeting' | 'demonstration' | 'training' | 'other' | string;
+  participantType?: string;
   farmerName?: string;
+  groupDetails?: string;
   totalParticipants: number;
   maleParticipants: number;
   femaleParticipants: number;
@@ -171,7 +182,7 @@ export interface FieldActivityRecord {
   reportDate: string; // YYYY-MM-DD
   slotNumber: number;
 
-  activityStatus: 'IN_PROGRESS' | 'COMPLETED' | 'in_progress' | 'completed';
+  activityStatus: ActivitySlotStatus;
 
   activityName: string | null;
   activityNameLabel?: string | null;
@@ -193,7 +204,9 @@ export interface FieldActivityRecord {
   durationMinutes?: number | null;
 
   participantType: string | null;
+  activityType?: string | null;
   farmerName: string | null;
+  groupDetails?: string | null;
   totalParticipants: number | null;
   maleParticipants: number | null;
   femaleParticipants: number | null;
@@ -201,9 +214,12 @@ export interface FieldActivityRecord {
   observations: string | null;
   farmerIssues: string | null;
   supportProvided: string[];
+  supportOther?: string | null;
   followUpRequired: boolean;
   followUpDetails: string | null;
   followUpDate?: string | null;
+  crpCode?: string;
+  blockTaluka?: string;
 
   photoEvidence: string[];
   photoUrl?: string;
@@ -266,9 +282,14 @@ export interface FieldReport {
   conflictDetails?: string;
   reviewerUid?: string;
   reviewerName?: string;
+  reviewerRole?: string;
   reviewedAt?: string;
   reviewComments?: string;
   revisionNumber: number;
+  editRequest?: EditRequestRecord;
+  editRequestHistory?: EditRequestRecord[];
+  lastApproval?: ApprovalHistoryRecord;
+  approvalHistory?: ApprovalHistoryRecord[];
 
   // Timestamps
   createdAt: string;
@@ -355,14 +376,19 @@ export interface EmployeeMonthlySummaryItem {
 
 export interface EmployeeDailyActivityDetail {
   slotNumber: number;
+  activityId?: string;
   activityName: string;
   activityNameLabel: string;
+  activityOther?: string;
   activityType: string;
   village: string;
   wadi: string;
   farmerName?: string;
+  groupDetails?: string;
   startTime: string;
   endTime: string;
+  startTimeIso?: string;
+  endTimeIso?: string;
   durationMinutes: number;
   participants: number;
   maleParticipants: number;
@@ -370,11 +396,18 @@ export interface EmployeeDailyActivityDetail {
   observations: string;
   issues?: string;
   supportProvided: string[];
+  supportOther?: string;
   followUpRequired: boolean;
   followUpDetails?: string;
+  followUpDate?: string;
   startLocationName?: string;
   endLocationName?: string;
+  startGps?: GpsCoordinate | null;
+  endGps?: GpsCoordinate | null;
+  photoUrl?: string;
   photoUrls?: string[];
+  videoUrl?: string;
+  videoUrls?: string[];
   status?: string;
 }
 
@@ -446,14 +479,23 @@ export interface MonthlyReportsDataset {
     reportDate: string;
     employeeId: string;
     employeeName: string;
+    departmentName?: string;
+    centerName?: string;
+    crpCode?: string;
+    blockTaluka?: string;
     slotNumber: number;
+    activityStatus?: string;
     activityName: string;
+    activityOther?: string;
     activityType: string;
     village: string;
     wadi: string;
     farmerName?: string;
+    groupDetails?: string;
     startTime: string;
     endTime: string;
+    startTimeIso?: string;
+    endTimeIso?: string;
     durationMinutes: number;
     participants: number;
     maleParticipants: number;
@@ -461,14 +503,27 @@ export interface MonthlyReportsDataset {
     observations: string;
     issues?: string;
     supportProvided: string;
+    supportOther?: string;
+    followUpRequired?: boolean;
+    followUpDetails?: string;
+    followUpDate?: string;
     followUp: string;
     startGps: string;
     startGpsCoords?: string;
     startGpsLocationName?: string;
+    startAccuracy?: string;
     endGps: string;
     endGpsCoords?: string;
     endGpsLocationName?: string;
+    endAccuracy?: string;
     photoEvidenceRefs?: string;
+    photoUrls?: string[];
+    videoEvidenceRefs?: string;
+    videoUrls?: string[];
+    reviewStatus?: string;
+    reviewerName?: string;
+    reviewComments?: string;
+    correctionHistory?: string;
   }>;
   attendanceRecords: Array<{
     employeeId: string;

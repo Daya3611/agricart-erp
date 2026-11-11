@@ -29,6 +29,7 @@ import {
 } from 'lucide-react';
 import { UserProfile, UserRole } from '@/types';
 import { cn } from '@/lib/utils/cn';
+import { resolveActiveNavHref } from '@/lib/utils/navigation';
 import {
   Sheet,
   SheetContent,
@@ -82,12 +83,6 @@ export function MobileBottomNav({ user }: MobileBottomNavProps) {
       { label: 'My Leaves', href: '/staff/leaves', icon: CalendarOff },
     ];
   }
-
-  // Check if current route is among secondary items (to highlight "More")
-  const isPrimaryActive = primaryItems.some((item) =>
-    item.exact ? pathname === item.href : pathname.startsWith(item.href)
-  );
-  const isMoreActive = !isPrimaryActive;
 
   // Secondary destinations grouped for the Sheet
   const getSecondaryGroups = () => {
@@ -147,6 +142,16 @@ export function MobileBottomNav({ user }: MobileBottomNavProps) {
     ];
   };
 
+  const secondaryGroups = getSecondaryGroups();
+  const activeHref = resolveActiveNavHref(pathname, [
+    ...primaryItems,
+    ...secondaryGroups.flatMap((group) => group.items),
+  ]);
+
+  // Check if current route is among primary items (otherwise highlight "More")
+  const isPrimaryActive = primaryItems.some((item) => item.href === activeHref);
+  const isMoreActive = !isPrimaryActive;
+
   const handleLogout = async () => {
     try {
       await fetch('/api/auth/logout', { method: 'POST' });
@@ -166,9 +171,7 @@ export function MobileBottomNav({ user }: MobileBottomNavProps) {
         <div className="flex items-center justify-between w-full h-16 max-w-md mx-auto px-1 sm:px-2">
           {primaryItems.map((item) => {
             const Icon = item.icon;
-            const isActive = item.exact
-              ? pathname === item.href
-              : pathname.startsWith(item.href);
+            const isActive = item.href === activeHref;
 
             return (
               <Link
@@ -248,7 +251,7 @@ export function MobileBottomNav({ user }: MobileBottomNavProps) {
           </SheetHeader>
 
           <div className="py-2 space-y-4">
-            {getSecondaryGroups().map((group, idx) => (
+            {secondaryGroups.map((group, idx) => (
               <div key={idx} className="space-y-1">
                 <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider px-2">
                   {group.groupName}
@@ -256,7 +259,7 @@ export function MobileBottomNav({ user }: MobileBottomNavProps) {
                 <div className="space-y-0.5">
                   {group.items.map((item) => {
                     const Icon = item.icon;
-                    const isActive = pathname.startsWith(item.href);
+                    const isActive = item.href === activeHref;
                     return (
                       <Link
                         key={item.href}

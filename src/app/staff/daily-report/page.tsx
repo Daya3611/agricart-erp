@@ -37,7 +37,15 @@ import {
   LocationCaptureStatus,
 } from '@/types';
 import { getOperationalDateString, formatReadableDate } from '@/lib/utils/date-utils';
-import { calculateActivitiesSummary } from '@/lib/utils/field-activity-calculations';
+import {
+  calculateActivitiesSummary,
+  convertRecordToSlot,
+  isActivityCompleted,
+  isActivityInProgress,
+  mergeDayActivities,
+  normalizeActivityStatus,
+  reconcileRemoteAndLocalSlots,
+} from '@/lib/utils/field-activity-calculations';
 import { captureCurrentGps } from '@/lib/utils/geolocation';
 import {
   saveReportLocally,
@@ -46,27 +54,40 @@ import {
   saveActivityLocally,
   loadLocalActivities,
   syncPendingActivitiesToServer,
+  reconcileLocalOfflineCache,
 } from '@/lib/offline/sync-service';
 
 function defaultSlot(slotNumber: number): FieldActivitySlot {
   return {
     slotNumber,
-    activityStatus: 'not_started',
+    activityStatus: 'NOT_STARTED',
     activityStart: '',
     activityStartAt: '',
     activityStartLocation: null,
     activityStartGps: null,
     activityName: 'farmer_visit',
     activityNameLabel: 'Farmer Visit',
+    activityOther: '',
     activityType: 'single_farmer',
+    participantType: 'single_farmer',
     farmerName: '',
+    groupDetails: '',
     village: '',
+    wadi: '',
     totalParticipants: 1,
     maleParticipants: 0,
     femaleParticipants: 0,
     observations: '',
+    farmerIssues: '',
     supportProvided: [],
+    supportOther: '',
     followUpRequired: false,
+    followUpDetails: '',
+    followUpDate: '',
+    photoUrl: '',
+    photoEvidence: [],
+    videoUrl: '',
+    videoEvidence: [],
     activityEnd: '',
     activityEndAt: '',
     activityEndLocation: null,
@@ -86,7 +107,23 @@ function FieldActivityReportingContent() {
   const [crpCode, setCrpCode] = useState<string>('');
   const [blockTaluka, setBlockTaluka] = useState<string>('');
 
-  const [activities, setActivities] = useState<FieldActivitySlot[]>([defaultSlot(1)]);
+  const [activities, setActivitiesState] = useState<FieldActivitySlot[]>([defaultSlot(1)]);
+  const activitiesRef = React.useRef<FieldActivitySlot[]>([defaultSlot(1)]);
+  const setActivities = React.useCallback(
+    (updater: React.SetStateAction<FieldActivitySlot[]>) => {
+      if (typeof updater === 'function') {
+        setActivitiesState((prev) => {
+          const next = updater(prev);
+          activitiesRef.current = next;
+          return next;
+        });
+      } else {
+        activitiesRef.current = updater;
+        setActivitiesState(updater);
+      }
+    },
+    []
+  );
   const [continuationAnswers, setContinuationAnswers] = useState<Record<number, boolean>>({});
 
   const [isFinalized, setIsFinalized] = useState(false);
@@ -101,6 +138,77 @@ function FieldActivityReportingContent() {
 
   const [savingSlotDraft, setSavingSlotDraft] = useState<Record<number, boolean>>({});
   const autoSaveTimeoutRef = React.useRef<Record<number, NodeJS.Timeout>>({});
+  const autoSaveGenRef = React.useRef<Record<number, number>>({});
+  const startingLockRef = React.useRef<Record<number, boolean>>({});
+  const endingLockRef = React.useRef<Record<number, boolean>>({});
+  const finalizingLockRef = React.useRef(false);
+  const userRef = React.useRef<UserProfile | null>(null);
+  const reportDateRef = React.useRef<string>(reportDate);
+
+  useEffect(() => {
+    userRef.current = user;
+  }, [user]);
+
+  useEffect(() => {
+    reportDateRef.current = reportDate;
+  }, [reportDate]);
+
+  /**
+   * Re-fetch live activities from Firestore and reconcile local React + Dexie state
+   * so stale IN_PROGRESS caches never override COMPLETED / CANCELLED / NOT_STARTED records.
+   */
+  const refreshAuthoritativeActivities = React.useCallback(
+    async (
+      staffUid: string,
+      dateStr: string,
+      options?: {
+        reportActivities?: FieldActivitySlot[];
+        localFallbackSlots?: FieldActivitySlot[];
+        preserveSlot?: FieldActivitySlot;
+      }
+    ): Promise<FieldActivitySlot[] | null> => {
+      if (typeof window === 'undefined' || !navigator.onLine) return null;
+      try {
+        const actRes = await fetch(`/api/field-activities?date=${encodeURIComponent(dateStr)}`, {
+          cache: 'no-store',
+        });
+        const actData = await actRes.json().catch(() => ({}));
+        if (!actRes.ok || !actData.success) return null;
+
+        const remoteRecords = Array.isArray(actData.activities) ? actData.activities : [];
+        const reportSlots = options?.reportActivities || [];
+        const remoteSlots = mergeDayActivities(reportSlots, remoteRecords).map((s) => ({
+          ...defaultSlot(s.slotNumber),
+          ...s,
+          activityStatus: normalizeActivityStatus(s),
+          activityStartLocationStatus:
+            s.activityStartLocationStatus || (s.activityStartAt ? 'captured' : undefined),
+          activityEndLocationStatus:
+            s.activityEndLocationStatus || (s.activityEndAt ? 'captured' : undefined),
+        }));
+
+        const remoteWithPreserve = options?.preserveSlot
+          ? reconcileRemoteAndLocalSlots(remoteSlots, [options.preserveSlot])
+          : remoteSlots;
+
+        const localSlots = options?.localFallbackSlots ?? activitiesRef.current;
+        const reconciled =
+          remoteWithPreserve.length > 0
+            ? reconcileRemoteAndLocalSlots(remoteWithPreserve, localSlots)
+            : localSlots;
+
+        if (reconciled.length > 0) {
+          setActivities(reconciled);
+        }
+        await reconcileLocalOfflineCache(staffUid, dateStr, remoteWithPreserve);
+        return reconciled;
+      } catch (err) {
+        console.warn('Authoritative activity refresh warning:', err);
+        return null;
+      }
+    },
+    [setActivities]
+  );
 
   // Monitor network connectivity & auto-sync pending activities & reports
   useEffect(() => {
@@ -110,7 +218,10 @@ function FieldActivityReportingContent() {
       Promise.all([
         syncPendingActivitiesToServer(),
         syncPendingReportsToServer(),
-      ]).then(([actRes, repRes]) => {
+      ]).then(async ([actRes, repRes]) => {
+        if (userRef.current) {
+          await refreshAuthoritativeActivities(userRef.current.uid, reportDateRef.current);
+        }
         const total = (actRes.syncedCount || 0) + (repRes.syncedCount || 0);
         if (total > 0) {
           setStatusMessage({
@@ -128,7 +239,7 @@ function FieldActivityReportingContent() {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
-  }, []);
+  }, [refreshAuthoritativeActivities]);
 
   // Initial load: restore active & completed activities from Firestore and local Dexie
   useEffect(() => {
@@ -136,16 +247,40 @@ function FieldActivityReportingContent() {
       try {
         setLoading(true);
         // 1. Session user
-        const sessRes = await fetch('/api/auth/session');
+        const sessRes = await fetch('/api/auth/session', { cache: 'no-store' });
         const sessData = await sessRes.json();
         if (sessData.authenticated && sessData.user) {
           setUser(sessData.user);
+          userRef.current = sessData.user;
           const staffUid = sessData.user.uid;
 
-          // 2. Check local Dexie offline draft and local activities first
+          let targetDate = reportDate;
+          let loadedReport: FieldReport | null = null;
+
+          // When opening by specific report ID (e.g. from Corrections / Report History), resolve its operational date first
+          if (reportIdParam && navigator.onLine) {
+            try {
+              const idRes = await fetch(`/api/field-reports/${reportIdParam}`, { cache: 'no-store' });
+              const idData = await idRes.json().catch(() => ({}));
+              if (idRes.ok && idData.success && idData.report) {
+                loadedReport = idData.report as FieldReport;
+                if (loadedReport.reportDate) {
+                  targetDate = loadedReport.reportDate;
+                  if (targetDate !== reportDate) {
+                    setReportDate(targetDate);
+                    reportDateRef.current = targetDate;
+                  }
+                }
+              }
+            } catch (idErr) {
+              console.warn('Report ID lookup warning:', idErr);
+            }
+          }
+
+          // 2. Check local Dexie offline draft and local activities for the resolved date
           const [localDraft, localActivities] = await Promise.all([
-            loadLocalReport(staffUid, reportDate),
-            loadLocalActivities(staffUid, reportDate),
+            loadLocalReport(staffUid, targetDate),
+            loadLocalActivities(staffUid, targetDate),
           ]);
 
           let initialSlots: FieldActivitySlot[] = [];
@@ -157,11 +292,15 @@ function FieldActivityReportingContent() {
               activityId: la.activityId,
               id: la.activityId,
               slotNumber: la.slotNumber,
-              activityStatus: la.activityStatus,
+              activityStatus: normalizeActivityStatus(la.activityData || la),
               syncStatus: la.syncStatus as any,
             }));
           } else if (localDraft && localDraft.activities?.length > 0) {
-            initialSlots = localDraft.activities;
+            initialSlots = localDraft.activities.map((a) => ({
+              ...defaultSlot(a.slotNumber),
+              ...a,
+              activityStatus: normalizeActivityStatus(a),
+            }));
           }
 
           if (localDraft) {
@@ -172,72 +311,72 @@ function FieldActivityReportingContent() {
             setSyncStatus(localDraft.syncStatus as any);
           }
 
-          // 3. Check remote server activities and report
+          // 3. Check remote server activities and report (Firestore is authoritative)
           if (navigator.onLine) {
             try {
               const [actRes, repRes] = await Promise.all([
-                fetch(`/api/field-activities?date=${reportDate}`),
-                fetch(reportIdParam ? `/api/field-reports/${reportIdParam}` : `/api/field-reports/check?date=${reportDate}`),
+                fetch(`/api/field-activities?date=${encodeURIComponent(targetDate)}`, {
+                  cache: 'no-store',
+                }),
+                loadedReport
+                  ? Promise.resolve(null)
+                  : fetch(`/api/field-reports/check?date=${encodeURIComponent(targetDate)}`, {
+                      cache: 'no-store',
+                    }),
               ]);
 
               const actData = await actRes.json().catch(() => ({}));
-              const repData = await repRes.json().catch(() => ({}));
+              if (!loadedReport && repRes) {
+                const repData = await repRes.json().catch(() => ({}));
+                if (repRes.ok && repData.success && repData.report) {
+                  loadedReport = repData.report as FieldReport;
+                }
+              }
 
-              if (repRes.ok && repData.success && repData.report) {
-                const rep: FieldReport = repData.report;
+              if (loadedReport) {
+                const rep: FieldReport = loadedReport;
+                const isReopened = rep.status === 'correction_requested' || rep.status === 'edit_requested';
                 setExistingReport(rep);
                 setReportDate(rep.reportDate);
+                reportDateRef.current = rep.reportDate;
                 setCrpCode(rep.crpCode || '');
                 setBlockTaluka(rep.blockTaluka || '');
-                setIsFinalized(Boolean(rep.finalized || rep.status === 'submitted' || rep.status === 'approved'));
+                setIsFinalized(
+                  !isReopened &&
+                    Boolean(
+                      rep.finalized ||
+                        rep.status === 'submitted' ||
+                        rep.status === 'resubmitted' ||
+                        rep.status === 'approved' ||
+                        rep.status === 'rejected'
+                    )
+                );
                 setFinalizationGps(rep.finalizationGps || null);
                 setSyncStatus('synced');
               }
 
-              if (actRes.ok && actData.success && Array.isArray(actData.activities) && actData.activities.length > 0) {
-                // Map remote activities to slot list
-                const remoteSlots: FieldActivitySlot[] = actData.activities.map((rec: any) => ({
-                  ...defaultSlot(rec.slotNumber),
-                  activityId: rec.activityId || rec.id,
-                  id: rec.activityId || rec.id,
-                  slotNumber: rec.slotNumber,
-                  activityStatus: rec.activityStatus,
-                  activityName: rec.activityName || 'farmer_visit',
-                  activityNameLabel: rec.activityNameLabel || '',
-                  activityOther: rec.activityOther || '',
-                  village: rec.village || '',
-                  wadi: rec.wadi || '',
-                  activityType: rec.participantType || 'single_farmer',
-                  farmerName: rec.farmerName || '',
-                  totalParticipants: rec.totalParticipants ?? 0,
-                  maleParticipants: rec.maleParticipants ?? 0,
-                  femaleParticipants: rec.femaleParticipants ?? 0,
-                  observations: rec.observations || '',
-                  farmerIssues: rec.farmerIssues || '',
-                  supportProvided: rec.supportProvided || [],
-                  followUpRequired: Boolean(rec.followUpRequired),
-                  followUpDetails: rec.followUpDetails || '',
-                  followUpDate: rec.followUpDate || '',
-                  photoUrl: rec.photoUrl || (rec.photoEvidence?.[0] || ''),
-                  videoUrl: rec.videoUrl || (rec.videoEvidence?.[0] || ''),
-                  photoEvidence: rec.photoEvidence || [],
-                  videoEvidence: rec.videoEvidence || [],
-                  activityStartAt: rec.activityStartAt || '',
-                  activityStart: rec.activityStartAt || '',
-                  activityStartLocation: rec.activityStartLocation || null,
-                  activityStartGps: rec.activityStartLocation || null,
-                  activityStartLocationStatus: rec.activityStartLocationStatus || 'captured',
-                  activityEndAt: rec.activityEndAt || '',
-                  activityEnd: rec.activityEndAt || '',
-                  activityEndLocation: rec.activityEndLocation || null,
-                  activityEndGps: rec.activityEndLocation || null,
-                  activityEndLocationStatus: rec.activityEndLocationStatus || (rec.activityEndAt ? 'captured' : null),
-                  durationMinutes: rec.activityDurationMinutes ?? rec.durationMinutes ?? 0,
-                  activityDurationMinutes: rec.activityDurationMinutes ?? rec.durationMinutes ?? 0,
-                  syncStatus: 'synced',
-                }));
+              const reportSlots =
+                loadedReport && Array.isArray(loadedReport.activities)
+                  ? loadedReport.activities
+                  : [];
+              const standaloneRecs =
+                actRes.ok && actData.success && Array.isArray(actData.activities)
+                  ? actData.activities
+                  : [];
 
-                initialSlots = remoteSlots.sort((a, b) => a.slotNumber - b.slotNumber);
+              const remoteSlots = mergeDayActivities(reportSlots, standaloneRecs).map((s) => ({
+                ...defaultSlot(s.slotNumber),
+                ...s,
+                activityStatus: normalizeActivityStatus(s),
+                activityStartLocationStatus:
+                  s.activityStartLocationStatus || (s.activityStartAt ? 'captured' : undefined),
+                activityEndLocationStatus:
+                  s.activityEndLocationStatus || (s.activityEndAt ? 'captured' : undefined),
+              }));
+
+              if (remoteSlots.length > 0) {
+                initialSlots = reconcileRemoteAndLocalSlots(remoteSlots, initialSlots);
+                await reconcileLocalOfflineCache(staffUid, targetDate, remoteSlots);
               }
             } catch (netErr) {
               console.warn('Remote check error, using local data:', netErr);
@@ -268,57 +407,94 @@ function FieldActivityReportingContent() {
 
   // Handle activity update (local state + Dexie + debounced autosave to Firestore if in progress)
   const handleUpdateActivity = (updated: FieldActivitySlot) => {
-    setActivities((prev) => prev.map((a) => (a.slotNumber === updated.slotNumber ? updated : a)));
+    const normalizedStatus = normalizeActivityStatus(updated);
+    const normalizedUpdated: FieldActivitySlot = {
+      ...updated,
+      activityStatus: normalizedStatus,
+    };
 
-    if (!user) return;
+    setActivities((prev) =>
+      prev.map((a) => (a.slotNumber === normalizedUpdated.slotNumber ? normalizedUpdated : a))
+    );
 
-    // 1. Save locally in Dexie immediately
-    if (updated.activityId) {
+    const activeUser = userRef.current || user;
+    if (!activeUser) return;
+
+    const slotNum = normalizedUpdated.slotNumber;
+    const nextGen = (autoSaveGenRef.current[slotNum] || 0) + 1;
+    autoSaveGenRef.current[slotNum] = nextGen;
+
+    // 1. Save locally in Dexie immediately (unless End Activity is actively running for this slot)
+    if (normalizedUpdated.activityId && !endingLockRef.current[slotNum]) {
       saveActivityLocally({
-        activityId: updated.activityId,
-        staffUid: user.uid,
-        employeeId: user.employeeId || '',
-        employeeName: user.fullName || '',
+        activityId: normalizedUpdated.activityId,
+        staffUid: activeUser.uid,
+        employeeId: activeUser.employeeId || '',
+        employeeName: activeUser.fullName || '',
         reportDate,
-        slotNumber: updated.slotNumber,
-        activityStatus: updated.activityStatus as any,
-        activityData: updated,
+        slotNumber: slotNum,
+        activityStatus: normalizedStatus,
+        activityData: normalizedUpdated,
         syncStatus: 'saved_offline',
       }).catch(console.warn);
     }
 
-    // 2. Debounced autosave to Firestore if in progress
-    const isInProg = updated.activityStatus === 'IN_PROGRESS' || updated.activityStatus === 'in_progress';
-    if (isInProg && updated.activityId && navigator.onLine) {
-      if (autoSaveTimeoutRef.current[updated.slotNumber]) {
-        clearTimeout(autoSaveTimeoutRef.current[updated.slotNumber]);
+    // 2. Debounced autosave to Firestore strictly while genuinely IN_PROGRESS
+    if (isActivityInProgress(normalizedUpdated) && normalizedUpdated.activityId && navigator.onLine) {
+      if (autoSaveTimeoutRef.current[slotNum]) {
+        clearTimeout(autoSaveTimeoutRef.current[slotNum]);
       }
 
-      autoSaveTimeoutRef.current[updated.slotNumber] = setTimeout(async () => {
+      const targetActivityId = normalizedUpdated.activityId;
+      autoSaveTimeoutRef.current[slotNum] = setTimeout(async () => {
+        if (endingLockRef.current[slotNum] || autoSaveGenRef.current[slotNum] !== nextGen) {
+          return;
+        }
+        const currentLatest = activitiesRef.current.find((a) => a.slotNumber === slotNum);
+        if (!currentLatest || !isActivityInProgress(currentLatest)) {
+          return;
+        }
+
         try {
-          await fetch('/api/field-activities/save', {
+          const saveRes = await fetch('/api/field-activities/save', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              activityId: updated.activityId,
-              updates: updated,
+              activityId: targetActivityId,
+              updates: normalizedUpdated,
             }),
           });
-          if (user) {
-            saveActivityLocally({
-              activityId: updated.activityId!,
-              staffUid: user.uid,
-              employeeId: user.employeeId || '',
-              employeeName: user.fullName || '',
-              reportDate,
-              slotNumber: updated.slotNumber,
-              activityStatus: 'IN_PROGRESS',
-              activityData: updated,
+          const saveData = await saveRes.json().catch(() => ({}));
+
+          // Abort local overwrite if End Activity started or completed while request was in flight
+          if (endingLockRef.current[slotNum] || autoSaveGenRef.current[slotNum] !== nextGen) {
+            return;
+          }
+          const postFetchSlot = activitiesRef.current.find((a) => a.slotNumber === slotNum);
+          if (postFetchSlot && !isActivityInProgress(postFetchSlot)) {
+            return;
+          }
+
+          const latestUser = userRef.current || activeUser;
+          if (latestUser) {
+            const resolvedStatus = normalizeActivityStatus(saveData?.activity || postFetchSlot || normalizedUpdated);
+            await saveActivityLocally({
+              activityId: targetActivityId,
+              staffUid: latestUser.uid,
+              employeeId: latestUser.employeeId || '',
+              employeeName: latestUser.fullName || '',
+              reportDate: reportDateRef.current || reportDate,
+              slotNumber: slotNum,
+              activityStatus: resolvedStatus,
+              activityData:
+                saveData?.activity && resolvedStatus !== 'IN_PROGRESS'
+                  ? { ...normalizedUpdated, ...convertRecordToSlot(saveData.activity), activityStatus: resolvedStatus }
+                  : { ...normalizedUpdated, activityStatus: resolvedStatus },
               syncStatus: 'synced',
-            }).catch(console.warn);
+            });
           }
         } catch (err) {
-          console.warn(`Autosave failed for activity #${updated.slotNumber}:`, err);
+          console.warn(`Autosave failed for activity #${slotNum}:`, err);
         }
       }, 1500); // 1.5s debounce
     }
@@ -331,6 +507,7 @@ function FieldActivityReportingContent() {
 
     setSavingSlotDraft((prev) => ({ ...prev, [slotNumber]: true }));
     try {
+      let savedViaSlotApi = false;
       if (slot.activityId && navigator.onLine) {
         const res = await fetch('/api/field-activities/save', {
           method: 'POST',
@@ -341,8 +518,29 @@ function FieldActivityReportingContent() {
           }),
         });
         const data = await res.json();
-        if (!res.ok || !data.success) {
+        if (res.ok && data.success) {
+          savedViaSlotApi = true;
+        } else if (data.error && !data.error.includes('not found in database')) {
           throw new Error(data.error || 'Failed to save activity draft.');
+        }
+      }
+
+      // Fallback or reopened report: persist entire report draft so changes are never lost
+      if (!savedViaSlotApi && navigator.onLine) {
+        const repRes = await fetch('/api/field-reports', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            reportDate,
+            crpCode,
+            blockTaluka,
+            activities,
+            finalizeNow: false,
+          }),
+        });
+        const repData = await repRes.json();
+        if (!repRes.ok || !repData.success) {
+          throw new Error(repData.error || 'Failed to save activity draft.');
         }
       }
 
@@ -353,234 +551,317 @@ function FieldActivityReportingContent() {
         employeeName: user.fullName || '',
         reportDate,
         slotNumber,
-        activityStatus: (slot.activityStatus as any) || 'IN_PROGRESS',
-        activityData: slot,
-        syncStatus: navigator.onLine && slot.activityId ? 'synced' : 'saved_offline',
+        activityStatus: normalizeActivityStatus(slot),
+        activityData: { ...slot, activityStatus: normalizeActivityStatus(slot) },
+        syncStatus: navigator.onLine ? 'synced' : 'saved_offline',
       });
 
       setStatusMessage({
         type: 'success',
-        text: `Activity #${slotNumber} draft saved successfully.`,
+        text: `Activity #${slotNumber} changes saved successfully.`,
       });
-      setTimeout(() => setStatusMessage(null), 3000);
+      setTimeout(() => setStatusMessage(null), 3500);
     } catch (err: any) {
       setStatusMessage({ type: 'error', text: err.message });
       setTimeout(() => setStatusMessage(null), 5000);
+      throw err;
     } finally {
       setSavingSlotDraft((prev) => ({ ...prev, [slotNumber]: false }));
     }
   };
 
-  // Start an activity: creates a Firestore document immediately in erp_field_activities with IN_PROGRESS
+  // Start an activity: validates against live Firestore state first, then creates/updates IN_PROGRESS doc
   const handleStartActivity = async (slotNumber: number) => {
     if (!user) throw new Error('You must be logged in to start an activity.');
     if (isFinalized) throw new Error('This report has already been finalized.');
+    if (startingLockRef.current[slotNumber]) return;
+    startingLockRef.current[slotNumber] = true;
 
-    // Prevent multiple simultaneously active activities
-    const activeElsewhere = activities.find(
-      (a) =>
-        a.slotNumber !== slotNumber &&
-        (a.activityStatus === 'IN_PROGRESS' || a.activityStatus === 'in_progress')
-    );
-    if (activeElsewhere) {
-      throw new Error(
-        `Activity #${activeElsewhere.slotNumber} (${activeElsewhere.activityNameLabel || activeElsewhere.activityName}) is already IN PROGRESS. Please complete it before starting Activity #${slotNumber}.`
+    try {
+      // 1. Refresh authoritative Firestore state before validating active conflicts so stale local
+      // caches or already-completed slots never falsely block starting a new activity
+      let currentActivities = activitiesRef.current;
+      if (navigator.onLine) {
+        const refreshed = await refreshAuthoritativeActivities(user.uid, reportDate);
+        if (refreshed && refreshed.length > 0) {
+          currentActivities = refreshed;
+        }
+      }
+
+      const targetSlot =
+        currentActivities.find((s) => s.slotNumber === slotNumber) || defaultSlot(slotNumber);
+
+      if (isActivityCompleted(targetSlot)) {
+        throw new Error(
+          `Activity #${slotNumber} has already been completed and cannot be restarted.`
+        );
+      }
+
+      // 2. Only block when another activity genuinely has status IN_PROGRESS
+      const activeElsewhere = currentActivities.find(
+        (a) => a.slotNumber !== slotNumber && isActivityInProgress(a)
       );
-    }
+      if (activeElsewhere) {
+        const activeLabel = activeElsewhere.activityNameLabel || activeElsewhere.activityName;
+        throw new Error(
+          `Activity #${activeElsewhere.slotNumber} (${activeLabel}) is already IN PROGRESS. Please complete it by clicking 'End Activity' before starting a new one.`
+        );
+      }
 
-    // Capture real GPS coordinates with reverse geocoded place name
-    const res = await captureCurrentGps();
-    const nowIso = new Date().toISOString();
+      // Capture real GPS coordinates with reverse geocoded place name
+      const res = await captureCurrentGps();
+      const nowIso = new Date().toISOString();
 
-    const targetSlot = activities.find((s) => s.slotNumber === slotNumber) || defaultSlot(slotNumber);
-    let assignedActivityId = targetSlot.activityId || `act_${user.uid}_${reportDate}_s${slotNumber}_${Date.now()}`;
-    let isServerSaved = false;
+      // Always mint a fresh activityId for NOT_STARTED / CANCELLED slots to prevent stale ID reuse
+      let assignedActivityId =
+        isActivityInProgress(targetSlot) && targetSlot.activityId
+          ? targetSlot.activityId
+          : `act_${user.uid}_${reportDate}_s${slotNumber}_${Date.now()}`;
+      let isServerSaved = false;
+      let serverActivityRecord: any = null;
 
-    if (navigator.onLine) {
-      try {
-        const startRes = await fetch('/api/field-activities/start', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
+      if (navigator.onLine) {
+        try {
+          const startRes = await fetch('/api/field-activities/start', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              activityId: assignedActivityId,
+              slotNumber,
+              reportDate,
+              activityName: targetSlot.activityName,
+              activityNameLabel: targetSlot.activityNameLabel,
+              activityOther: targetSlot.activityOther,
+              village: targetSlot.village,
+              wadi: targetSlot.wadi,
+              gps: res.coords,
+              locationStatus: res.status,
+              initialDetails: targetSlot,
+            }),
+          });
+
+          const startData = await startRes.json();
+          if (!startRes.ok || !startData.success) {
+            throw new Error(startData.error || 'Failed to start activity in database.');
+          }
+
+          if (startData.activityId) {
+            assignedActivityId = startData.activityId;
+          }
+          if (startData.activity) {
+            serverActivityRecord = startData.activity;
+          }
+          isServerSaved = true;
+        } catch (apiErr: any) {
+          if (
+            apiErr.message.includes('already IN PROGRESS') ||
+            apiErr.message.includes('already been completed')
+          ) {
+            await refreshAuthoritativeActivities(user.uid, reportDate);
+            throw apiErr;
+          }
+          console.warn('Online activity start deferred to offline:', apiErr.message);
+        }
+      }
+
+      const updatedSlot: FieldActivitySlot = serverActivityRecord
+        ? {
+            ...targetSlot,
+            ...convertRecordToSlot(serverActivityRecord),
             activityId: assignedActivityId,
-            slotNumber,
-            reportDate,
-            activityName: targetSlot.activityName,
-            activityNameLabel: targetSlot.activityNameLabel,
-            activityOther: targetSlot.activityOther,
-            village: targetSlot.village,
-            wadi: targetSlot.wadi,
-            gps: res.coords,
-            locationStatus: res.status,
-            initialDetails: targetSlot,
-          }),
-        });
+            id: assignedActivityId,
+            activityStatus: normalizeActivityStatus(serverActivityRecord),
+            syncStatus: 'synced',
+          }
+        : {
+            ...targetSlot,
+            activityId: assignedActivityId,
+            id: assignedActivityId,
+            activityStatus: 'IN_PROGRESS',
+            activityStartAt: nowIso,
+            activityStart: nowIso,
+            activityStartLocation: res.coords,
+            activityStartGps: res.coords,
+            activityStartLocationStatus: res.status,
+            activityEndAt: '',
+            activityEnd: '',
+            activityEndLocation: null,
+            activityEndGps: null,
+            completedAt: null,
+            durationMinutes: 0,
+            activityDurationMinutes: 0,
+            syncStatus: isServerSaved ? 'synced' : 'saved_offline',
+          };
 
-        const startData = await startRes.json();
-        if (!startRes.ok || !startData.success) {
-          throw new Error(startData.error || 'Failed to start activity in database.');
-        }
+      const latestActivities = activitiesRef.current;
+      const hasSlot = latestActivities.some((s) => s.slotNumber === slotNumber);
+      const updatedActivities = hasSlot
+        ? latestActivities.map((s) => (s.slotNumber === slotNumber ? updatedSlot : s))
+        : [...latestActivities, updatedSlot].sort((a, b) => a.slotNumber - b.slotNumber);
+      setActivities(updatedActivities);
 
-        if (startData.activityId) {
-          assignedActivityId = startData.activityId;
-        }
-        isServerSaved = true;
-      } catch (apiErr: any) {
-        if (
-          apiErr.message.includes('already IN PROGRESS') ||
-          apiErr.message.includes('already been completed')
-        ) {
-          throw apiErr;
-        }
-        console.warn('Online activity start deferred to offline:', apiErr.message);
-      }
-    }
-
-    const updatedSlot: FieldActivitySlot = {
-      ...targetSlot,
-      activityId: assignedActivityId,
-      id: assignedActivityId,
-      activityStatus: 'IN_PROGRESS',
-      activityStartAt: nowIso,
-      activityStart: nowIso,
-      activityStartLocation: res.coords,
-      activityStartGps: res.coords,
-      activityStartLocationStatus: res.status,
-      activityEndAt: '',
-      activityEnd: '',
-      activityEndLocation: null,
-      activityEndGps: null,
-      durationMinutes: 0,
-      activityDurationMinutes: 0,
-      syncStatus: isServerSaved ? 'synced' : 'saved_offline',
-    };
-
-    const updatedActivities = activities.map((s) => (s.slotNumber === slotNumber ? updatedSlot : s));
-    setActivities(updatedActivities);
-
-    // Save locally in Dexie immediately
-    await saveActivityLocally({
-      activityId: assignedActivityId,
-      staffUid: user.uid,
-      employeeId: user.employeeId || '',
-      employeeName: user.fullName || '',
-      reportDate,
-      slotNumber,
-      activityStatus: 'IN_PROGRESS',
-      activityData: updatedSlot,
-      syncStatus: isServerSaved ? 'synced' : 'pending_sync',
-    });
-
-    await saveReportLocally({
-      staffUid: user.uid,
-      reportDate,
-      activities: updatedActivities,
-      crpCode,
-      blockTaluka,
-      finalized: false,
-      syncStatus: isServerSaved ? 'synced' : 'saved_offline',
-    });
-
-    setStatusMessage({
-      type: 'success',
-      text: isServerSaved
-        ? `Activity #${slotNumber} started and saved in Firestore immediately!`
-        : `Activity #${slotNumber} started locally offline. Will sync when online.`,
-    });
-    setTimeout(() => setStatusMessage(null), 5000);
-  };
-
-  // End an activity: validates details, captures fresh GPS, updates the SAME document to COMPLETED
-  const handleEndActivity = async (slotNumber: number) => {
-    if (!user) throw new Error('You must be logged in.');
-    if (isFinalized) throw new Error('This report has already been finalized.');
-
-    const currentSlot = activities.find((s) => s.slotNumber === slotNumber);
-    if (!currentSlot) throw new Error('Activity slot not found.');
-
-    // Clear any pending autosave timer for this slot
-    if (autoSaveTimeoutRef.current[slotNumber]) {
-      clearTimeout(autoSaveTimeoutRef.current[slotNumber]);
-    }
-
-    // Capture fresh GPS coordinates with reverse geocoded place name
-    const res = await captureCurrentGps();
-    const nowIso = new Date().toISOString();
-
-    const startMs = new Date(currentSlot.activityStartAt || currentSlot.activityStart || nowIso).getTime();
-    const endMs = new Date(nowIso).getTime();
-    const durMinutes = Math.max(1, Math.round((endMs - startMs) / 60000));
-
-    let isServerSaved = false;
-
-    if (currentSlot.activityId && navigator.onLine) {
-      const endRes = await fetch('/api/field-activities/end', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          activityId: currentSlot.activityId,
-          endGps: res.coords,
-          locationStatus: res.status,
-          finalDetails: {
-            ...currentSlot,
-            durationMinutes: durMinutes,
-            activityDurationMinutes: durMinutes,
-          },
-        }),
-      });
-
-      const endData = await endRes.json();
-      if (!endRes.ok || !endData.success) {
-        throw new Error(endData.error || 'Failed to complete activity in database.');
-      }
-      isServerSaved = true;
-    }
-
-    const updatedSlot: FieldActivitySlot = {
-      ...currentSlot,
-      activityStatus: 'COMPLETED',
-      activityEndAt: nowIso,
-      activityEnd: nowIso,
-      activityEndLocation: res.coords,
-      activityEndGps: res.coords,
-      activityEndLocationStatus: res.status,
-      durationMinutes: durMinutes,
-      activityDurationMinutes: durMinutes,
-      syncStatus: isServerSaved ? 'synced' : 'saved_offline',
-    };
-
-    const updatedActivities = activities.map((s) => (s.slotNumber === slotNumber ? updatedSlot : s));
-    setActivities(updatedActivities);
-
-    if (currentSlot.activityId) {
+      // Save locally in Dexie immediately
       await saveActivityLocally({
-        activityId: currentSlot.activityId,
+        activityId: assignedActivityId,
         staffUid: user.uid,
         employeeId: user.employeeId || '',
         employeeName: user.fullName || '',
         reportDate,
         slotNumber,
-        activityStatus: 'COMPLETED',
+        activityStatus: updatedSlot.activityStatus as any,
         activityData: updatedSlot,
         syncStatus: isServerSaved ? 'synced' : 'pending_sync',
       });
+
+      await saveReportLocally({
+        staffUid: user.uid,
+        reportDate,
+        activities: updatedActivities,
+        crpCode,
+        blockTaluka,
+        finalized: false,
+        syncStatus: isServerSaved ? 'synced' : 'saved_offline',
+      });
+
+      if (isServerSaved) {
+        await refreshAuthoritativeActivities(user.uid, reportDate, { preserveSlot: updatedSlot });
+      }
+
+      setStatusMessage({
+        type: 'success',
+        text: isServerSaved
+          ? `Activity #${slotNumber} started and saved in Firestore immediately!`
+          : `Activity #${slotNumber} started locally offline. Will sync when online.`,
+      });
+      setTimeout(() => setStatusMessage(null), 5000);
+    } finally {
+      startingLockRef.current[slotNumber] = false;
     }
+  };
 
-    await saveReportLocally({
-      staffUid: user.uid,
-      reportDate,
-      activities: updatedActivities,
-      crpCode,
-      blockTaluka,
-      finalized: false,
-      syncStatus: isServerSaved ? 'synced' : 'saved_offline',
-    });
+  // End an activity: confirms Firestore COMPLETED first, then refreshes local state & clears active ref
+  const handleEndActivity = async (slotNumber: number) => {
+    if (!user) throw new Error('You must be logged in.');
+    if (isFinalized) throw new Error('This report has already been finalized.');
+    if (endingLockRef.current[slotNumber]) return;
+    endingLockRef.current[slotNumber] = true;
 
-    setStatusMessage({
-      type: 'success',
-      text: `Activity #${slotNumber} completed and saved (${durMinutes} mins duration).`,
-    });
-    setTimeout(() => setStatusMessage(null), 4000);
+    try {
+      // Invalidate any pending or in-flight autosave for this slot immediately
+      autoSaveGenRef.current[slotNumber] = (autoSaveGenRef.current[slotNumber] || 0) + 1;
+      if (autoSaveTimeoutRef.current[slotNumber]) {
+        clearTimeout(autoSaveTimeoutRef.current[slotNumber]);
+      }
+
+      const currentSlot = activitiesRef.current.find((s) => s.slotNumber === slotNumber);
+      if (!currentSlot) throw new Error('Activity slot not found.');
+
+      // Capture fresh GPS coordinates with reverse geocoded place name
+      const res = await captureCurrentGps();
+      const nowIso = new Date().toISOString();
+
+      const startMs = new Date(currentSlot.activityStartAt || currentSlot.activityStart || nowIso).getTime();
+      const endMs = new Date(nowIso).getTime();
+      const durMinutes = Math.max(1, Math.round((endMs - startMs) / 60000));
+
+      let isServerSaved = false;
+      let serverCompletedRecord: any = null;
+
+      if (currentSlot.activityId && navigator.onLine) {
+        const endRes = await fetch('/api/field-activities/end', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            activityId: currentSlot.activityId,
+            endGps: res.coords,
+            locationStatus: res.status,
+            finalDetails: {
+              ...currentSlot,
+              durationMinutes: durMinutes,
+              activityDurationMinutes: durMinutes,
+              activityEndAt: nowIso,
+            },
+          }),
+        });
+
+        const endData = await endRes.json();
+        if (!endRes.ok || !endData.success) {
+          throw new Error(endData.error || 'Failed to complete activity in database.');
+        }
+        serverCompletedRecord = endData.activity || null;
+        isServerSaved = true;
+      }
+
+      const resolvedActivityId =
+        serverCompletedRecord?.activityId || currentSlot.activityId;
+
+      const updatedSlot: FieldActivitySlot = serverCompletedRecord
+        ? {
+            ...currentSlot,
+            ...convertRecordToSlot(serverCompletedRecord),
+            activityId: resolvedActivityId,
+            id: resolvedActivityId,
+            activityStatus: 'COMPLETED',
+            syncStatus: 'synced',
+          }
+        : {
+            ...currentSlot,
+            activityId: resolvedActivityId,
+            id: resolvedActivityId,
+            activityStatus: 'COMPLETED',
+            activityEndAt: nowIso,
+            activityEnd: nowIso,
+            activityEndLocation: res.coords,
+            activityEndGps: res.coords,
+            activityEndLocationStatus: res.status,
+            completedAt: nowIso,
+            durationMinutes: durMinutes,
+            activityDurationMinutes: durMinutes,
+            syncStatus: isServerSaved ? 'synced' : 'saved_offline',
+          };
+
+      const updatedActivities = activitiesRef.current.map((s) =>
+        s.slotNumber === slotNumber ? updatedSlot : s
+      );
+      setActivities(updatedActivities);
+
+      if (resolvedActivityId) {
+        await saveActivityLocally({
+          activityId: resolvedActivityId,
+          staffUid: user.uid,
+          employeeId: user.employeeId || '',
+          employeeName: user.fullName || '',
+          reportDate,
+          slotNumber,
+          activityStatus: 'COMPLETED',
+          activityData: updatedSlot,
+          syncStatus: isServerSaved ? 'synced' : 'pending_sync',
+        });
+      }
+
+      await saveReportLocally({
+        staffUid: user.uid,
+        reportDate,
+        activities: updatedActivities,
+        crpCode,
+        blockTaluka,
+        finalized: false,
+        syncStatus: isServerSaved ? 'synced' : 'saved_offline',
+      });
+
+      // Immediately refresh live Firestore state after completion is persisted
+      if (isServerSaved) {
+        await refreshAuthoritativeActivities(user.uid, reportDate, { preserveSlot: updatedSlot });
+      }
+
+      setStatusMessage({
+        type: 'success',
+        text: `Activity #${slotNumber} completed and saved (${durMinutes} mins duration).`,
+      });
+      setTimeout(() => setStatusMessage(null), 4000);
+    } finally {
+      endingLockRef.current[slotNumber] = false;
+    }
   };
 
   // Continuation handler for slot i (1 to 19)
@@ -665,17 +946,18 @@ function FieldActivityReportingContent() {
 
   // Finalize Daily Report
   const handleFinalizeReport = async (gps: GpsCoordinate | null, locationStatus: LocationCaptureStatus) => {
-    if (!user) return;
+    if (!user || finalizingLockRef.current) return;
+    finalizingLockRef.current = true;
     setStatusMessage(null);
 
-    // Validate calculations (strictly requiring completed activities)
-    const { errors, validatedActivities } = calculateActivitiesSummary(activities, true);
-    if (errors.length > 0) {
-      setStatusMessage({ type: 'error', text: errors[0] });
-      throw new Error(errors[0]);
-    }
-
     try {
+      // Validate calculations (strictly requiring completed activities)
+      const { errors, validatedActivities } = calculateActivitiesSummary(activities, true);
+      if (errors.length > 0) {
+        setStatusMessage({ type: 'error', text: errors[0] });
+        throw new Error(errors[0]);
+      }
+
       // Save locally first
       await saveReportLocally({
         staffUid: user.uid,
@@ -709,12 +991,19 @@ function FieldActivityReportingContent() {
           throw new Error(data.error || 'Failed to submit finalized report.');
         }
 
+        const wasRevision =
+          existingReport?.status === 'correction_requested' ||
+          existingReport?.status === 'edit_requested';
+
         setIsFinalized(true);
         setFinalizationGps(gps);
         setSyncStatus('synced');
+        setExistingReport((prev) => (prev ? { ...prev, status: wasRevision ? 'resubmitted' : 'submitted', finalized: true } : prev));
         setStatusMessage({
           type: 'success',
-          text: 'Field Activity Report finalized and submitted successfully!',
+          text: wasRevision
+            ? 'Revised Field Activity Report resubmitted and finalized successfully!'
+            : 'Field Activity Report finalized and submitted successfully!',
         });
       } else {
         setIsFinalized(true);
@@ -728,6 +1017,8 @@ function FieldActivityReportingContent() {
     } catch (err: any) {
       setStatusMessage({ type: 'error', text: err.message });
       throw err;
+    } finally {
+      finalizingLockRef.current = false;
     }
   };
 
@@ -832,6 +1123,35 @@ function FieldActivityReportingContent() {
         </div>
       )}
 
+      {existingReport && (existingReport.status === 'correction_requested' || existingReport.status === 'edit_requested') && (
+        <div className="p-4 rounded-xl border border-amber-300 bg-amber-50/90 dark:bg-amber-950/30 text-amber-950 dark:text-amber-200 space-y-1.5 text-xs">
+          <div className="flex items-center justify-between gap-2">
+            <span className="font-black text-sm flex items-center gap-1.5">
+              <AlertCircle className="h-4 w-4 text-amber-600 shrink-0" />
+              Supervisor Action Required: {existingReport.status === 'edit_requested' ? 'Edit Requested' : 'Correction Requested'}
+            </span>
+            {existingReport.reviewerName && (
+              <span className="text-[11px] font-semibold text-amber-800 dark:text-amber-300">
+                By {existingReport.reviewerName}
+              </span>
+            )}
+          </div>
+          {(existingReport.editRequest?.reason || existingReport.reviewComments) && (
+            <p className="font-medium leading-relaxed">
+              &quot;{existingReport.editRequest?.reason || existingReport.reviewComments}&quot;
+            </p>
+          )}
+          {existingReport.editRequest?.instructions && (
+            <p className="p-2 rounded-lg bg-white/70 dark:bg-black/20 border border-amber-200 text-[11px]">
+              <strong>Instructions:</strong> {existingReport.editRequest.instructions}
+            </p>
+          )}
+          <p className="text-[11px] text-amber-800 dark:text-amber-300 font-semibold">
+            You can edit the activity details below, click &quot;Save Revision&quot; (or press Enter), and re-finalize your Daily Report when ready.
+          </p>
+        </div>
+      )}
+
       {/* Attendance Clock-In Widget */}
       {user && <AttendanceWidget user={user} />}
 
@@ -876,6 +1196,12 @@ function FieldActivityReportingContent() {
               <Input
                 value={crpCode}
                 onChange={(e) => setCrpCode(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !isFinalized) {
+                    e.preventDefault();
+                    void handleSaveDraft();
+                  }
+                }}
                 placeholder="e.g. CRP-042"
                 disabled={isFinalized}
                 className="text-xs h-9"
@@ -887,6 +1213,12 @@ function FieldActivityReportingContent() {
               <Input
                 value={blockTaluka}
                 onChange={(e) => setBlockTaluka(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !isFinalized) {
+                    e.preventDefault();
+                    void handleSaveDraft();
+                  }
+                }}
                 placeholder="e.g. Dindori / Niphad"
                 disabled={isFinalized}
                 className="text-xs h-9"
@@ -923,13 +1255,16 @@ function FieldActivityReportingContent() {
                 onEndActivity={handleEndActivity}
                 onSaveDraft={handleSaveActivityDraft}
                 isSavingDraft={savingSlotDraft[slot.slotNumber] || false}
+                allowEditCompleted={Boolean(
+                  existingReport &&
+                    (existingReport.status === 'correction_requested' ||
+                      existingReport.status === 'edit_requested')
+                )}
                 hasActiveActivityElsewhere={activities.some(
-                  (a) =>
-                    a.slotNumber !== slot.slotNumber &&
-                    (a.activityStatus === 'IN_PROGRESS' || a.activityStatus === 'in_progress')
+                  (a) => a.slotNumber !== slot.slotNumber && isActivityInProgress(a)
                 )}
                 onRemove={
-                  idx > 0 && !isFinalized && slot.activityStatus === 'not_started'
+                  idx > 0 && !isFinalized && normalizeActivityStatus(slot) === 'NOT_STARTED'
                     ? () => {
                       setActivities((prev) => prev.filter((_, i) => i !== idx));
                     }
@@ -942,7 +1277,7 @@ function FieldActivityReportingContent() {
               {!isFinalized &&
                 slotNum < 20 &&
                 isLastRecorded &&
-                (slot.activityStatus === 'completed' || slot.activityStatus === 'COMPLETED') && (
+                isActivityCompleted(slot) && (
                   <div className="p-4 sm:p-5 bg-gradient-to-r from-emerald-50/70 via-card to-card dark:from-emerald-950/20 dark:via-card dark:to-card rounded-2xl border border-emerald-200/80 dark:border-emerald-900/50 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-all">
                     <div className="flex items-start gap-3">
                       <div className="h-9 w-9 rounded-xl bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 flex items-center justify-center shrink-0 mt-0.5 shadow-2xs">

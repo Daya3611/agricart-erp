@@ -106,11 +106,11 @@ export default function StaffCorrectionsPage() {
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs text-slate-700">
                     <div>
                       <span className="font-semibold text-slate-500 block">Reported Activities:</span>
-                      <p className="line-clamp-2">{r.activities}</p>
+                      <p className="whitespace-pre-wrap break-words">{r.activities}</p>
                     </div>
                     <div>
                       <span className="font-semibold text-slate-500 block">Completed Tasks:</span>
-                      <p className="line-clamp-2">{r.completedTasks}</p>
+                      <p className="whitespace-pre-wrap break-words">{r.completedTasks}</p>
                     </div>
                   </div>
 

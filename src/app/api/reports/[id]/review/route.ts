@@ -29,7 +29,11 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
           reviewerName: fieldDoc.reviewerName,
           reviewedAt: fieldDoc.reviewedAt,
           reviewComments: fieldDoc.reviewComments || '',
-          revisionNumber: 1,
+          editRequest: fieldDoc.editRequest,
+          editRequestHistory: fieldDoc.editRequestHistory || [],
+          lastApproval: fieldDoc.lastApproval,
+          approvalHistory: fieldDoc.approvalHistory || [],
+          revisionNumber: fieldDoc.revisionNumber || 1,
         });
       }
       return NextResponse.json({ success: false, error: 'Report not found' }, { status: 404 });
