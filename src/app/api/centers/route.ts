@@ -20,7 +20,7 @@ export async function POST(req: Request) {
   try {
     const sessionUser = await requireAdmin();
     const body = await req.json();
-    const { name, code, address, locationDetails, departmentId } = body;
+    const { name, code, address, locationDetails, departmentId, photoUrl, logoUrl, photoMediaId, photoObjectKey, mediaIds } = body;
 
     if (!name || !code) {
       return NextResponse.json({ error: 'Center name and code required' }, { status: 400 });
@@ -36,6 +36,11 @@ export async function POST(req: Request) {
       locationDetails: locationDetails || '',
       departmentId: departmentId || 'dept_field_ops',
       assignedStaffUids: [],
+      ...(photoUrl ? { photoUrl } : {}),
+      ...(logoUrl ? { logoUrl } : {}),
+      ...(photoMediaId ? { photoMediaId } : {}),
+      ...(photoObjectKey ? { photoObjectKey } : {}),
+      ...(Array.isArray(mediaIds) ? { mediaIds } : {}),
       active: true,
       createdAt: now,
       updatedAt: now,

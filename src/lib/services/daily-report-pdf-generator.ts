@@ -1,4 +1,4 @@
-import { AttendanceSession, FieldReport } from '@/types';
+import { AttendanceSession, Center, FieldReport, UserProfile } from '@/types';
 import { formatDateTimeIST, formatReadableDate, formatTimeIST } from '@/lib/utils/date-utils';
 import {
   formatLocationDisplay,
@@ -8,8 +8,36 @@ import {
   resolveActivityNameLabel,
   resolveSupportText,
 } from '@/lib/utils/field-activity-calculations';
-import { getGlobalReportingSettings } from '@/lib/services/settings-service';
+import { getGlobalReportingSettings, getSystemSettings } from '@/lib/services/settings-service';
 import { fetchAttachmentData, FetchedAttachmentData } from '@/lib/services/attachment-fetcher';
+import { fetchDocument } from '@/lib/firebase/firestore';
+import { ERP_COLLECTIONS } from '@/lib/firebase/collections';
+import {
+  createReportMediaResolver,
+  mapConcurrent,
+  ResolvedReportMediaAsset,
+} from '@/lib/reports/media-resolver';
+
+function drawFitImage(
+  doc: any,
+  asset: ResolvedReportMediaAsset,
+  boxX: number,
+  boxY: number,
+  boxW: number,
+  boxH: number
+) {
+  if (!asset.pdfFormat) return;
+  const aspect = asset.aspectRatio || 1;
+  let drawW = boxW;
+  let drawH = drawW / aspect;
+  if (drawH > boxH) {
+    drawH = boxH;
+    drawW = drawH * aspect;
+  }
+  const x = boxX + (boxW - drawW) / 2;
+  const y = boxY + (boxH - drawH) / 2;
+  doc.addImage(asset.base64DataUrl, asset.pdfFormat, x, y, drawW, drawH, undefined, 'FAST');
+}
 
 /**
  * Generates a complete, untruncated Daily Field Activity Report PDF for an employee.
@@ -27,40 +55,118 @@ export async function generateDailyFieldReportPDF(
   const autoTableModule = await import('jspdf-autotable');
   const autoTable = (autoTableModule as any).default || autoTableModule;
 
-  const reportingConfig = await getGlobalReportingSettings();
+  const [reportingConfig, systemSettings, employeeDoc] = await Promise.all([
+    getGlobalReportingSettings(),
+    getSystemSettings(),
+    report.staffUid
+      ? (fetchDocument(ERP_COLLECTIONS.employees, report.staffUid) as Promise<UserProfile | null>)
+      : Promise.resolve(null),
+  ]);
+  const centerId = report.centerId || employeeDoc?.assignedCenterIds?.[0];
+  const centerDoc = centerId
+    ? ((await fetchDocument(ERP_COLLECTIONS.centers, centerId)) as Center | null)
+    : null;
+
+  const mediaResolver = createReportMediaResolver();
+  await mediaResolver.preloadMediaIds([
+    employeeDoc?.avatarMediaId,
+    centerDoc?.photoMediaId,
+  ]);
+
+  const [employeeAvatarAsset, centerPhotoAsset] = await Promise.all([
+    mediaResolver.resolveEmployeeAvatar(employeeDoc),
+    mediaResolver.resolveCenterPhoto(centerDoc),
+  ]);
+
   const includeGps = reportingConfig.includeGpsInExports !== false;
   const includePhotos = reportingConfig.includePhotosInExports !== false;
-  const showOrgHeader = reportingConfig.pdfSettings?.showOrgHeader !== false;
 
   const activities = [...(report.activities || [])].sort((a, b) => (a.slotNumber || 0) - (b.slotNumber || 0));
 
-  // Preload photos per activity slot when enabled
+  // Preload photos per activity slot with bounded concurrency (deduped via shared mediaResolver cache)
   const slotPhotosMap = new Map<number, FetchedAttachmentData[]>();
   if (includePhotos) {
+    const photoTasks: Array<{
+      slotNumber: number;
+      index: number;
+      url: string;
+      objectKey?: string;
+      mediaId?: string;
+      uploadedAt: string;
+      caption: string;
+    }> = [];
+
     for (const act of activities) {
       const photos = mergeEvidenceUrls(act.photoUrl, act.photoEvidence);
-      if (photos.length === 0) continue;
-      const fetched: FetchedAttachmentData[] = [];
-      for (let i = 0; i < photos.length; i++) {
-        const url = photos[i];
-        const data = await fetchAttachmentData(
-          {
-            id: `daily_${report.id}_${act.slotNumber}_${i}`,
-            reportId: report.id,
-            staffUid: report.staffUid,
-            uploadedByUid: report.staffUid,
-            storagePath: url,
-            downloadUrl: url,
-            originalFilename: `Activity_${act.slotNumber}_Photo_${i + 1}.jpg`,
-            fileSize: 0,
-            mimeType: 'image/jpeg',
-            uploadedAt: act.activityEndAt || act.activityStartAt || report.submittedAt || new Date().toISOString(),
-          },
-          report.reportDate
-        );
-        fetched.push(data);
+      const actLabel = resolveActivityNameLabel(act);
+      const capturedAt = act.activityEndAt || act.activityStartAt || report.submittedAt || new Date().toISOString();
+      const metaList = Array.isArray(act.photoMetadata) ? act.photoMetadata : [];
+      const keyList = Array.isArray(act.photoObjectKeys) ? act.photoObjectKeys : [];
+      const mediaIdList = Array.isArray(act.photoMediaIds) ? act.photoMediaIds : [];
+
+      if (photos.length > 0) {
+        photos.forEach((url, i) => {
+          const matchedMeta = metaList.find((m) => m.url === url) || metaList[i];
+          photoTasks.push({
+            slotNumber: act.slotNumber,
+            index: i,
+            url,
+            objectKey: matchedMeta?.objectKey || keyList[i],
+            mediaId: matchedMeta?.mediaId || mediaIdList[i],
+            uploadedAt: matchedMeta?.uploadedAt || capturedAt,
+            caption: `Activity #${act.slotNumber}: ${actLabel} — Photo ${i + 1}`,
+          });
+        });
+      } else if (keyList.length > 0 || mediaIdList.length > 0 || metaList.length > 0) {
+        const count = Math.max(metaList.length, keyList.length, mediaIdList.length);
+        for (let i = 0; i < count; i++) {
+          const matchedMeta = metaList[i];
+          const fallbackKey = matchedMeta?.objectKey || keyList[i];
+          const fallbackMediaId = matchedMeta?.mediaId || mediaIdList[i];
+          if (!fallbackKey && !fallbackMediaId) continue;
+          photoTasks.push({
+            slotNumber: act.slotNumber,
+            index: i,
+            url: fallbackMediaId ? `/api/v1/media/${fallbackMediaId}` : fallbackKey || '',
+            objectKey: fallbackKey,
+            mediaId: fallbackMediaId,
+            uploadedAt: matchedMeta?.uploadedAt || capturedAt,
+            caption: `Activity #${act.slotNumber}: ${actLabel} — Photo ${i + 1}`,
+          });
+        }
       }
-      slotPhotosMap.set(act.slotNumber, fetched);
+    }
+
+    await mediaResolver.preloadMediaIds(photoTasks.map((t) => t.mediaId));
+
+    const fetchedAll = await mapConcurrent(photoTasks, 4, async (task) => {
+      const data = await fetchAttachmentData(
+        {
+          id: `daily_${report.id}_${task.slotNumber}_${task.index}`,
+          reportId: report.id,
+          staffUid: report.staffUid,
+          uploadedByUid: report.staffUid,
+          storagePath: task.objectKey || task.url,
+          downloadUrl: task.url,
+          objectKey: task.objectKey,
+          r2ObjectKey: task.objectKey,
+          mediaId: task.mediaId,
+          originalFilename: `Activity_${task.slotNumber}_Photo_${task.index + 1}.jpg`,
+          caption: task.caption,
+          fileSize: 0,
+          mimeType: 'image/jpeg',
+          uploadedAt: task.uploadedAt,
+        },
+        report.reportDate,
+        mediaResolver
+      );
+      return { slotNumber: task.slotNumber, data };
+    });
+
+    for (const entry of fetchedAll) {
+      const existing = slotPhotosMap.get(entry.slotNumber) || [];
+      existing.push(entry.data);
+      slotPhotosMap.set(entry.slotNumber, existing);
     }
   }
 
@@ -78,31 +184,77 @@ export async function generateDailyFieldReportPDF(
   const rightMargin = 200;
   const printableWidth = 190;
 
-  // Forest Green Banner (#166534)
+  // Forest Green Banner (#166534) — Report heading only (no organization name or logo)
   doc.setFillColor(22, 101, 52);
   doc.rect(0, 0, pageWidth, 24, 'F');
 
   doc.setTextColor(255, 255, 255);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(13);
-  const titleText = reportingConfig.pdfSettings?.headerTitle || 'DAILY FIELD ACTIVITY REPORT';
-  doc.text(titleText, leftMargin, 9);
+  doc.text('DAILY FIELD ACTIVITY REPORT', leftMargin, 9.5);
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8);
-  const orgSub =
-    showOrgHeader && reportingConfig.organization?.companyName
-      ? `${reportingConfig.organization.companyName} • Complete Field Activity Submission`
-      : 'Official Verified Staff Activity Submission';
-  doc.text(orgSub, leftMargin, 15.5);
-  doc.text(`Generated (IST): ${formatDateTimeIST(new Date().toISOString())}`, rightMargin, 15.5, { align: 'right' });
+  doc.text('Complete Field Activity Submission', leftMargin, 16);
+  doc.text(`Generated (IST): ${formatDateTimeIST(new Date().toISOString())}`, rightMargin, 16, { align: 'right' });
+
+  let headerStartY = 27;
+  const hasAvatar = Boolean(employeeAvatarAsset?.pdfFormat);
+  const hasCenterPhoto = Boolean(centerPhotoAsset?.pdfFormat);
+
+  if (hasAvatar || hasCenterPhoto) {
+    doc.setFillColor(248, 250, 252);
+    doc.setDrawColor(226, 232, 240);
+    doc.roundedRect(leftMargin, headerStartY, printableWidth, 16, 1.5, 1.5, 'FD');
+
+    if (hasAvatar && employeeAvatarAsset) {
+      try {
+        doc.setFillColor(255, 255, 255);
+        doc.roundedRect(leftMargin + 2, headerStartY + 1.5, 13, 13, 1.5, 1.5, 'FD');
+        drawFitImage(doc, employeeAvatarAsset, leftMargin + 2.5, headerStartY + 2, 12, 12);
+      } catch {
+        // non-fatal
+      }
+    }
+    const empLabelX = hasAvatar ? leftMargin + 18 : leftMargin + 4;
+    doc.setTextColor(15, 23, 42);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8.5);
+    doc.text(report.staffName || 'Field Staff', empLabelX, headerStartY + 6.5);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.2);
+    doc.setTextColor(71, 85, 105);
+    doc.text(`${report.employeeId || 'EMP'} • ${report.departmentName || 'Field Operations'}`, empLabelX, headerStartY + 11.5);
+
+    if (hasCenterPhoto && centerPhotoAsset) {
+      try {
+        const cBoxX = rightMargin - 15;
+        doc.setFillColor(255, 255, 255);
+        doc.roundedRect(cBoxX, headerStartY + 1.5, 13, 13, 1.5, 1.5, 'FD');
+        drawFitImage(doc, centerPhotoAsset, cBoxX + 0.5, headerStartY + 2, 12, 12);
+      } catch {
+        // non-fatal
+      }
+    }
+    const centerTextRightX = hasCenterPhoto ? rightMargin - 18 : rightMargin - 4;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8);
+    doc.setTextColor(22, 101, 52);
+    doc.text(report.centerName || centerDoc?.name || 'Main Center', centerTextRightX, headerStartY + 6.5, { align: 'right' });
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7);
+    doc.setTextColor(100, 116, 139);
+    doc.text(centerDoc?.code ? `Center Code: ${centerDoc.code}` : 'Assigned Operations Hub', centerTextRightX, headerStartY + 11.5, { align: 'right' });
+
+    headerStartY += 18.5;
+  }
 
   const statusLabel = (report.status || 'draft').replace(/_/g, ' ').toUpperCase();
   const revLabel = (report.revisionNumber || 1) > 1 ? ` (Revision #${report.revisionNumber})` : '';
 
   // 1. Employee & Operational Header Details
   autoTable(doc, {
-    startY: 27,
+    startY: headerStartY,
     theme: 'grid',
     margin: { left: leftMargin, right: leftMargin },
     styles: { fontSize: 7.8, cellPadding: 2, overflow: 'linebreak', textColor: [15, 23, 42] },
@@ -323,8 +475,15 @@ export async function generateDailyFieldReportPDF(
           act.activityEndLocationStatus ? ` [${act.activityEndLocationStatus}]` : ''
         }`,
       ],
-      ['Photo Evidence URLs', photos.length > 0 ? photos.join('\n') : 'No photo evidence attached'],
-      ['Video Evidence URLs', videos.length > 0 ? videos.join('\n') : 'No video evidence attached'],
+      [
+        'Photo Evidence',
+        photos.length > 0
+          ? includePhotos
+            ? `${photos.length} photo(s) attached (embedded below)`
+            : `${photos.length} photo(s) attached (embedding disabled)`
+          : 'No photo evidence attached',
+      ],
+      ['Video Evidence Links', videos.length > 0 ? videos.join('\n') : 'No video evidence attached'],
     ];
 
     autoTable(doc, {
@@ -343,55 +502,93 @@ export async function generateDailyFieldReportPDF(
 
     currentY = ((doc as any).lastAutoTable?.finalY || currentY + 40) + 3;
 
-    // Render embedded photo thumbnails for this activity immediately underneath if preloaded
-    const slotPhotos = (slotPhotosMap.get(act.slotNumber) || []).filter(
-      (p) => !p.isVideo && !p.isUnavailable && p.base64DataUrl
-    );
-    if (slotPhotos.length > 0) {
-      const thumbW = 58;
-      const thumbH = 38;
-      const cardH = thumbH + 9;
+    // Render responsive 2-per-row embedded Photo Evidence Gallery (including graceful expired/missing cards)
+    const slotPhotos = (slotPhotosMap.get(act.slotNumber) || []).filter((p) => !p.isVideo);
+    if (includePhotos && slotPhotos.length > 0) {
+      const cardW = 92;
+      const thumbW = 86;
+      const thumbH = 54;
+      const cardH = thumbH + 14;
       const gapX = 6;
 
-      for (let i = 0; i < slotPhotos.length; i += 3) {
+      if (currentY + 10 + cardH > pageHeight - 16) {
+        doc.addPage();
+        currentY = 14;
+      }
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8.2);
+      doc.setTextColor(22, 101, 52);
+      doc.text(`Photo Evidence (${slotPhotos.length})`, leftMargin, currentY + 2);
+      currentY += 5;
+
+      for (let i = 0; i < slotPhotos.length; i += 2) {
         if (currentY + cardH > pageHeight - 16) {
           doc.addPage();
           currentY = 14;
         }
 
-        const chunk = slotPhotos.slice(i, i + 3);
+        const chunk = slotPhotos.slice(i, i + 2);
         chunk.forEach((item, colIdx) => {
-          const x = leftMargin + colIdx * (thumbW + gapX);
+          const x = leftMargin + colIdx * (cardW + gapX);
           doc.setFillColor(248, 250, 252);
           doc.setDrawColor(226, 232, 240);
-          doc.roundedRect(x, currentY, thumbW, cardH, 1.5, 1.5, 'FD');
+          doc.roundedRect(x, currentY, cardW, cardH, 1.5, 1.5, 'FD');
 
-          try {
-            const aspect = item.aspectRatio || 4 / 3;
-            const maxW = thumbW - 4;
-            const maxH = thumbH - 4;
-            let drawW = maxW;
-            let drawH = drawW / aspect;
-            if (drawH > maxH) {
-              drawH = maxH;
-              drawW = drawH * aspect;
+          const boxX = x + (cardW - thumbW) / 2;
+          const boxY = currentY + 3;
+
+          if (!item.isUnavailable && item.base64DataUrl && item.format) {
+            try {
+              const aspect = item.aspectRatio || 4 / 3;
+              let drawW = thumbW;
+              let drawH = drawW / aspect;
+              if (drawH > thumbH) {
+                drawH = thumbH;
+                drawW = drawH * aspect;
+              }
+              const imgX = boxX + (thumbW - drawW) / 2;
+              const imgY = boxY + (thumbH - drawH) / 2;
+              doc.addImage(item.base64DataUrl, item.format, imgX, imgY, drawW, drawH, undefined, 'FAST');
+            } catch {
+              doc.setFillColor(241, 245, 249);
+              doc.roundedRect(boxX, boxY, thumbW, thumbH, 1, 1, 'F');
+              doc.setFontSize(7.2);
+              doc.setTextColor(100, 116, 139);
+              doc.text('Photo preview unavailable', x + cardW / 2, boxY + thumbH / 2, { align: 'center' });
             }
-            const imgX = x + (thumbW - drawW) / 2;
-            const imgY = currentY + 2 + (maxH - drawH) / 2;
-            doc.addImage(item.base64DataUrl!, item.format || 'JPEG', imgX, imgY, drawW, drawH, undefined, 'FAST');
-          } catch {
-            doc.setFontSize(7);
-            doc.setTextColor(100, 116, 139);
-            doc.text('Photo preview unavailable', x + thumbW / 2, currentY + thumbH / 2, { align: 'center' });
+          } else {
+            doc.setFillColor(241, 245, 249);
+            doc.roundedRect(boxX, boxY, thumbW, thumbH, 1, 1, 'F');
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(7.5);
+            doc.setTextColor(180, 83, 9);
+            const reasonMsg =
+              item.failureReason === 'expired'
+                ? 'Photo unavailable (File missing or link expired)'
+                : item.failureReason === 'too_large'
+                ? 'Photo unavailable (Exceeds size limit)'
+                : item.failureReason === 'invalid_format'
+                ? 'Photo unavailable (Unsupported image format)'
+                : 'Photo unavailable (Could not be loaded)';
+            doc.text(reasonMsg, x + cardW / 2, boxY + thumbH / 2 - 1, { align: 'center' });
           }
 
+          const captionStr = item.caption || item.originalFilename || `Photo ${i + colIdx + 1}`;
+          const safeCap = doc.splitTextToSize(captionStr, cardW - 6) as string[];
           doc.setFont('helvetica', 'bold');
-          doc.setFontSize(6.5);
+          doc.setFontSize(6.8);
           doc.setTextColor(15, 23, 42);
-          doc.text(item.originalFilename, x + 2, currentY + thumbH + 5);
+          doc.text(safeCap[0] || captionStr, x + 3, currentY + thumbH + 7);
+
+          const tsLabel = item.uploadedAt ? `Captured (IST): ${formatDateTimeIST(item.uploadedAt)}` : '';
+          doc.setFont('helvetica', 'normal');
+          doc.setFontSize(6);
+          doc.setTextColor(100, 116, 139);
+          doc.text(tsLabel, x + 3, currentY + thumbH + 11.2);
         });
 
-        currentY += cardH + 3;
+        currentY += cardH + 3.5;
       }
     }
 
@@ -452,9 +649,7 @@ export async function generateDailyFieldReportPDF(
 
   // 6. Stamp consistent page footer on every page
   const totalPages = (doc as any).internal.getNumberOfPages();
-  const footerBanner =
-    reportingConfig.pdfSettings?.footerText ||
-    'Confidential Staff Activity Record • Official Verified Submission';
+  const footerBanner = 'Confidential Staff Activity Record';
   for (let p = 1; p <= totalPages; p++) {
     doc.setPage(p);
     doc.setFont('helvetica', 'normal');

@@ -6,6 +6,7 @@ import { getServerSession } from '@/lib/auth/session';
 import { fetchDocument } from '@/lib/firebase/firestore';
 import { ERP_COLLECTIONS } from '@/lib/firebase/collections';
 import { UserProfile } from '@/types';
+import { extractR2ObjectKeyFromUrl, getObjectFromR2, isR2Configured } from '@/lib/storage/r2';
 
 const MIME_TYPES: Record<string, string> = {
   '.png': 'image/png',
@@ -62,6 +63,24 @@ export async function GET(req: Request) {
             );
           }
         }
+      }
+    }
+
+    // 0. Try Cloudflare R2 Object Storage
+    if (isR2Configured()) {
+      try {
+        const r2Key = extractR2ObjectKeyFromUrl(filePathParam) || sanitizedPath;
+        const r2Object = await getObjectFromR2(r2Key);
+        if (r2Object) {
+          return new Response(new Uint8Array(r2Object.buffer), {
+            headers: {
+              'Content-Type': r2Object.contentType || contentType,
+              'Cache-Control': 'private, max-age=3600',
+            },
+          });
+        }
+      } catch {
+        // Not found in R2 or key invalid, fall through to Firebase / local fallback
       }
     }
 

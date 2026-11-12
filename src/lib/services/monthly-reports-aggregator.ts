@@ -9,9 +9,17 @@ import {
   FieldReport,
   MonthlyReportsDataset,
   UserProfile,
+  WorkSchedule,
 } from '@/types';
 import { formatGpsCompact } from '@/lib/utils/geolocation';
 import { formatDateTimeIST, formatTimeIST } from '@/lib/utils/date-utils';
+import {
+  buildAttendanceCutoffContext,
+  calculateAttendancePercentage,
+  isIncompleteAttendanceSession,
+  normalizeWorkingDayIndices,
+  resolveDailyAttendanceAndReportState,
+} from '@/lib/utils/attendance-status';
 import {
   calculateActivitiesSummary,
   getHumanPlaceName,
@@ -54,6 +62,7 @@ export async function buildMonthlyReportsDataset(params: {
   employeeUid?: string;
   reportStatus?: string;
   attendanceStatus?: string;
+  referenceDate?: Date;
 }): Promise<MonthlyReportsDataset> {
   const { year, month } = params;
   const monthName = `${MONTH_NAMES[month - 1]} ${year}`;
@@ -62,6 +71,7 @@ export async function buildMonthlyReportsDataset(params: {
   const workingDaysConfig = reportingConfig.workingDays || [1, 2, 3, 4, 5, 6];
   const holidaysConfig = reportingConfig.holidays || [];
   const includeGps = reportingConfig.includeGpsInExports !== false;
+  const operationalTimeZone = reportingConfig.timezone || 'Asia/Kolkata';
 
   const daysInMonth = new Date(year, month, 0).getDate();
   const startDateStr = `${year}-${String(month).padStart(2, '0')}-01`;
@@ -83,13 +93,19 @@ export async function buildMonthlyReportsDataset(params: {
     employees = employees.filter((e) => e.uid === params.employeeUid);
   }
 
-  // 2. Fetch NEW Field Reports, standalone Field Activities, Attendance Sessions, and Approved Leaves in parallel
-  const [allFieldReports, allStandaloneActivities, allAttendance, allLeaves] = await Promise.all([
+  // 2. Fetch NEW Field Reports, standalone Field Activities, Attendance Sessions, Approved Leaves, and Work Schedules in parallel
+  const [allFieldReports, allStandaloneActivities, allAttendance, allLeaves, allWorkSchedules] = await Promise.all([
     fetchCollection(ERP_COLLECTIONS.fieldReports) as Promise<FieldReport[]>,
     fetchCollection(ERP_COLLECTIONS.fieldActivities) as Promise<FieldActivityRecord[]>,
     fetchCollection(ERP_COLLECTIONS.attendanceSessions) as Promise<AttendanceSession[]>,
     fetchCollection(ERP_COLLECTIONS.leaveRecords) as Promise<any[]>,
+    fetchCollection(ERP_COLLECTIONS.workSchedules).catch(() => []) as Promise<WorkSchedule[]>,
   ]);
+
+  const workSchedulesById = new Map<string, WorkSchedule>();
+  for (const ws of allWorkSchedules || []) {
+    if (ws?.id) workSchedulesById.set(ws.id, ws);
+  }
 
   const monthReports = allFieldReports.filter(
     (r) => r.reportDate >= startDateStr && r.reportDate <= endDateStr
@@ -128,7 +144,19 @@ export async function buildMonthlyReportsDataset(params: {
   const reviewHistoryRows: MonthlyReportsDataset['reviewHistory'] = [];
 
   for (const emp of employees) {
+    const empSchedule = emp.workScheduleId ? workSchedulesById.get(emp.workScheduleId) : undefined;
+    const empWorkingDays = normalizeWorkingDayIndices(empSchedule?.workingDays, workingDaysConfig);
+    const cutoffCtx = buildAttendanceCutoffContext({
+      now: params.referenceDate,
+      timeZone: empSchedule?.timezone || operationalTimeZone,
+      cutoffTime: empSchedule?.dailyCutoffTime || empSchedule?.deadline || reportingConfig.submissionDeadline,
+      graceMinutes: empSchedule?.graceMinutes || 0,
+    });
+
     let totalWorkingDays = 0;
+    let elapsedWorkingDays = 0;
+    let elapsedLeaveOnWorkdays = 0;
+    let upcomingDays = 0;
     let daysAttended = 0;
     let presentDays = 0;
     let daysWithActivities = 0;
@@ -158,13 +186,9 @@ export async function buildMonthlyReportsDataset(params: {
       const dayOfWeekIdx = dayDate.getUTCDay();
       const dayOfWeek = DAYS_OF_WEEK[dayOfWeekIdx];
 
-      const isWeeklyOff = !workingDaysConfig.includes(dayOfWeekIdx);
+      const isWeeklyOff = !empWorkingDays.includes(dayOfWeekIdx);
       const holiday = holidaysConfig.find((h) => h.date === dateStr);
       const isHoliday = Boolean(holiday);
-
-      if (!isWeeklyOff && !isHoliday) {
-        totalWorkingDays++;
-      }
 
       const report = reportsByEmpDate.get(`${emp.uid}_${dateStr}`);
       const standaloneForDay = standaloneByEmpDate.get(`${emp.uid}_${dateStr}`) || [];
@@ -182,6 +206,32 @@ export async function buildMonthlyReportsDataset(params: {
               report.status
             ))
       );
+
+      const dayState = resolveDailyAttendanceAndReportState({
+        dateStr,
+        cutoffCtx,
+        attendance,
+        leave,
+        isHoliday,
+        isWeeklyOff,
+        hasActivities,
+        hasSubmittedReport,
+        reportStatus: report?.status,
+      });
+
+      if (!isWeeklyOff && !isHoliday) {
+        totalWorkingDays++;
+        if (dayState.isCutoffPassed) {
+          elapsedWorkingDays++;
+          if (leave) {
+            elapsedLeaveOnWorkdays++;
+          }
+        }
+      }
+
+      if (dayState.attendanceStatus === 'Upcoming') {
+        upcomingDays++;
+      }
 
       if (leave) {
         leaveDays++;
@@ -216,10 +266,10 @@ export async function buildMonthlyReportsDataset(params: {
           loginAccuracy: attendance.loginGps?.accuracy ? `${attendance.loginGps.accuracy}m` : '—',
           logoutAccuracy: attendance.logoutGps?.accuracy ? `${attendance.logoutGps.accuracy}m` : '—',
           logoutType: attendance.logoutType || '—',
-          attendanceStatus: attendance.status.toUpperCase(),
+          attendanceStatus: isIncompleteAttendanceSession(attendance) ? 'IN PROGRESS' : 'PRESENT',
           workingDuration: workingDurationText,
         });
-      } else if (!isWeeklyOff && !isHoliday && !leave) {
+      } else if (dayState.isMissingAttendance) {
         missingAttendanceDays++;
       }
 
@@ -417,8 +467,12 @@ export async function buildMonthlyReportsDataset(params: {
             endGpsLocationName: endLocName,
             photoEvidenceRefs: photos.length > 0 ? photos.join('\n') : 'None',
             photoUrls: photos,
+            photoObjectKeys: Array.isArray(act.photoObjectKeys) ? act.photoObjectKeys : undefined,
+            photoMediaIds: Array.isArray(act.photoMediaIds) ? act.photoMediaIds : undefined,
             videoEvidenceRefs: videos.length > 0 ? videos.join('\n') : 'None',
             videoUrls: videos,
+            videoObjectKeys: Array.isArray(act.videoObjectKeys) ? act.videoObjectKeys : undefined,
+            videoMediaIds: Array.isArray(act.videoMediaIds) ? act.videoMediaIds : undefined,
             reviewStatus: reportStatusNormalized,
             reviewerName: report?.reviewerName || '—',
             reviewComments: report?.reviewComments || report?.editRequest?.reason || '—',
@@ -429,24 +483,14 @@ export async function buildMonthlyReportsDataset(params: {
 
       if (hasSubmittedReport) {
         daysReportSubmitted++;
-      } else if (!leave && !isWeeklyOff && !isHoliday) {
+      } else if (dayState.isMissingReport) {
         daysReportMissing++;
-        if (attendance) {
+        if (dayState.isMissingActivity) {
           missingActivityDays++;
         }
       }
 
-      let attendanceStatus = 'Absent';
-      if (attendance) {
-        attendanceStatus =
-          attendance.status === 'active' ? 'Active' : attendance.systemClosed ? 'Auto-Closed' : 'Present';
-      } else if (leave) {
-        attendanceStatus = 'On Leave';
-      } else if (isHoliday) {
-        attendanceStatus = 'Holiday';
-      } else if (isWeeklyOff) {
-        attendanceStatus = 'Weekly Off';
-      }
+      const attendanceStatus = dayState.attendanceStatus;
 
       const loginTime = formatTimeIST(attendance?.loginTimestamp);
       const logoutTime = formatTimeIST(attendance?.logoutTimestamp);
@@ -474,28 +518,11 @@ export async function buildMonthlyReportsDataset(params: {
         activitySummaryText = 'Weekly Off';
       } else if (attendance) {
         activitySummaryText = 'Attended — No activities logged';
+      } else if (dayState.attendanceStatus === 'Upcoming') {
+        activitySummaryText = 'Upcoming scheduled workday';
       }
 
-      let overallReportStatus = 'Missing';
-      if (hasSubmittedReport && report) {
-        if (report.status === 'approved') overallReportStatus = 'Approved';
-        else if (report.status === 'correction_requested' || report.status === 'edit_requested') {
-          overallReportStatus = 'Correction Required';
-        } else if (report.status === 'rejected') overallReportStatus = 'Rejected';
-        else overallReportStatus = 'Submitted';
-      } else if (hasActivities) {
-        overallReportStatus = 'In Progress';
-      } else if (leave) {
-        overallReportStatus = 'On Leave';
-      } else if (isHoliday) {
-        overallReportStatus = 'Holiday';
-      } else if (isWeeklyOff) {
-        overallReportStatus = 'Weekly Off';
-      } else if (attendance) {
-        overallReportStatus = 'Present';
-      } else {
-        overallReportStatus = 'Missing Attendance';
-      }
+      const overallReportStatus = dayState.reportStatusAggregator;
 
       const actCount = mergedActivities.length;
       const totalActMins = daySummary?.totalActivityMinutes || 0;
@@ -512,17 +539,7 @@ export async function buildMonthlyReportsDataset(params: {
       const deskMins = daySummary?.totalDeskJobMinutes || 0;
 
       const leaveStatus = leave ? (leave.leaveType ? leave.leaveType.toUpperCase() : 'APPROVED LEAVE') : 'None';
-      const submissionStatus = hasSubmittedReport
-        ? 'Submitted'
-        : hasActivities
-        ? 'Draft'
-        : leave
-        ? 'On Leave'
-        : isHoliday
-        ? 'Holiday'
-        : isWeeklyOff
-        ? 'Weekly Off'
-        : 'Missing';
+      const submissionStatus = dayState.submissionStatus;
       const activityCompletionStatus = hasActivities
         ? report?.finalized
           ? 'Completed'
@@ -607,7 +624,7 @@ export async function buildMonthlyReportsDataset(params: {
         reportStatus: overallReportStatus,
         finalizationLocation: finalLoc,
         finalizationGps: report?.finalizationGps || null,
-        isMissing: overallReportStatus === 'Missing' || overallReportStatus === 'Missing Attendance',
+        isMissing: dayState.isMissing,
         isWeeklyOff,
         isHoliday,
         holidayName: holiday?.name,
@@ -619,6 +636,12 @@ export async function buildMonthlyReportsDataset(params: {
     const totalWorkingHours = Math.round((totalWorkingPeriodMinutes / 60) * 10) / 10;
     const totalDeskJobHours = Math.round((totalDeskJobMinutes / 60) * 10) / 10;
     const totalFieldActivityHours = Math.round((totalFieldActivityMinutes / 60) * 10) / 10;
+    const attendancePercentage = calculateAttendancePercentage({
+      daysAttended,
+      elapsedWorkingDays,
+      elapsedLeaveOnWorkdays,
+      leaveCountsAsWorkingDay: reportingConfig.leaveCountsAsWorkingDay,
+    });
 
     employeeSummaries.push({
       employeeId: emp.employeeId,
@@ -629,8 +652,12 @@ export async function buildMonthlyReportsDataset(params: {
       reportingMonth: monthName,
       totalCalendarDays: daysInMonth,
       totalWorkingDays,
+      elapsedWorkingDays,
       daysAttended,
       presentDays,
+      absentDays: missingAttendanceDays,
+      upcomingDays,
+      attendancePercentage,
       daysWithActivities,
       totalActivities,
       completedActivities,

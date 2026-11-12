@@ -23,6 +23,9 @@ interface FieldDailySummaryCardProps {
   onFinalize: (gps: GpsCoordinate | null, status: LocationCaptureStatus) => Promise<void>;
   onDownloadPDF?: () => void;
   isReadOnly?: boolean;
+  reportStatus?: string;
+  submittedAt?: string | null;
+  syncStatus?: 'synced' | 'pending_sync' | 'saved_offline' | 'draft';
 }
 
 export function FieldDailySummaryCard({
@@ -32,8 +35,12 @@ export function FieldDailySummaryCard({
   onFinalize,
   onDownloadPDF,
   isReadOnly = false,
+  reportStatus,
+  submittedAt,
+  syncStatus,
 }: FieldDailySummaryCardProps) {
   const [finalizing, setFinalizing] = useState(false);
+  const [justSubmitted, setJustSubmitted] = useState(false);
   const [gpsStatus, setGpsStatus] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -51,6 +58,7 @@ export function FieldDailySummaryCard({
       }
 
       await onFinalize(geoResult.coords, geoResult.status);
+      setJustSubmitted(true);
     } catch (err: any) {
       setErrorMsg(err.message || 'Failed to finalize report.');
     } finally {
@@ -58,6 +66,41 @@ export function FieldDailySummaryCard({
       setTimeout(() => setGpsStatus(null), 4000);
     }
   };
+
+  const formattedSubmittedAt = React.useMemo(() => {
+    if (!submittedAt) return null;
+    const d = new Date(submittedAt);
+    if (Number.isNaN(d.getTime())) return null;
+    return d.toLocaleString('en-IN', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  }, [submittedAt]);
+
+  const showSubmissionBanner = isFinalized || justSubmitted;
+  const isOfflinePending = syncStatus === 'pending_sync';
+  const isRejectedStatus = reportStatus === 'rejected' && !justSubmitted;
+
+  const submissionTitle = isOfflinePending
+    ? 'Report Finalized & Saved Offline'
+    : isRejectedStatus
+      ? 'Report Marked as Rejected'
+      : reportStatus === 'approved'
+        ? 'Report Submitted & Approved'
+        : reportStatus === 'resubmitted'
+          ? 'Revised Report Submitted Successfully!'
+          : 'Daily Report Submitted Successfully!';
+
+  const submissionDescription = isOfflinePending
+    ? 'Your daily report has been finalized locally and will automatically sync to the server once internet connection is restored.'
+    : isRejectedStatus
+      ? 'This daily report was marked as rejected. Check supervisor comments above if further action is required.'
+      : reportStatus === 'approved'
+        ? 'Your daily field activity report has been submitted and approved.'
+        : 'Your daily field activity report has been finalized and submitted successfully for review.';
 
   return (
     <div id="daily-summary-section" className="border border-border rounded-2xl bg-card shadow-2xs overflow-hidden scroll-mt-6">
@@ -195,6 +238,33 @@ export function FieldDailySummaryCard({
             <AlertTriangle className="h-4 w-4 shrink-0" />
             <span>{errorMsg}</span>
           </p>
+        )}
+
+        {showSubmissionBanner && (
+          <div
+            role="status"
+            aria-live="polite"
+            className={`p-3.5 rounded-xl border flex items-start gap-2.5 text-xs ${
+              isRejectedStatus
+                ? 'bg-rose-50/90 dark:bg-rose-950/30 border-rose-200 dark:border-rose-900/60 text-rose-900 dark:text-rose-200'
+                : 'bg-emerald-50/90 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-900/60 text-emerald-900 dark:text-emerald-200'
+            }`}
+          >
+            {isRejectedStatus ? (
+              <AlertTriangle className="h-4 w-4 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
+            ) : (
+              <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
+            )}
+            <div className="space-y-0.5 min-w-0">
+              <p className="font-bold text-xs">{submissionTitle}</p>
+              <p className="text-[11px] opacity-90 leading-relaxed">{submissionDescription}</p>
+              {formattedSubmittedAt && !isOfflinePending && (
+                <p className="text-[11px] font-medium opacity-80">
+                  Submitted on {formattedSubmittedAt}
+                </p>
+              )}
+            </div>
+          </div>
         )}
 
         {/* Action Buttons */}

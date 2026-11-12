@@ -17,6 +17,7 @@ export const ERP_COLLECTIONS = {
   emailLogs: 'erp_email_logs',
   auditLogs: 'erp_audit_logs',
   systemSettings: 'erp_system_settings',
+  media: 'erp_media',
   // Field Activity Reporting & Attendance Collections
   attendanceSessions: 'erp_attendance_sessions',
   fieldReports: 'erp_field_reports',

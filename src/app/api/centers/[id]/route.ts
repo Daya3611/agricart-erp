@@ -33,7 +33,7 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
       return NextResponse.json({ success: false, error: 'Center not found' }, { status: 404 });
     }
 
-    const { name, code, address, locationDetails, departmentId, active } = body;
+    const { name, code, address, locationDetails, departmentId, active, photoUrl, logoUrl, photoMediaId, photoObjectKey, mediaIds } = body;
 
     const updatedFields: Partial<Center> = {
       updatedAt: new Date().toISOString(),
@@ -45,6 +45,11 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
     if (locationDetails !== undefined) updatedFields.locationDetails = locationDetails.trim();
     if (departmentId !== undefined) updatedFields.departmentId = departmentId;
     if (active !== undefined) updatedFields.active = Boolean(active);
+    if (photoUrl !== undefined) updatedFields.photoUrl = photoUrl;
+    if (logoUrl !== undefined) updatedFields.logoUrl = logoUrl;
+    if (photoMediaId !== undefined) updatedFields.photoMediaId = photoMediaId;
+    if (photoObjectKey !== undefined) updatedFields.photoObjectKey = photoObjectKey;
+    if (Array.isArray(mediaIds)) updatedFields.mediaIds = mediaIds;
 
     await updateDocument(ERP_COLLECTIONS.centers, id, updatedFields);
 

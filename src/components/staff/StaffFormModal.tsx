@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Sparkles, Calendar, Clock, Shield, Building, MapPin } from 'lucide-react';
+import { MediaUpload } from '@/components/media/media-upload';
 
 interface StaffFormModalProps {
   open: boolean;
@@ -41,6 +42,9 @@ export function StaffFormModal({
   const [workScheduleId, setWorkScheduleId] = useState((staffToEdit as any)?.workScheduleId || 'sched_standard');
   const [joiningDate, setJoiningDate] = useState((staffToEdit as any)?.joiningDate || new Date().toISOString().split('T')[0]);
   const [accountStatus, setAccountStatus] = useState(staffToEdit?.accountStatus || 'active');
+  const [avatarUrl, setAvatarUrl] = useState(staffToEdit?.avatarUrl || '');
+  const [avatarMediaId, setAvatarMediaId] = useState(staffToEdit?.avatarMediaId || '');
+  const [avatarObjectKey, setAvatarObjectKey] = useState(staffToEdit?.avatarObjectKey || '');
 
   const [workSchedules, setWorkSchedules] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
@@ -89,6 +93,7 @@ export function StaffFormModal({
       workScheduleId: workScheduleId || 'sched_standard',
       joiningDate: joiningDate || null,
       accountStatus,
+      ...(isEditing && avatarUrl ? { avatarUrl, avatarMediaId, avatarObjectKey } : {}),
     };
 
     try {
@@ -281,6 +286,27 @@ export function StaffFormModal({
             </div>
           )}
         </div>
+
+        {isEditing && staffToEdit?.uid && (
+          <div className="pt-2">
+            <MediaUpload
+              entityType="user"
+              entityId={staffToEdit.uid}
+              isPublic={true}
+              setAsPrimary={true}
+              compact={true}
+              label="Employee Profile Avatar"
+              description="Upload staff portrait image to R2 (automatically syncs on Employee ID & PDFs)"
+              currentUrl={avatarUrl || staffToEdit.avatarUrl}
+              onUploadSingle={(item) => {
+                setAvatarUrl(item.url);
+                setAvatarMediaId(item.id);
+                setAvatarObjectKey(item.objectKey);
+              }}
+              onError={(msg) => setError(msg)}
+            />
+          </div>
+        )}
 
         <div className="pt-4 border-t border-slate-100 flex items-center justify-end gap-3">
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>

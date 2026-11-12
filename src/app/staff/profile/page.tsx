@@ -7,12 +7,17 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { MediaPreview } from '@/components/media/media-preview';
+import { MediaUpload } from '@/components/media/media-upload';
 
 export default function StaffProfilePage() {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [phone, setPhone] = useState('');
   const [emergencyContact, setEmergencyContact] = useState('');
   const [bio, setBio] = useState('');
+  const [avatarUrl, setAvatarUrl] = useState('');
+  const [avatarMediaId, setAvatarMediaId] = useState('');
+  const [avatarObjectKey, setAvatarObjectKey] = useState('');
   const [saving, setSaving] = useState(false);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -26,6 +31,9 @@ export default function StaffProfilePage() {
           setPhone(data.user.phone || '');
           setEmergencyContact(data.user.emergencyContact || '');
           setBio(data.user.bio || '');
+          setAvatarUrl(data.user.avatarUrl || '');
+          setAvatarMediaId(data.user.avatarMediaId || '');
+          setAvatarObjectKey(data.user.avatarObjectKey || '');
         }
       })
       .catch((err) => console.error(err));
@@ -41,7 +49,14 @@ export default function StaffProfilePage() {
       const res = await fetch('/api/staff/profile', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone, emergencyContact, bio }),
+        body: JSON.stringify({
+          phone,
+          emergencyContact,
+          bio,
+          ...(avatarUrl ? { avatarUrl } : {}),
+          ...(avatarMediaId ? { avatarMediaId } : {}),
+          ...(avatarObjectKey ? { avatarObjectKey } : {}),
+        }),
       });
 
       const data = await res.json();
@@ -90,24 +105,60 @@ export default function StaffProfilePage() {
 
       {/* Header Profile Card */}
       <Card>
-        <CardHeader className="flex flex-row items-center gap-4">
-          <div className="h-16 w-16 rounded-full bg-emerald-600 text-white font-black flex items-center justify-center text-xl shadow-md shadow-emerald-600/20">
-            {user.fullName.substring(0, 2).toUpperCase()}
-          </div>
-          <div>
-            <CardTitle className="text-lg font-bold text-slate-900">{user.fullName}</CardTitle>
-            <CardDescription className="text-xs text-emerald-700 font-bold">
-              {user.designation} • {user.employeeId}
-            </CardDescription>
-            <div className="flex items-center gap-2 mt-1">
-              <Badge variant="default" className="text-[10px]">
-                ACCOUNT {user.accountStatus.toUpperCase()}
-              </Badge>
-              <Badge variant="outline" className="text-[10px] uppercase font-bold text-slate-700">
-                ROLE: {user.role}
-              </Badge>
+        <CardHeader className="space-y-4">
+          <div className="flex flex-row items-center gap-4">
+            <MediaPreview
+              src={avatarUrl || user.avatarUrl}
+              alt={user.fullName}
+              fallbackText={user.fullName}
+              variant="avatar"
+              shape="circle"
+              className="h-16 w-16 bg-emerald-600 text-white font-black text-xl shadow-md shadow-emerald-600/20"
+            />
+            <div>
+              <CardTitle className="text-lg font-bold text-slate-900">{user.fullName}</CardTitle>
+              <CardDescription className="text-xs text-emerald-700 font-bold">
+                {user.designation} • {user.employeeId}
+              </CardDescription>
+              <div className="flex items-center gap-2 mt-1">
+                <Badge variant="default" className="text-[10px]">
+                  ACCOUNT {user.accountStatus.toUpperCase()}
+                </Badge>
+                <Badge variant="outline" className="text-[10px] uppercase font-bold text-slate-700">
+                  ROLE: {user.role}
+                </Badge>
+              </div>
             </div>
           </div>
+
+          <MediaUpload
+            entityType="user"
+            entityId={user.uid}
+            isPublic={true}
+            setAsPrimary={true}
+            compact={true}
+            label="Update Profile Photo"
+            description="Upload portrait image (PNG, JPEG, WebP) to Cloudflare R2"
+            currentUrl={avatarUrl || user.avatarUrl}
+            onUploadSingle={(item) => {
+              setAvatarUrl(item.url);
+              setAvatarMediaId(item.id);
+              setAvatarObjectKey(item.objectKey);
+              setUser((prev) =>
+                prev
+                  ? {
+                      ...prev,
+                      avatarUrl: item.url,
+                      avatarMediaId: item.id,
+                      avatarObjectKey: item.objectKey,
+                    }
+                  : prev
+              );
+              setSuccessMsg('✅ Profile photo uploaded & synced!');
+              setTimeout(() => setSuccessMsg(null), 3500);
+            }}
+            onError={(msg) => setErrorMsg(msg)}
+          />
         </CardHeader>
       </Card>
 

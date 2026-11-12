@@ -37,7 +37,7 @@ export async function PATCH(req: Request) {
       );
     }
 
-    const { phone, emergencyContact, bio } = parseResult.data;
+    const { phone, emergencyContact, bio, avatarUrl, avatarMediaId, avatarObjectKey } = parseResult.data;
 
     // Explicitly permitted fields only
     const updateData: Partial<UserProfile> = {
@@ -46,6 +46,9 @@ export async function PATCH(req: Request) {
     if (phone !== undefined) updateData.phone = phone;
     if (emergencyContact !== undefined) updateData.emergencyContact = emergencyContact;
     if (bio !== undefined) updateData.bio = bio;
+    if (avatarUrl !== undefined) updateData.avatarUrl = avatarUrl;
+    if (avatarMediaId !== undefined) updateData.avatarMediaId = avatarMediaId;
+    if (avatarObjectKey !== undefined) updateData.avatarObjectKey = avatarObjectKey;
 
     await updateDocument(ERP_COLLECTIONS.employees, sessionUser.uid, updateData);
 

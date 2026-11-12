@@ -18,6 +18,9 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Dialog } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { MediaPreview } from '@/components/media/media-preview';
+import { MediaUpload } from '@/components/media/media-upload';
+import { MediaGallery, MediaGalleryItem } from '@/components/media/media-gallery';
 
 export default function AdminCentersPage() {
   const [centers, setCenters] = useState<Center[]>([]);
@@ -33,6 +36,11 @@ export default function AdminCentersPage() {
   const [code, setCode] = useState('');
   const [address, setAddress] = useState('');
   const [locationDetails, setLocationDetails] = useState('');
+  const [photoUrl, setPhotoUrl] = useState('');
+  const [photoMediaId, setPhotoMediaId] = useState('');
+  const [photoObjectKey, setPhotoObjectKey] = useState('');
+  const [centerMedia, setCenterMedia] = useState<MediaGalleryItem[]>([]);
+  const [deletingMediaId, setDeletingMediaId] = useState<string | null>(null);
   const [departmentId, setDepartmentId] = useState('');
   const [active, setActive] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -78,10 +86,38 @@ export default function AdminCentersPage() {
     setCode('');
     setAddress('');
     setLocationDetails('');
+    setPhotoUrl('');
+    setPhotoMediaId('');
+    setPhotoObjectKey('');
+    setCenterMedia([]);
     setDepartmentId(departments[0]?.id || '');
     setActive(true);
     setFormError(null);
     setOpenModal(true);
+  };
+
+  const fetchCenterMedia = async (centerId: string) => {
+    try {
+      const res = await fetch(`/api/v1/media?entityType=center&entityId=${encodeURIComponent(centerId)}`);
+      const data = await res.json();
+      if (data.success && Array.isArray(data.data?.items)) {
+        setCenterMedia(
+          data.data.items.map((item: any) => ({
+            id: item.id,
+            url: item.resolvedUrl || item.publicUrl || `/api/v1/media/${item.id}`,
+            fileName: item.fileName,
+            mimeType: item.mimeType,
+            size: item.size,
+            isPrimary: item.isPrimary,
+            uploadedAt: item.uploadedAt,
+            width: item.width,
+            height: item.height,
+          }))
+        );
+      }
+    } catch {
+      // ignore non-fatal gallery fetch
+    }
   };
 
   const openEditModal = (center: Center) => {
@@ -90,10 +126,15 @@ export default function AdminCentersPage() {
     setCode(center.code);
     setAddress(center.address || '');
     setLocationDetails(center.locationDetails || '');
+    setPhotoUrl(center.photoUrl || center.logoUrl || '');
+    setPhotoMediaId(center.photoMediaId || '');
+    setPhotoObjectKey(center.photoObjectKey || '');
+    setCenterMedia([]);
     setDepartmentId(center.departmentId || '');
     setActive(center.active ?? true);
     setFormError(null);
     setOpenModal(true);
+    fetchCenterMedia(center.id);
   };
 
   const handleSave = async (e: React.FormEvent) => {
@@ -119,6 +160,9 @@ export default function AdminCentersPage() {
           address: address.trim(),
           locationDetails: locationDetails.trim(),
           departmentId: departmentId || undefined,
+          ...(photoUrl ? { photoUrl, logoUrl: photoUrl } : {}),
+          ...(photoMediaId ? { photoMediaId } : {}),
+          ...(photoObjectKey ? { photoObjectKey } : {}),
           active,
         }),
       });
@@ -284,12 +328,20 @@ export default function AdminCentersPage() {
                 key={center.id}
                 className={`hover:border-emerald-300 transition-all ${!center.active ? 'bg-slate-50/70 border-slate-200 opacity-80' : ''}`}
               >
-                <CardHeader className="flex flex-row items-start justify-between pb-2">
-                  <div className="space-y-1">
-                    <CardTitle className="text-base font-bold text-slate-900">{center.name}</CardTitle>
-                    <CardDescription className="text-xs text-emerald-700 font-bold font-mono">
-                      {center.code}
-                    </CardDescription>
+                <CardHeader className="flex flex-row items-start justify-between pb-2 gap-2">
+                  <div className="flex items-start gap-2.5 min-w-0">
+                    <MediaPreview
+                      src={center.photoUrl || center.logoUrl}
+                      alt={center.name}
+                      variant="logo"
+                      className="h-10 w-10 rounded-xl shrink-0"
+                    />
+                    <div className="space-y-1 min-w-0">
+                      <CardTitle className="text-base font-bold text-slate-900 truncate">{center.name}</CardTitle>
+                      <CardDescription className="text-xs text-emerald-700 font-bold font-mono">
+                        {center.code}
+                      </CardDescription>
+                    </div>
                   </div>
 
                   <div className="flex items-center gap-2">
@@ -433,17 +485,75 @@ export default function AdminCentersPage() {
           </div>
 
           {editingCenter && (
-            <div>
-              <label className="font-bold text-slate-700 block mb-1">Operational Status</label>
-              <select
-                value={active ? 'active' : 'inactive'}
-                onChange={(e) => setActive(e.target.value === 'active')}
-                className="w-full h-10 rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-800"
-              >
-                <option value="active">Operational (Active)</option>
-                <option value="inactive">Inactive</option>
-              </select>
-            </div>
+            <>
+              <div>
+                <label className="font-bold text-slate-700 block mb-1">Operational Status</label>
+                <select
+                  value={active ? 'active' : 'inactive'}
+                  onChange={(e) => setActive(e.target.value === 'active')}
+                  className="w-full h-10 rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-800"
+                >
+                  <option value="active">Operational (Active)</option>
+                  <option value="inactive">Inactive</option>
+                </select>
+              </div>
+
+              <div className="space-y-3 pt-2 border-t border-slate-100">
+                <label className="font-bold text-slate-700 block">Center Cover Photo / Facility Media</label>
+                <MediaUpload
+                  entityType="center"
+                  entityId={editingCenter.id}
+                  centerId={editingCenter.id}
+                  isPublic={true}
+                  setAsPrimary={true}
+                  allowDocuments={true}
+                  compact={true}
+                  label="Upload Center Photo or Document"
+                  description="Upload facility photo, board sign, or inspection document to Cloudflare R2"
+                  currentUrl={photoUrl}
+                  onUploadSingle={(item) => {
+                    if (item.mimeType.startsWith('image/')) {
+                      setPhotoUrl(item.url);
+                      setPhotoMediaId(item.id);
+                      setPhotoObjectKey(item.objectKey);
+                    }
+                    fetchCenterMedia(editingCenter.id);
+                  }}
+                  onError={(msg) => setFormError(msg)}
+                />
+
+                {centerMedia.length > 0 && (
+                  <MediaGallery
+                    items={centerMedia}
+                    columns={3}
+                    canDelete={true}
+                    deletingId={deletingMediaId}
+                    onDelete={async (item) => {
+                      setDeletingMediaId(item.id);
+                      try {
+                        const res = await fetch(`/api/v1/media/${encodeURIComponent(item.id)}`, {
+                          method: 'DELETE',
+                        });
+                        const data = await res.json();
+                        if (!res.ok || !data.success) {
+                          throw new Error(data.error || 'Failed to delete media');
+                        }
+                        if (photoMediaId === item.id) {
+                          setPhotoUrl('');
+                          setPhotoMediaId('');
+                          setPhotoObjectKey('');
+                        }
+                        await fetchCenterMedia(editingCenter.id);
+                      } catch (err: any) {
+                        setFormError(err.message || 'Delete failed');
+                      } finally {
+                        setDeletingMediaId(null);
+                      }
+                    }}
+                  />
+                )}
+              </div>
+            </>
           )}
 
           <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">

@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
+import { getTodayDateString } from '@/lib/utils/date-utils';
 import {
   RecordCard,
   RecordCardHeader,
@@ -37,7 +38,7 @@ export default function AdminMissingReportsPage() {
       const leavesData = await leavesRes.json();
 
       if (staffData.users && repData.reports) {
-        const todayStr = new Date().toISOString().split('T')[0];
+        const todayStr = getTodayDateString();
         const submittedUids = new Set(
           repData.reports
             .filter((r: DailyReport) => r.reportDate === todayStr && r.status !== 'draft')

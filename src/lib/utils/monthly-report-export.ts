@@ -20,6 +20,16 @@ function triggerBrowserDownload(blob: Blob, filename: string) {
  * role-based security and avoids cross-origin CORS taint during canvas manipulation.
  */
 function getAttachmentFetchUrl(att: ReportAttachment): string {
+  if (att.downloadUrl) {
+    if (
+      att.downloadUrl.startsWith('/api/') ||
+      att.downloadUrl.startsWith('data:image/') ||
+      att.downloadUrl.startsWith('http://') ||
+      att.downloadUrl.startsWith('https://')
+    ) {
+      return att.downloadUrl;
+    }
+  }
   if (att.storagePath) {
     if (
       att.storagePath.startsWith('http://') ||

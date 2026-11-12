@@ -4,6 +4,7 @@ import { fetchDocument } from '@/lib/firebase/firestore';
 import { ERP_COLLECTIONS } from '@/lib/firebase/collections';
 import { generateMonthlyReport } from '@/lib/services/monthly-report-service';
 import { buildMonthlyReportsDataset } from '@/lib/services/monthly-reports-aggregator';
+import { getOperationalYearMonth } from '@/lib/utils/date-utils';
 import { UserProfile } from '@/types';
 
 export const dynamic = 'force-dynamic';
@@ -13,7 +14,7 @@ export async function GET(req: Request) {
     const sessionUser = await requireAuthenticatedUser();
     const { searchParams } = new URL(req.url);
 
-    const now = new Date();
+    const { year: defaultYear, month: defaultMonth } = getOperationalYearMonth();
     const yearParam = searchParams.get('year');
     const monthParam = searchParams.get('month');
     let staffUidParam = searchParams.get('staffUid') || undefined;
@@ -22,8 +23,8 @@ export async function GET(req: Request) {
     const reportStatus = searchParams.get('status') || undefined;
     const attendanceStatus = searchParams.get('attendanceStatus') || undefined;
 
-    const year = yearParam ? parseInt(yearParam, 10) : now.getFullYear();
-    const month = monthParam ? parseInt(monthParam, 10) : now.getMonth() + 1;
+    const year = yearParam ? parseInt(yearParam, 10) : defaultYear;
+    const month = monthParam ? parseInt(monthParam, 10) : defaultMonth;
 
     if (isNaN(year) || isNaN(month) || month < 1 || month > 12) {
       return NextResponse.json(

@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { cn } from '@/lib/utils/cn';
+import { MediaPreview } from '@/components/media/media-preview';
 
 interface ProfileDropdownProps {
   user: UserProfile;
@@ -40,9 +41,14 @@ export function ProfileDropdown({ user }: ProfileDropdownProps) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger className="flex items-center gap-2.5 px-1.5 py-1.5 rounded-full bg-card border border-border hover:border-primary/40 hover:bg-muted/50 transition-all outline-none focus-visible:ring-2 focus-visible:ring-primary shadow-2xs">
-        <Avatar size="sm" className="h-7 w-7 bg-[#228B4E] text-white font-bold text-xs">
-          <AvatarFallback>{initials}</AvatarFallback>
-        </Avatar>
+        <MediaPreview
+          src={user.avatarUrl}
+          alt={user.fullName || 'User'}
+          fallbackText={initials}
+          variant="avatar"
+          shape="circle"
+          className="h-7 w-7 bg-[#228B4E] text-white font-bold text-xs"
+        />
 
         <div className="hidden sm:flex flex-col items-start pr-1 text-left">
           <span className="text-xs font-bold text-foreground leading-tight truncate max-w-[120px]">

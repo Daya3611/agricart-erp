@@ -13,10 +13,29 @@ import {
   BorderStyle,
   ShadingType,
 } from 'docx';
-import { MonthlyReportSummary } from '@/types';
+import { Center, MonthlyReportSummary, UserProfile } from '@/types';
 import { formatDateTimeIST } from '@/lib/utils/date-utils';
-import { getGlobalReportingSettings } from '@/lib/services/settings-service';
+import { getGlobalReportingSettings, getSystemSettings } from '@/lib/services/settings-service';
 import { fetchAttachmentData, FetchedAttachmentData } from './attachment-fetcher';
+import { fetchDocument } from '@/lib/firebase/firestore';
+import { ERP_COLLECTIONS } from '@/lib/firebase/collections';
+import { createReportMediaResolver, ResolvedReportMediaAsset } from '@/lib/reports/media-resolver';
+
+function buildDocxImageRun(asset: ResolvedReportMediaAsset, maxBoxPx: number): ImageRun | null {
+  if (!asset.pdfFormat) return null;
+  const aspect = asset.aspectRatio || 1;
+  let width = maxBoxPx;
+  let height = Math.round(width / aspect);
+  if (height > maxBoxPx) {
+    height = maxBoxPx;
+    width = Math.round(height * aspect);
+  }
+  return new ImageRun({
+    data: asset.buffer,
+    transformation: { width: Math.max(24, width), height: Math.max(24, height) },
+    type: asset.pdfFormat === 'PNG' ? 'png' : 'jpg',
+  });
+}
 
 interface DayMediaGroup {
   date: string;
@@ -33,10 +52,32 @@ interface DayMediaGroup {
 export async function generateMonthlyReportDOCX(report: MonthlyReportSummary): Promise<Buffer> {
   console.log(`[Monthly DOCX Export] Initiating DOCX generation for ${report.employee.fullName}`);
 
-  const reportingConfig = await getGlobalReportingSettings();
+  const [reportingConfig, systemSettings, employeeDoc] = await Promise.all([
+    getGlobalReportingSettings(),
+    getSystemSettings(),
+    report.employee.uid
+      ? (fetchDocument(ERP_COLLECTIONS.employees, report.employee.uid) as Promise<UserProfile | null>)
+      : Promise.resolve(null),
+  ]);
+  const centerId = report.employee.centerId || employeeDoc?.assignedCenterIds?.[0];
+  const centerDoc = centerId
+    ? ((await fetchDocument(ERP_COLLECTIONS.centers, centerId)) as Center | null)
+    : null;
+
+  const mediaResolver = createReportMediaResolver();
+  await mediaResolver.preloadMediaIds([
+    employeeDoc?.avatarMediaId,
+    centerDoc?.photoMediaId,
+  ]);
+
+  const [employeeAvatarAsset, centerPhotoAsset] = await Promise.all([
+    mediaResolver.resolveEmployeeAvatar(employeeDoc || { avatarUrl: report.employee.avatarUrl }),
+    mediaResolver.resolveCenterPhoto(centerDoc || { photoUrl: report.employee.centerLogoUrl }),
+  ]);
+
   const includePhotos = reportingConfig.includePhotosInExports !== false;
 
-  // 1. Preload attachments
+  // 1. Preload attachments (reusing single mediaResolver cache)
   const daysWithAttachments = includePhotos
     ? report.days.filter((d) => Array.isArray(d.attachments) && d.attachments.length > 0)
     : [];
@@ -46,7 +87,7 @@ export async function generateMonthlyReportDOCX(report: MonthlyReportSummary): P
     if (!day.attachments) continue;
     const items: FetchedAttachmentData[] = [];
     for (const att of day.attachments) {
-      const data = await fetchAttachmentData(att, day.date);
+      const data = await fetchAttachmentData(att, day.date, mediaResolver);
       items.push(data);
     }
     if (items.length > 0) {
@@ -75,17 +116,24 @@ export async function generateMonthlyReportDOCX(report: MonthlyReportSummary): P
     right: { style: BorderStyle.SINGLE, size: 1, color: 'E2E8F0' },
   };
 
-  const titleParagraph = new Paragraph({
-    text: reportingConfig.docxSettings?.headerTitle || 'MONTHLY FIELD ACTIVITY & ATTENDANCE REPORT',
+  const employeeAvatarRun = employeeAvatarAsset ? buildDocxImageRun(employeeAvatarAsset, 44) : null;
+  const centerPhotoRun = centerPhotoAsset ? buildDocxImageRun(centerPhotoAsset, 44) : null;
+
+  const headerParagraph = new Paragraph({
     heading: HeadingLevel.TITLE,
     alignment: AlignmentType.LEFT,
     spacing: { after: 120 },
+    children: [
+      new TextRun({
+        text: 'MONTHLY FIELD ACTIVITY & ATTENDANCE REPORT',
+      }),
+    ],
   });
 
   const subtitleParagraph = new Paragraph({
     children: [
       new TextRun({
-        text: `${report.monthName} — Complete Official Report`,
+        text: `Reporting Period: ${report.monthName}`,
         bold: true,
         size: 24,
         color: '166534',
@@ -109,6 +157,7 @@ export async function generateMonthlyReportDOCX(report: MonthlyReportSummary): P
             children: [
               new Paragraph({
                 children: [
+                  ...(employeeAvatarRun ? [employeeAvatarRun, new TextRun({ text: '  ' })] : []),
                   new TextRun({ text: 'Employee Name: ', bold: true, size: 19 }),
                   new TextRun({ text: report.employee.fullName, size: 19 }),
                 ],
@@ -143,6 +192,7 @@ export async function generateMonthlyReportDOCX(report: MonthlyReportSummary): P
             children: [
               new Paragraph({
                 children: [
+                  ...(centerPhotoRun ? [centerPhotoRun, new TextRun({ text: '  ' })] : []),
                   new TextRun({ text: 'Assigned Center: ', bold: true, size: 19 }),
                   new TextRun({ text: report.employee.centerName, size: 19 }),
                 ],
@@ -283,6 +333,10 @@ export async function generateMonthlyReportDOCX(report: MonthlyReportSummary): P
     else if (d.reportStatus === 'On Leave') statusColor = '7E22CE';
     else if (d.reportStatus === 'Missing') statusColor = 'D97706';
     else if (d.reportStatus === 'Correction Requested') statusColor = 'BE123C';
+    else if (d.reportStatus === 'In Progress' || d.reportStatus === 'Submitted') statusColor = '0369A1';
+    else if (d.reportStatus === 'Upcoming' || d.reportStatus === 'Weekly Off' || d.reportStatus === 'Holiday') {
+      statusColor = '64748B';
+    }
 
     const remarksParagraphs = [
       new Paragraph({ children: [new TextRun({ text: d.remarks, size: 16 })] }),
@@ -546,7 +600,7 @@ export async function generateMonthlyReportDOCX(report: MonthlyReportSummary): P
           },
         },
         children: [
-          titleParagraph,
+          headerParagraph,
           subtitleParagraph,
           employeeTable,
           new Paragraph({ text: '', spacing: { after: 120 } }),

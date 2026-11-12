@@ -191,13 +191,7 @@ export async function POST(req: Request) {
       maxAge: 60 * 60 * 24 * 7, // 7 days
     });
 
-    // Create or retrieve daily attendance session for authenticated user
-    try {
-      const { recordAttendanceLogin } = await import('@/lib/services/attendance-service');
-      await recordAttendanceLogin(userProfile, body.gps, body.locationStatus || 'unavailable');
-    } catch (attErr: any) {
-      console.warn('Attendance login record warning:', attErr.message);
-    }
+    // Attendance sessions must be started manually via Clock In / Start Day (no auto check-in on login)
 
     await logAuditAction({
       actorUid: authUid,

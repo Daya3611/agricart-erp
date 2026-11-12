@@ -150,6 +150,12 @@ export interface FieldActivitySlot {
   videoUrl?: string;
   photoEvidence?: string[];
   videoEvidence?: string[];
+  photoObjectKeys?: string[];
+  photoMediaIds?: string[];
+  photoMetadata?: EvidenceMetadataItem[];
+  videoObjectKeys?: string[];
+  videoMediaIds?: string[];
+  videoMetadata?: EvidenceMetadataItem[];
 
   // End Timing & Location
   activityEndAt?: string; // ISO string
@@ -223,13 +229,29 @@ export interface FieldActivityRecord {
 
   photoEvidence: string[];
   photoUrl?: string;
+  photoObjectKeys?: string[];
+  photoMediaIds?: string[];
+  photoMetadata?: EvidenceMetadataItem[];
   videoEvidence: string[];
   videoUrl?: string;
+  videoObjectKeys?: string[];
+  videoMediaIds?: string[];
+  videoMetadata?: EvidenceMetadataItem[];
 
   syncStatus?: 'synced' | 'pending_sync' | 'saved_offline';
   createdAt: string;
   updatedAt: string;
   completedAt: string | null;
+}
+
+export interface EvidenceMetadataItem {
+  objectKey?: string;
+  mediaId?: string;
+  mimeType: string;
+  fileName: string;
+  uploadedAt: string;
+  uploadedBy?: string;
+  url?: string;
 }
 
 export interface FieldReportDailySummary {
@@ -343,8 +365,12 @@ export interface EmployeeMonthlySummaryItem {
   reportingMonth?: string;
   totalCalendarDays?: number;
   totalWorkingDays?: number;
+  elapsedWorkingDays?: number;
   daysAttended?: number;
   presentDays?: number;
+  absentDays?: number;
+  upcomingDays?: number;
+  attendancePercentage?: number | null;
   daysWithActivities?: number;
   totalActivities: number;
   completedActivities?: number;
@@ -518,8 +544,12 @@ export interface MonthlyReportsDataset {
     endAccuracy?: string;
     photoEvidenceRefs?: string;
     photoUrls?: string[];
+    photoObjectKeys?: string[];
+    photoMediaIds?: string[];
     videoEvidenceRefs?: string;
     videoUrls?: string[];
+    videoObjectKeys?: string[];
+    videoMediaIds?: string[];
     reviewStatus?: string;
     reviewerName?: string;
     reviewComments?: string;

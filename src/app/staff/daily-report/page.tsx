@@ -29,6 +29,7 @@ import { AttendanceWidget } from '@/components/attendance/AttendanceWidget';
 import { FieldActivitySlotCard } from '@/components/reports/FieldActivitySlotCard';
 import { FieldDailySummaryCard } from '@/components/reports/FieldDailySummaryCard';
 import {
+  AttendanceSession,
   FieldReport,
   FieldActivitySlot,
   FieldReportDailySummary,
@@ -50,6 +51,7 @@ import { captureCurrentGps } from '@/lib/utils/geolocation';
 import {
   saveReportLocally,
   loadLocalReport,
+  loadLocalAttendance,
   syncPendingReportsToServer,
   saveActivityLocally,
   loadLocalActivities,
@@ -129,6 +131,18 @@ function FieldActivityReportingContent() {
   const [isFinalized, setIsFinalized] = useState(false);
   const [finalizationGps, setFinalizationGps] = useState<GpsCoordinate | null>(null);
   const [existingReport, setExistingReport] = useState<FieldReport | null>(null);
+  const [attendanceSession, setAttendanceSession] = useState<AttendanceSession | null>(null);
+  const [attendanceLoaded, setAttendanceLoaded] = useState(false);
+
+  const isRevisionMode = Boolean(
+    existingReport &&
+      (existingReport.status === 'correction_requested' ||
+        existingReport.status === 'edit_requested')
+  );
+  const isDayStarted = Boolean(attendanceSession && attendanceSession.status === 'active');
+  const hasRecordedActivity = activities.some(
+    (a) => normalizeActivityStatus(a) !== 'NOT_STARTED'
+  );
 
   const [loading, setLoading] = useState(true);
   const [savingDraft, setSavingDraft] = useState(false);
@@ -277,11 +291,17 @@ function FieldActivityReportingContent() {
             }
           }
 
-          // 2. Check local Dexie offline draft and local activities for the resolved date
-          const [localDraft, localActivities] = await Promise.all([
+          // 2. Check local Dexie offline draft, activities, and attendance for the resolved date
+          const [localDraft, localActivities, localAtt] = await Promise.all([
             loadLocalReport(staffUid, targetDate),
             loadLocalActivities(staffUid, targetDate),
+            loadLocalAttendance(staffUid, targetDate),
           ]);
+
+          if (localAtt?.sessionData) {
+            setAttendanceSession(localAtt.sessionData);
+            setAttendanceLoaded(true);
+          }
 
           let initialSlots: FieldActivitySlot[] = [];
 
@@ -311,10 +331,10 @@ function FieldActivityReportingContent() {
             setSyncStatus(localDraft.syncStatus as any);
           }
 
-          // 3. Check remote server activities and report (Firestore is authoritative)
+          // 3. Check remote server activities, report, and attendance (Firestore is authoritative)
           if (navigator.onLine) {
             try {
-              const [actRes, repRes] = await Promise.all([
+              const [actRes, repRes, attRes] = await Promise.all([
                 fetch(`/api/field-activities?date=${encodeURIComponent(targetDate)}`, {
                   cache: 'no-store',
                 }),
@@ -323,7 +343,16 @@ function FieldActivityReportingContent() {
                   : fetch(`/api/field-reports/check?date=${encodeURIComponent(targetDate)}`, {
                       cache: 'no-store',
                     }),
+                fetch('/api/attendance/current', { cache: 'no-store' }),
               ]);
+
+              if (attRes.ok) {
+                const attData = await attRes.json().catch(() => ({}));
+                if (attData.success) {
+                  setAttendanceSession(attData.session || null);
+                  setAttendanceLoaded(true);
+                }
+              }
 
               const actData = await actRes.json().catch(() => ({}));
               if (!loadedReport && repRes) {
@@ -570,9 +599,12 @@ function FieldActivityReportingContent() {
     }
   };
 
-  // Start an activity: validates against live Firestore state first, then creates/updates IN_PROGRESS doc
+  // Start an activity: validates Start Day + live Firestore state first, then creates/updates IN_PROGRESS doc
   const handleStartActivity = async (slotNumber: number) => {
     if (!user) throw new Error('You must be logged in to start an activity.');
+    if (!isDayStarted) {
+      throw new Error('Please click "Clock In / Start Day" first before creating or starting an activity.');
+    }
     if (isFinalized) throw new Error('This report has already been finalized.');
     if (startingLockRef.current[slotNumber]) return;
     startingLockRef.current[slotNumber] = true;
@@ -866,6 +898,14 @@ function FieldActivityReportingContent() {
 
   // Continuation handler for slot i (1 to 19)
   const handleContinuation = (slotNum: number, wantAnother: boolean) => {
+    if (wantAnother && !isDayStarted) {
+      setStatusMessage({
+        type: 'error',
+        text: 'Please click "Clock In / Start Day" first before creating another activity.',
+      });
+      return;
+    }
+
     setContinuationAnswers((prev) => ({ ...prev, [slotNum]: wantAnother }));
 
     if (wantAnother) {
@@ -894,6 +934,13 @@ function FieldActivityReportingContent() {
   // Save Draft locally and remotely
   const handleSaveDraft = async () => {
     if (!user) return;
+    if (!isDayStarted && !isRevisionMode && !hasRecordedActivity) {
+      setStatusMessage({
+        type: 'error',
+        text: 'Please click "Clock In / Start Day" before creating any activity or saving a draft.',
+      });
+      return;
+    }
     setSavingDraft(true);
     setStatusMessage(null);
 
@@ -995,10 +1042,31 @@ function FieldActivityReportingContent() {
           existingReport?.status === 'correction_requested' ||
           existingReport?.status === 'edit_requested';
 
+        const nowIso = new Date().toISOString();
         setIsFinalized(true);
         setFinalizationGps(gps);
         setSyncStatus('synced');
-        setExistingReport((prev) => (prev ? { ...prev, status: wasRevision ? 'resubmitted' : 'submitted', finalized: true } : prev));
+        setExistingReport((prev) => {
+          const nextStatus = wasRevision ? 'resubmitted' : 'submitted';
+          if (prev) {
+            return {
+              ...prev,
+              status: nextStatus,
+              finalized: true,
+              submittedAt: prev.submittedAt || nowIso,
+              resubmittedAt: wasRevision ? nowIso : prev.resubmittedAt,
+            };
+          }
+          if (data.report) {
+            return {
+              ...data.report,
+              status: nextStatus,
+              finalized: true,
+              submittedAt: data.report.submittedAt || nowIso,
+            };
+          }
+          return prev;
+        });
         setStatusMessage({
           type: 'success',
           text: wasRevision
@@ -1153,7 +1221,15 @@ function FieldActivityReportingContent() {
       )}
 
       {/* Attendance Clock-In Widget */}
-      {user && <AttendanceWidget user={user} />}
+      {user && (
+        <AttendanceWidget
+          user={user}
+          onStatusChange={(sess) => {
+            setAttendanceSession(sess);
+            setAttendanceLoaded(true);
+          }}
+        />
+      )}
 
       {/* Daily Header Information Card */}
       <Card>
@@ -1232,14 +1308,28 @@ function FieldActivityReportingContent() {
       <div className="space-y-5">
         <div className="flex items-center justify-between">
           <h2 className="text-base font-extrabold text-foreground">
-            Activity Slots ({activities.length} / 20 Recorded)
+            Activity Slots ({hasRecordedActivity ? activities.length : isDayStarted || isRevisionMode ? activities.length : 0} / 20 Recorded)
           </h2>
           <span className="text-xs text-muted-foreground font-medium">
             Sequential bounded slots
           </span>
         </div>
 
-        {activities.map((slot, idx) => {
+        {attendanceLoaded && !isDayStarted && !isFinalized && !isRevisionMode && !hasRecordedActivity ? (
+          <div className="p-6 rounded-2xl border border-amber-300/80 bg-amber-50/70 dark:bg-amber-950/25 dark:border-amber-900/50 text-center space-y-2.5">
+            <div className="mx-auto h-11 w-11 rounded-2xl bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 flex items-center justify-center">
+              <Lock className="h-5 w-5" />
+            </div>
+            <h3 className="text-sm font-extrabold text-foreground">
+              Start Day Required Before Creating Activities
+            </h3>
+            <p className="text-xs text-muted-foreground max-w-md mx-auto leading-relaxed">
+              Your workday has not started yet. Please click{' '}
+              <strong className="text-foreground">Clock In / Start Day</strong> in the Attendance &amp; Time Tracker above before creating or starting any field activity.
+            </p>
+          </div>
+        ) : (
+          activities.map((slot, idx) => {
           const slotNum = idx + 1;
           const isLastRecorded = idx === activities.length - 1;
           const continuationAnswer = continuationAnswers[slotNum];
@@ -1255,14 +1345,11 @@ function FieldActivityReportingContent() {
                 onEndActivity={handleEndActivity}
                 onSaveDraft={handleSaveActivityDraft}
                 isSavingDraft={savingSlotDraft[slot.slotNumber] || false}
-                allowEditCompleted={Boolean(
-                  existingReport &&
-                    (existingReport.status === 'correction_requested' ||
-                      existingReport.status === 'edit_requested')
-                )}
+                allowEditCompleted={isRevisionMode}
                 hasActiveActivityElsewhere={activities.some(
                   (a) => a.slotNumber !== slot.slotNumber && isActivityInProgress(a)
                 )}
+                dayStarted={isDayStarted}
                 onRemove={
                   idx > 0 && !isFinalized && normalizeActivityStatus(slot) === 'NOT_STARTED'
                     ? () => {
@@ -1290,6 +1377,11 @@ function FieldActivityReportingContent() {
                         <p className="text-xs text-muted-foreground mt-0.5">
                           You finished Activity #{slotNum}. Select <strong className="text-foreground">Yes</strong> to start Activity #{slotNum + 1}, or <strong className="text-foreground">No</strong> to proceed to Daily Summary.
                         </p>
+                        {!isDayStarted && (
+                          <p className="text-[11px] text-amber-700 dark:text-amber-300 font-semibold mt-1.5">
+                            Day session is closed. Clock In / Start Day must be active to add another activity.
+                          </p>
+                        )}
                         {continuationAnswer === false && (
                           <p className="text-[11px] text-emerald-700 dark:text-emerald-400 font-semibold flex items-center gap-1.5 mt-2">
                             <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
@@ -1317,6 +1409,7 @@ function FieldActivityReportingContent() {
                       <Button
                         type="button"
                         size="sm"
+                        disabled={!isDayStarted}
                         onClick={() => handleContinuation(slotNum, true)}
                         className="text-xs font-bold px-4 h-9 rounded-xl bg-[#228B4E] hover:bg-[#1a703e] text-white shadow-xs transition-all active:scale-[0.98]"
                       >
@@ -1336,11 +1429,12 @@ function FieldActivityReportingContent() {
               )}
             </div>
           );
-        })}
+        })
+        )}
       </div>
 
       {/* Save Draft Action Bar */}
-      {!isFinalized && (
+      {!isFinalized && (isDayStarted || isRevisionMode || hasRecordedActivity) && (
         <div className="flex items-center justify-between gap-3 p-3 bg-card rounded-xl border border-border">
           <p className="text-xs text-muted-foreground">
             Save draft regularly to prevent losing unsynced work.
@@ -1367,6 +1461,9 @@ function FieldActivityReportingContent() {
         onFinalize={handleFinalizeReport}
         onDownloadPDF={handleDownloadPDF}
         isReadOnly={isFinalized}
+        reportStatus={existingReport?.status}
+        submittedAt={existingReport?.resubmittedAt || existingReport?.submittedAt || null}
+        syncStatus={syncStatus}
       />
     </div>
   );

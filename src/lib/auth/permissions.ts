@@ -177,6 +177,9 @@ export const StaffProfileUpdateSchema = z.object({
   phone: z.string().optional(),
   emergencyContact: z.string().optional(),
   bio: z.string().max(500, 'Bio must be under 500 characters').optional(),
+  avatarUrl: z.string().max(1000).optional(),
+  avatarMediaId: z.string().max(200).optional(),
+  avatarObjectKey: z.string().max(500).optional(),
 });
 
 

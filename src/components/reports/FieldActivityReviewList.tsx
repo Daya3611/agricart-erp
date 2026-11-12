@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { LocationDisplayCard } from '@/components/reports/LocationDisplayCard';
+import { MediaPreview } from '@/components/media/media-preview';
 import { FieldReport } from '@/types/field-activity';
 import { formatReadableDate, formatTimeIST } from '@/lib/utils/date-utils';
 import {
@@ -396,11 +397,11 @@ export function FieldActivityReviewList({ fieldReport }: FieldActivityReviewList
                           {photos.map((url, idx) => (
                             <div key={`${url}_${idx}`} className="space-y-1.5 bg-background p-2 rounded-lg border border-border">
                               <a href={url} target="_blank" rel="noopener noreferrer" className="block">
-                                {/* eslint-disable-next-line @next/next/no-img-element */}
-                                <img
+                                <MediaPreview
                                   src={url}
                                   alt={`Activity ${act.slotNumber} Photo ${idx + 1}`}
-                                  className="w-full h-32 object-cover rounded-md border border-border"
+                                  variant="banner"
+                                  className="w-full h-32 rounded-md border border-border"
                                 />
                               </a>
                               <a

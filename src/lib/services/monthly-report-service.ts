@@ -8,10 +8,17 @@ import {
   MonthlyReportSummary,
   ReportAttachment,
   UserProfile,
+  WorkSchedule,
 } from '@/types';
 import { getApprovedLeavesForMonth } from '@/lib/services/leave-service';
 import { getGlobalReportingSettings } from '@/lib/services/settings-service';
 import { formatDateTimeIST, formatTimeIST } from '@/lib/utils/date-utils';
+import {
+  buildAttendanceCutoffContext,
+  calculateAttendancePercentage,
+  normalizeWorkingDayIndices,
+  resolveDailyAttendanceAndReportState,
+} from '@/lib/utils/attendance-status';
 import {
   calculateActivitiesSummary,
   getHumanPlaceName,
@@ -67,10 +74,21 @@ function inferFilenameFromUrl(url: string, fallback: string): string {
 export async function generateMonthlyReport(
   staffUid: string,
   year: number,
-  month: number
+  month: number,
+  referenceDate?: Date
 ): Promise<MonthlyReportSummary> {
-  // 1. Fetch Employee Profile
+  // 1. Fetch Employee Profile & Assigned Center (for Avatar / Center Media)
   const employeeDoc = (await fetchDocument(ERP_COLLECTIONS.employees, staffUid)) as UserProfile | null;
+  const primaryCenterId = employeeDoc?.assignedCenterIds?.[0];
+  let centerLogoUrl: string | undefined;
+  if (primaryCenterId) {
+    const centerDoc = (await fetchDocument(ERP_COLLECTIONS.centers, primaryCenterId)) as {
+      photoUrl?: string;
+      logoUrl?: string;
+    } | null;
+    centerLogoUrl = centerDoc?.photoUrl || centerDoc?.logoUrl || undefined;
+  }
+
   const employee = {
     uid: staffUid,
     employeeId: employeeDoc?.employeeId || 'EMP-UNKNOWN',
@@ -78,13 +96,32 @@ export async function generateMonthlyReport(
     email: employeeDoc?.email || '',
     designation: employeeDoc?.designation || 'Field Staff',
     departmentName: employeeDoc?.departmentName || 'Field Operations',
+    centerId: primaryCenterId,
     centerName: employeeDoc?.assignedCenterNames?.[0] || 'Main Center',
+    avatarUrl: employeeDoc?.avatarUrl,
+    centerLogoUrl,
   };
 
-  // 2. Fetch Centralized Reporting Settings (Working Days & Holidays)
-  const reportingConfig = await getGlobalReportingSettings();
-  const workingDaysConfig = reportingConfig.workingDays || [1, 2, 3, 4, 5, 6];
+  // 2. Fetch Centralized Reporting Settings & Optional Work Schedule
+  const [reportingConfig, empSchedule] = await Promise.all([
+    getGlobalReportingSettings(),
+    employeeDoc?.workScheduleId
+      ? (fetchDocument(ERP_COLLECTIONS.workSchedules, employeeDoc.workScheduleId).catch(
+          () => null
+        ) as Promise<WorkSchedule | null>)
+      : Promise.resolve(null),
+  ]);
+  const workingDaysConfig = normalizeWorkingDayIndices(
+    empSchedule?.workingDays,
+    reportingConfig.workingDays || [1, 2, 3, 4, 5, 6]
+  );
   const holidaysConfig = reportingConfig.holidays || [];
+  const cutoffCtx = buildAttendanceCutoffContext({
+    now: referenceDate,
+    timeZone: empSchedule?.timezone || reportingConfig.timezone || 'Asia/Kolkata',
+    cutoffTime: empSchedule?.dailyCutoffTime || empSchedule?.deadline || reportingConfig.submissionDeadline,
+    graceMinutes: empSchedule?.graceMinutes || 0,
+  });
 
   // 3. Calendar boundaries
   const totalCalendarDays = new Date(year, month, 0).getDate();
@@ -129,6 +166,10 @@ export async function generateMonthlyReport(
   }
 
   // 5. Calculate aggregate statistics across every calendar day
+  let totalWorkingDays = 0;
+  let elapsedWorkingDays = 0;
+  let elapsedLeaveOnWorkdays = 0;
+  let upcomingDays = 0;
   let daysAttended = 0;
   let daysWithActivities = 0;
   let totalActivities = 0;
@@ -171,15 +212,39 @@ export async function generateMonthlyReport(
     const hasActivities = mergedActivities.length > 0;
     const isSubmittedReport = Boolean(
       report &&
-        (report.finalized ||
-          ['submitted', 'under_review', 'approved', 'rejected', 'correction_requested', 'edit_requested', 'resubmitted'].includes(
-            report.status
-          ))
+      (report.finalized ||
+        ['submitted', 'under_review', 'approved', 'rejected', 'correction_requested', 'edit_requested', 'resubmitted'].includes(
+          report.status
+        ))
     );
+
+    const dayState = resolveDailyAttendanceAndReportState({
+      dateStr,
+      cutoffCtx,
+      attendance,
+      leave,
+      isHoliday,
+      isWeeklyOff,
+      hasActivities,
+      hasSubmittedReport: isSubmittedReport,
+      reportStatus: report?.status,
+    });
+
+    if (!isWeeklyOff && !isHoliday) {
+      totalWorkingDays++;
+      if (dayState.isCutoffPassed) {
+        elapsedWorkingDays++;
+        if (leave) elapsedLeaveOnWorkdays++;
+      }
+    }
+
+    if (dayState.attendanceStatus === 'Upcoming') {
+      upcomingDays++;
+    }
 
     if (attendance) {
       daysAttended++;
-    } else if (!isWeeklyOff && !isHoliday && !leave) {
+    } else if (dayState.isMissingAttendance) {
       missingAttendanceDays++;
     }
 
@@ -217,7 +282,7 @@ export async function generateMonthlyReport(
       } else if (['submitted', 'under_review', 'resubmitted'].includes(report.status)) {
         pendingReviewDays++;
       }
-    } else if (!leave && !isWeeklyOff && !isHoliday) {
+    } else if (dayState.isMissingReport) {
       missingReportDays++;
     }
 
@@ -289,37 +354,87 @@ export async function generateMonthlyReport(
           videoUrls: videos,
         });
 
-        // Collect photo attachments
-        photos.forEach((url, pIdx) => {
-          attachments.push({
-            id: `att_${report?.id || dateStr}_${act.slotNumber}_p${pIdx}`,
-            reportId: report?.id || `field_rep_${staffUid}_${dateStr}`,
-            staffUid,
-            uploadedByUid: staffUid,
-            storagePath: url,
-            downloadUrl: url,
-            originalFilename: inferFilenameFromUrl(url, `Activity_${act.slotNumber}_Photo_${pIdx + 1}.jpg`),
-            caption: `Slot #${act.slotNumber}: ${title}${act.village ? ` (${act.village})` : ''}`,
-            fileSize: 0,
-            mimeType: 'image/jpeg',
-            uploadedAt: act.activityEndAt || act.activityStartAt || new Date().toISOString(),
+        // Collect photo attachments (include stored objectKey / mediaId alongside legacy URLs)
+        const photoMetaList = Array.isArray(act.photoMetadata) ? act.photoMetadata : [];
+        const photoKeyList = Array.isArray(act.photoObjectKeys) ? act.photoObjectKeys : [];
+        const photoMediaIdList = Array.isArray(act.photoMediaIds) ? act.photoMediaIds : [];
+
+        if (photos.length > 0) {
+          photos.forEach((url, pIdx) => {
+            const meta = photoMetaList.find((m) => m.url === url) || photoMetaList[pIdx];
+            const objKey = meta?.objectKey || photoKeyList[pIdx];
+            const medId = meta?.mediaId || photoMediaIdList[pIdx];
+            attachments.push({
+              id: `att_${report?.id || dateStr}_${act.slotNumber}_p${pIdx}`,
+              reportId: report?.id || `field_rep_${staffUid}_${dateStr}`,
+              staffUid,
+              uploadedByUid: meta?.uploadedBy || staffUid,
+              storagePath: objKey || url,
+              downloadUrl: url,
+              objectKey: objKey,
+              r2ObjectKey: objKey,
+              mediaId: medId,
+              originalFilename:
+                meta?.fileName ||
+                inferFilenameFromUrl(url, `Activity_${act.slotNumber}_Photo_${pIdx + 1}.jpg`),
+              caption: `Slot #${act.slotNumber}: ${title}${act.village ? ` (${act.village})` : ''}`,
+              fileSize: 0,
+              mimeType: meta?.mimeType || 'image/jpeg',
+              uploadedAt: meta?.uploadedAt || act.activityEndAt || act.activityStartAt || new Date().toISOString(),
+            });
           });
-        });
+        } else if (photoKeyList.length > 0 || photoMediaIdList.length > 0 || photoMetaList.length > 0) {
+          const count = Math.max(photoMetaList.length, photoKeyList.length, photoMediaIdList.length);
+          for (let pIdx = 0; pIdx < count; pIdx++) {
+            const meta = photoMetaList[pIdx];
+            const objKey = meta?.objectKey || photoKeyList[pIdx];
+            const medId = meta?.mediaId || photoMediaIdList[pIdx];
+            if (!objKey && !medId) continue;
+            const fallbackRef = medId ? `/api/v1/media/${medId}` : objKey!;
+            attachments.push({
+              id: `att_${report?.id || dateStr}_${act.slotNumber}_p${pIdx}`,
+              reportId: report?.id || `field_rep_${staffUid}_${dateStr}`,
+              staffUid,
+              uploadedByUid: meta?.uploadedBy || staffUid,
+              storagePath: objKey || fallbackRef,
+              downloadUrl: fallbackRef,
+              objectKey: objKey,
+              r2ObjectKey: objKey,
+              mediaId: medId,
+              originalFilename: meta?.fileName || `Activity_${act.slotNumber}_Photo_${pIdx + 1}.jpg`,
+              caption: `Slot #${act.slotNumber}: ${title}${act.village ? ` (${act.village})` : ''}`,
+              fileSize: 0,
+              mimeType: meta?.mimeType || 'image/jpeg',
+              uploadedAt: meta?.uploadedAt || act.activityEndAt || act.activityStartAt || new Date().toISOString(),
+            });
+          }
+        }
 
         // Collect video attachments
+        const videoMetaList = Array.isArray(act.videoMetadata) ? act.videoMetadata : [];
+        const videoKeyList = Array.isArray(act.videoObjectKeys) ? act.videoObjectKeys : [];
+        const videoMediaIdList = Array.isArray(act.videoMediaIds) ? act.videoMediaIds : [];
         videos.forEach((url, vIdx) => {
+          const meta = videoMetaList.find((m) => m.url === url) || videoMetaList[vIdx];
+          const objKey = meta?.objectKey || videoKeyList[vIdx];
+          const medId = meta?.mediaId || videoMediaIdList[vIdx];
           attachments.push({
             id: `att_${report?.id || dateStr}_${act.slotNumber}_v${vIdx}`,
             reportId: report?.id || `field_rep_${staffUid}_${dateStr}`,
             staffUid,
-            uploadedByUid: staffUid,
-            storagePath: url,
+            uploadedByUid: meta?.uploadedBy || staffUid,
+            storagePath: objKey || url,
             downloadUrl: url,
-            originalFilename: inferFilenameFromUrl(url, `Activity_${act.slotNumber}_Video_${vIdx + 1}.mp4`),
+            objectKey: objKey,
+            r2ObjectKey: objKey,
+            mediaId: medId,
+            originalFilename:
+              meta?.fileName ||
+              inferFilenameFromUrl(url, `Activity_${act.slotNumber}_Video_${vIdx + 1}.mp4`),
             caption: `Slot #${act.slotNumber}: ${title} Video`,
             fileSize: 0,
-            mimeType: 'video/mp4',
-            uploadedAt: act.activityEndAt || act.activityStartAt || new Date().toISOString(),
+            mimeType: meta?.mimeType || 'video/mp4',
+            uploadedAt: meta?.uploadedAt || act.activityEndAt || act.activityStartAt || new Date().toISOString(),
           });
         });
       });
@@ -331,40 +446,25 @@ export async function generateMonthlyReport(
       summaryText = 'Weekly Off';
     } else if (attendance) {
       summaryText = 'Attended - No field activities logged';
+    } else if (dayState.attendanceStatus === 'Upcoming') {
+      summaryText = 'Upcoming scheduled workday';
     }
 
-    let statusLabel: MonthlyReportDay['reportStatus'] = 'Missing';
-    if (isSubmittedReport && report) {
-      if (report.status === 'approved') statusLabel = 'Approved';
-      else if (['rejected', 'correction_requested', 'edit_requested'].includes(report.status)) {
-        statusLabel = 'Correction Requested';
-      } else if (['submitted', 'under_review', 'resubmitted'].includes(report.status)) {
-        statusLabel = 'Submitted';
-      }
-    } else if (hasActivities) {
-      statusLabel = 'In Progress' as any;
-    } else if (leave) {
-      statusLabel = 'On Leave';
-    } else if (isHoliday) {
-      statusLabel = 'Holiday' as any;
-    } else if (isWeeklyOff) {
-      statusLabel = 'Weekly Off' as any;
-    }
+    const statusLabel = dayState.reportStatusSummary as MonthlyReportDay['reportStatus'];
 
     const reviewerName = report?.reviewerName;
     const reviewStatusText = reviewerName
       ? `${report?.status === 'approved' ? 'Approved' : 'Reviewed'} by ${reviewerName}`
       : report?.status === 'approved'
-      ? 'Approved'
-      : isSubmittedReport
-      ? 'Pending Review'
-      : '—';
+        ? 'Approved'
+        : isSubmittedReport
+          ? 'Pending Review'
+          : '—';
 
     let remarksText = report?.reviewComments || report?.editRequest?.reason || '—';
     if (hasConflict) {
-      remarksText = `[CONFLICT] Activity reported on approved ${leave?.leaveType?.toUpperCase()} leave. ${
-        remarksText !== '—' ? remarksText : ''
-      }`;
+      remarksText = `[CONFLICT] Activity reported on approved ${leave?.leaveType?.toUpperCase()} leave. ${remarksText !== '—' ? remarksText : ''
+        }`;
     }
 
     const subTime = report?.submittedAt ? formatTimeIST(report.submittedAt) : '—';
@@ -394,17 +494,7 @@ export async function generateMonthlyReport(
         ? `Conflict: Report submitted on approved ${leave?.leaveType} leave date.`
         : undefined,
       attachments,
-      attendanceStatus: attendance
-        ? attendance.status === 'active'
-          ? 'Active'
-          : 'Present'
-        : leave
-        ? 'On Leave'
-        : isHoliday
-        ? 'Holiday'
-        : isWeeklyOff
-        ? 'Weekly Off'
-        : 'Absent',
+      attendanceStatus: dayState.attendanceStatus,
       loginTime,
       logoutTime,
       loginLocationName: loginLoc,
@@ -422,6 +512,12 @@ export async function generateMonthlyReport(
 
   const totalActivityHours = Math.round((totalActivityMinutes / 60) * 10) / 10;
   const totalWorkingHours = Math.round((totalWorkingPeriodMinutes / 60) * 10) / 10;
+  const attendancePercentage = calculateAttendancePercentage({
+    daysAttended,
+    elapsedWorkingDays,
+    elapsedLeaveOnWorkdays,
+    leaveCountsAsWorkingDay: reportingConfig.leaveCountsAsWorkingDay,
+  });
 
   return {
     employee,
@@ -431,6 +527,8 @@ export async function generateMonthlyReport(
     generatedAt: new Date().toISOString(),
     stats: {
       totalCalendarDays,
+      totalWorkingDays,
+      elapsedWorkingDays,
       daysAttended,
       daysWithActivities,
       totalActivities,
@@ -444,6 +542,9 @@ export async function generateMonthlyReport(
       daysRequiringCorrection,
       daysOnLeave: approvedLeaveDays,
       missingAttendanceDays,
+      absentDays: missingAttendanceDays,
+      upcomingDays,
+      attendancePercentage,
       submittedReportDays,
       approvedLeaveDays,
       pendingReviewDays,

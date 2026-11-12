@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { Image as ImageIcon, Video as VideoIcon, Eye, Download, X } from 'lucide-react';
 import { ReportAttachment } from '@/types';
 import { Dialog } from '@/components/ui/dialog';
+import { MediaPreview } from '@/components/media/media-preview';
 
 interface AttachmentGalleryProps {
   attachments: ReportAttachment[];
@@ -54,14 +55,15 @@ export function AttachmentGallery({ attachments }: AttachmentGalleryProps) {
                   </span>
                 </div>
               ) : (
-                <img
+                <MediaPreview
                   src={src}
                   alt={att.caption || att.originalFilename || 'Work evidence'}
-                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
-                  onError={(e) => {
-                    // Fallback visual if preview fails
-                    (e.target as HTMLElement).style.display = 'none';
-                  }}
+                  mimeType={att.mimeType}
+                  fileName={att.originalFilename}
+                  variant="card"
+                  shape="square"
+                  className="w-full h-full border-0"
+                  imgClassName="group-hover:scale-105 transition-transform duration-200"
                 />
               )}
 

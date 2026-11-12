@@ -2,8 +2,11 @@ import { NextResponse } from 'next/server';
 import { requireMobileAuth, apiSuccess, apiError } from '@/lib/api/v1-helper';
 import { fetchDocument, updateDocument } from '@/lib/firebase/firestore';
 import { ERP_COLLECTIONS } from '@/lib/firebase/collections';
-import { FieldActivityRecord } from '@/types';
+import { EvidenceMetadataItem, FieldActivityRecord } from '@/types';
 import { adminStorage } from '@/lib/firebase/admin';
+import { isR2Configured } from '@/lib/storage/r2';
+import { uploadMediaFile } from '@/lib/storage/media';
+import { mergeEvidenceMetadata, mergeStringList } from '@/lib/utils/field-activity-calculations';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,6 +28,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
     const contentType = req.headers.get('content-type') || '';
     let uploadedUrl = '';
+    let mediaId: string | undefined;
+    let objectKey: string | undefined;
+    let fileName = 'evidence';
+    let mimeType = 'application/octet-stream';
     let caption = '';
     let isVideo = false;
 
@@ -37,6 +44,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         return apiError('No file provided in multipart upload.', 400);
       }
 
+      fileName = file.name || fileName;
+      mimeType = file.type || mimeType;
       isVideo = file.type.startsWith('video/');
       const maxSize = isVideo ? 100 * 1024 * 1024 : 10 * 1024 * 1024;
       if (file.size > maxSize) {
@@ -48,40 +57,63 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       const arrayBuffer = await file.arrayBuffer();
       const buffer = Buffer.from(arrayBuffer);
 
-      // Persist locally for dev / offline sync fallback
-      try {
-        const fs = await import('fs/promises');
-        const path = await import('path');
-        const localPath = path.join(process.cwd(), 'storage', 'uploads', storagePath);
-        await fs.mkdir(path.dirname(localPath), { recursive: true });
-        await fs.writeFile(localPath, buffer);
-      } catch (fsErr: any) {
-        console.warn('Local file write warning:', fsErr.message);
-      }
-
-      uploadedUrl = `/api/uploads/view?path=${encodeURIComponent(storagePath)}`;
-
-      // Save to Firebase Storage bucket if configured
-      try {
-        const bucket = adminStorage.bucket();
-        const fileRef = bucket.file(storagePath);
-        await fileRef.save(buffer, {
-          metadata: {
-            contentType: file.type,
-            metadata: {
-              uploadedByUid: user.uid,
-              activityId,
-              reportDate: activity.reportDate,
-            },
+      if (isR2Configured()) {
+        const uploadResult = await uploadMediaFile({
+          fileName: file.name,
+          mimeType: file.type,
+          buffer,
+          entityType: 'activity',
+          entityId: activityId,
+          uploadedBy: user,
+          centerId: activity.centerId || user.assignedCenterIds?.[0],
+          caption,
+          isPublic: false,
+          validation: {
+            allowDocuments: false,
+            allowVideos: true,
+            maxImageBytes: 10 * 1024 * 1024,
+            maxVideoBytes: 100 * 1024 * 1024,
           },
         });
-        const [signedUrl] = await fileRef.getSignedUrl({
-          action: 'read',
-          expires: '03-01-2035',
-        });
-        if (signedUrl) uploadedUrl = signedUrl;
-      } catch {
-        // Fallback remains the secure view endpoint
+        uploadedUrl = uploadResult.resolvedUrl;
+        mediaId = uploadResult.record.id;
+        objectKey = uploadResult.record.objectKey;
+      } else {
+        // Persist locally for dev / offline sync fallback
+        try {
+          const fs = await import('fs/promises');
+          const path = await import('path');
+          const localPath = path.join(process.cwd(), 'storage', 'uploads', storagePath);
+          await fs.mkdir(path.dirname(localPath), { recursive: true });
+          await fs.writeFile(localPath, buffer);
+        } catch (fsErr: any) {
+          console.warn('Local file write warning:', fsErr.message);
+        }
+
+        uploadedUrl = `/api/uploads/view?path=${encodeURIComponent(storagePath)}`;
+
+        // Save to Firebase Storage bucket if configured
+        try {
+          const bucket = adminStorage.bucket();
+          const fileRef = bucket.file(storagePath);
+          await fileRef.save(buffer, {
+            metadata: {
+              contentType: file.type,
+              metadata: {
+                uploadedByUid: user.uid,
+                activityId,
+                reportDate: activity.reportDate,
+              },
+            },
+          });
+          const [signedUrl] = await fileRef.getSignedUrl({
+            action: 'read',
+            expires: '03-01-2035',
+          });
+          if (signedUrl) uploadedUrl = signedUrl;
+        } catch {
+          // Fallback remains the secure view endpoint
+        }
       }
     } else {
       // JSON payload
@@ -99,6 +131,16 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const existingPhotos = Array.isArray(activity.photoEvidence) ? activity.photoEvidence : [];
     const existingVideos = Array.isArray(activity.videoEvidence) ? activity.videoEvidence : [];
 
+    const metadataItem: EvidenceMetadataItem = {
+      objectKey,
+      mediaId,
+      mimeType: isVideo && mimeType === 'application/octet-stream' ? 'video/mp4' : mimeType === 'application/octet-stream' ? 'image/jpeg' : mimeType,
+      fileName,
+      uploadedAt: nowIso,
+      uploadedBy: user.uid,
+      url: uploadedUrl,
+    };
+
     const updates: Partial<FieldActivityRecord> = {
       updatedAt: nowIso,
     };
@@ -106,9 +148,15 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     if (isVideo) {
       updates.videoUrl = uploadedUrl;
       updates.videoEvidence = [...new Set([...existingVideos, uploadedUrl])];
+      updates.videoObjectKeys = mergeStringList(activity.videoObjectKeys, objectKey);
+      updates.videoMediaIds = mergeStringList(activity.videoMediaIds, mediaId);
+      updates.videoMetadata = mergeEvidenceMetadata(activity.videoMetadata, [metadataItem]);
     } else {
       updates.photoUrl = uploadedUrl;
       updates.photoEvidence = [...new Set([...existingPhotos, uploadedUrl])];
+      updates.photoObjectKeys = mergeStringList(activity.photoObjectKeys, objectKey);
+      updates.photoMediaIds = mergeStringList(activity.photoMediaIds, mediaId);
+      updates.photoMetadata = mergeEvidenceMetadata(activity.photoMetadata, [metadataItem]);
     }
 
     await updateDocument(ERP_COLLECTIONS.fieldActivities, activityId, updates);
@@ -117,6 +165,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       {
         activityId,
         url: uploadedUrl,
+        mediaId,
+        objectKey,
         isVideo,
         caption,
         photoEvidence: updates.photoEvidence || existingPhotos,
@@ -126,8 +176,16 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       'Evidence attached successfully'
     );
   } catch (err: any) {
-    const status = err.message?.startsWith('UNAUTHORIZED') ? 401 : err.message?.startsWith('FORBIDDEN') ? 403 : 500;
-    return apiError(err.message, status);
+    const message = err?.message || 'Evidence upload failed';
+    const isClientError = message.includes('INVALID_') || message.includes('FILE_TOO_LARGE');
+    const status = message.startsWith('UNAUTHORIZED')
+      ? 401
+      : message.startsWith('FORBIDDEN')
+        ? 403
+        : isClientError
+          ? 400
+          : 500;
+    return apiError(message, status);
   }
 }
 

@@ -2,7 +2,7 @@ import { fetchCollection, fetchDocument, saveDocument, updateDocument } from '@/
 import { adminDb, hasValidAdminCredentials } from '@/lib/firebase/admin';
 import { ERP_COLLECTIONS } from '@/lib/firebase/collections';
 import { DailyReport, ReportStatus, DashboardStats, FilterParams, ReportRevision, UserProfile } from '@/types';
-import { checkIfLateSubmission, getTodayDateString, normalizeReportDate } from '@/lib/utils/date-utils';
+import { checkIfLateSubmission, getOperationalDateString, getTodayDateString, normalizeReportDate } from '@/lib/utils/date-utils';
 import { logAuditAction } from '@/lib/services/audit-service';
 
 export async function checkExistingDailyReport(
@@ -650,8 +650,8 @@ export async function getDashboardStats(params?: FilterParams): Promise<Dashboar
     for (let i = 6; i >= 0; i--) {
       const d = new Date(now);
       d.setDate(d.getDate() - i);
-      const dateStr = d.toISOString().split('T')[0];
-      const dayLabel = i === 0 ? 'Today' : d.toLocaleDateString('en-US', { weekday: 'short' });
+      const dateStr = getOperationalDateString(d);
+      const dayLabel = i === 0 ? 'Today' : d.toLocaleDateString('en-US', { weekday: 'short', timeZone: 'Asia/Kolkata' });
 
       const daySubmitted = allReports.filter((r) => r.reportDate === dateStr && r.status !== 'draft').length;
       const dayMissing = Math.max(0, totalActiveStaff - daySubmitted);

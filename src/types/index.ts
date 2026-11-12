@@ -1,5 +1,6 @@
 export * from '@/lib/firebase/collections';
 export * from './field-activity';
+export type { MediaEntityType, MediaRecord, MediaStorageProvider } from '@/lib/storage/media-types';
 
 export type UserRole = 'super_admin' | 'admin' | 'manager' | 'staff';
 
@@ -23,6 +24,9 @@ export interface UserProfile {
   designation: string;
   emergencyContact?: string;
   bio?: string;
+  avatarUrl?: string;
+  avatarMediaId?: string;
+  avatarObjectKey?: string;
   joiningDate?: string | null; // YYYY-MM-DD
   workScheduleId?: string;
   accountStatus: AccountStatus;
@@ -54,6 +58,11 @@ export interface Center {
   departmentId: string;
   departmentName?: string;
   assignedStaffUids: string[];
+  logoUrl?: string;
+  photoUrl?: string;
+  photoMediaId?: string;
+  photoObjectKey?: string;
+  mediaIds?: string[];
   active: boolean;
   createdAt: string;
   updatedAt: string;
@@ -75,6 +84,9 @@ export interface ReportAttachment {
   staffUid: string;
   storagePath: string;
   downloadUrl?: string;
+  objectKey?: string;
+  r2ObjectKey?: string;
+  mediaId?: string;
   originalFilename: string;
   mimeType: string;
   fileSize: number;
@@ -178,10 +190,12 @@ export interface DailyReport {
 export interface WorkSchedule {
   id: string;
   name: string;
-  workingDays: number[]; // 0 = Sun, 1 = Mon, ..., 6 = Sat
-  deadline: string; // HH:mm format, e.g., "19:00"
-  timezone: string; // default "Asia/Kolkata"
-  reminderPolicy: {
+  workingDays: Array<number | string>; // 0 = Sun..6 = Sat or 'Mon'..'Sat'
+  deadline?: string; // HH:mm format, e.g., "19:00"
+  dailyCutoffTime?: string; // HH:mm format, e.g., "19:00"
+  graceMinutes?: number;
+  timezone?: string; // default "Asia/Kolkata"
+  reminderPolicy?: {
     initialReminderTime: string; // HH:mm format
     subsequentIntervalHours: number;
     maxAttempts: number;
@@ -262,7 +276,18 @@ export interface MonthlyReportDay {
   dayNumber: number; // 1-31
   dayOfWeek: string; // e.g. "Monday"
   dailyActivity: string;
-  reportStatus: 'Submitted' | 'Approved' | 'Under Review' | 'Correction Requested' | 'On Leave' | 'Missing';
+  reportStatus:
+    | 'Submitted'
+    | 'Approved'
+    | 'Under Review'
+    | 'Correction Requested'
+    | 'On Leave'
+    | 'Holiday'
+    | 'Weekly Off'
+    | 'In Progress'
+    | 'Present'
+    | 'Upcoming'
+    | 'Missing';
   submissionTime: string;
   reviewStatus: string;
   remarks: string;
@@ -284,7 +309,10 @@ export interface MonthlyReportSummary {
     email: string;
     designation: string;
     departmentName: string;
+    centerId?: string;
     centerName: string;
+    avatarUrl?: string;
+    centerLogoUrl?: string;
   };
   year: number;
   month: number;
@@ -292,9 +320,15 @@ export interface MonthlyReportSummary {
   generatedAt: string;
   stats: {
     totalCalendarDays: number;
+    totalWorkingDays?: number;
+    elapsedWorkingDays?: number;
     submittedReportDays: number;
     approvedReportDays: number;
     missingReportDays: number;
+    missingAttendanceDays?: number;
+    absentDays?: number;
+    upcomingDays?: number;
+    attendancePercentage?: number | null;
     approvedLeaveDays: number;
     pendingReviewDays: number;
     correctionRequestedDays: number;
@@ -357,7 +391,7 @@ export interface AuditLog {
   actorName: string;
   actorRole: UserRole;
   action: string;
-  resourceType: 'user' | 'report' | 'department' | 'center' | 'settings' | 'schedule' | 'holiday' | 'leave' | 'auth' | 'system' | 'system_settings';
+  resourceType: 'user' | 'report' | 'department' | 'center' | 'settings' | 'schedule' | 'holiday' | 'leave' | 'auth' | 'system' | 'system_settings' | 'media';
   resourceId: string;
   details?: string;
   previousValues?: Record<string, any>;
@@ -371,6 +405,8 @@ export interface AuditLog {
 export interface OrganizationDetails {
   companyName: string;
   companyLogoUrl?: string;
+  companyLogoKey?: string;
+  companyLogoMediaId?: string;
   address?: string;
   phone?: string;
   email?: string;
@@ -435,6 +471,8 @@ export interface SystemSettings {
   id: 'global';
   companyName: string;
   companyLogoUrl?: string;
+  companyLogoKey?: string;
+  companyLogoMediaId?: string;
   reportingSettings: {
     defaultDeadline: string; // "19:00"
     allowLateSubmissions: boolean;

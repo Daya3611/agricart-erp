@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireMobileAuth, apiSuccess, apiError } from '@/lib/api/v1-helper';
 import { generateMonthlyReport } from '@/lib/services/monthly-report-service';
+import { getOperationalYearMonth } from '@/lib/utils/date-utils';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,12 +18,12 @@ export async function GET(req: Request) {
       return apiError('FORBIDDEN: You can only access your own monthly reports.', 403);
     }
 
-    const now = new Date();
+    const { year: defaultYear, month: defaultMonth } = getOperationalYearMonth();
     const monthParam = searchParams.get('month');
     const yearParam = searchParams.get('year');
 
-    const month = monthParam ? parseInt(monthParam.includes('-') ? monthParam.split('-')[1] : monthParam, 10) : now.getMonth() + 1;
-    const year = yearParam ? parseInt(yearParam, 10) : now.getFullYear();
+    const month = monthParam ? parseInt(monthParam.includes('-') ? monthParam.split('-')[1] : monthParam, 10) : defaultMonth;
+    const year = yearParam ? parseInt(yearParam, 10) : defaultYear;
 
     if (isNaN(month) || month < 1 || month > 12) {
       return apiError('Invalid month parameter (must be 1 - 12).', 400);

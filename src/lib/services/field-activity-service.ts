@@ -15,7 +15,9 @@ import {
   isActivityCompleted,
   isActivityInProgress,
   isSingleFarmerActivity,
+  mergeEvidenceMetadata,
   mergeEvidenceUrls,
+  mergeStringList,
   normalizeActivityStatus,
   resolveBlockingActiveActivity,
   StaleOrphanResolution,
@@ -103,8 +105,10 @@ export async function startFieldActivity(
     let activityId = data.activityId || `act_${staffUser.uid}_${reportDate}_s${slotNumber}_${Date.now()}`;
     const reportDocId = `field_rep_${staffUser.uid}_${reportDate}`;
 
-    // 1. Fetch actual Firestore state for this operational date + parent report
-    const [docsForDate, parentReport, directExisting] = await Promise.all([
+    const attendanceDocId = `att_${staffUser.uid}_${reportDate}`;
+
+    // 1. Fetch actual Firestore state for this operational date, parent report, and attendance session
+    const [docsForDate, parentReport, directExisting, attendanceSession] = await Promise.all([
       fetchCollection(ERP_COLLECTIONS.fieldActivities, [
         { field: 'staffUid', op: '==', value: staffUser.uid },
         { field: 'reportDate', op: '==', value: reportDate },
@@ -113,7 +117,15 @@ export async function startFieldActivity(
       data.activityId
         ? (fetchDocument(ERP_COLLECTIONS.fieldActivities, data.activityId) as Promise<FieldActivityRecord | null>)
         : Promise.resolve(null),
+      fetchDocument(ERP_COLLECTIONS.attendanceSessions, attendanceDocId) as Promise<any>,
     ]);
+
+    if (!attendanceSession || attendanceSession.status !== 'active') {
+      return {
+        success: false,
+        error: 'START_DAY_REQUIRED: Please click "Clock In / Start Day" before creating or starting an activity.',
+      };
+    }
 
     if (directExisting) {
       const directStatus = normalizeActivityStatus(directExisting);
@@ -237,8 +249,14 @@ export async function startFieldActivity(
 
       photoEvidence: mergedPhotos,
       photoUrl: mergedPhotos[0] || '',
+      photoObjectKeys: mergeStringList(data.initialDetails?.photoObjectKeys),
+      photoMediaIds: mergeStringList(data.initialDetails?.photoMediaIds),
+      photoMetadata: mergeEvidenceMetadata(data.initialDetails?.photoMetadata),
       videoEvidence: mergedVideos,
       videoUrl: mergedVideos[0] || '',
+      videoObjectKeys: mergeStringList(data.initialDetails?.videoObjectKeys),
+      videoMediaIds: mergeStringList(data.initialDetails?.videoMediaIds),
+      videoMetadata: mergeEvidenceMetadata(data.initialDetails?.videoMetadata),
 
       syncStatus: 'synced',
       createdAt: existingDoc?.createdAt || nowIso,
@@ -309,11 +327,29 @@ function buildActivityDetailPatch(details: Partial<FieldActivitySlot>): Partial<
     patch.photoEvidence = mergedPhotos;
     patch.photoUrl = mergedPhotos[0] || '';
   }
+  if (details.photoObjectKeys !== undefined) {
+    patch.photoObjectKeys = mergeStringList(details.photoObjectKeys);
+  }
+  if (details.photoMediaIds !== undefined) {
+    patch.photoMediaIds = mergeStringList(details.photoMediaIds);
+  }
+  if (details.photoMetadata !== undefined) {
+    patch.photoMetadata = mergeEvidenceMetadata(details.photoMetadata);
+  }
 
   if (details.videoUrl !== undefined || details.videoEvidence !== undefined) {
     const mergedVideos = mergeEvidenceUrls(details.videoUrl, details.videoEvidence);
     patch.videoEvidence = mergedVideos;
     patch.videoUrl = mergedVideos[0] || '';
+  }
+  if (details.videoObjectKeys !== undefined) {
+    patch.videoObjectKeys = mergeStringList(details.videoObjectKeys);
+  }
+  if (details.videoMediaIds !== undefined) {
+    patch.videoMediaIds = mergeStringList(details.videoMediaIds);
+  }
+  if (details.videoMetadata !== undefined) {
+    patch.videoMetadata = mergeEvidenceMetadata(details.videoMetadata);
   }
 
   return patch;
@@ -482,8 +518,14 @@ export async function endFieldActivity(
         followUpDate: data.finalDetails?.followUpDate || '',
         photoEvidence: mergedPhotos,
         photoUrl: mergedPhotos[0] || '',
+        photoObjectKeys: mergeStringList(data.finalDetails?.photoObjectKeys),
+        photoMediaIds: mergeStringList(data.finalDetails?.photoMediaIds),
+        photoMetadata: mergeEvidenceMetadata(data.finalDetails?.photoMetadata),
         videoEvidence: mergedVideos,
         videoUrl: mergedVideos[0] || '',
+        videoObjectKeys: mergeStringList(data.finalDetails?.videoObjectKeys),
+        videoMediaIds: mergeStringList(data.finalDetails?.videoMediaIds),
+        videoMetadata: mergeEvidenceMetadata(data.finalDetails?.videoMetadata),
         syncStatus: 'synced',
         createdAt: data.finalDetails?.createdAt || nowIso,
         updatedAt: nowIso,

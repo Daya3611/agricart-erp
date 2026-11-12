@@ -4,6 +4,7 @@ import { fetchDocument } from '@/lib/firebase/firestore';
 import { ERP_COLLECTIONS } from '@/lib/firebase/collections';
 import { generateMonthlyReport } from '@/lib/services/monthly-report-service';
 import { generateMonthlyReportDOCX } from '@/lib/services/monthly-report-docx-generator';
+import { getOperationalYearMonth } from '@/lib/utils/date-utils';
 import { UserProfile } from '@/types';
 
 export const dynamic = 'force-dynamic';
@@ -13,13 +14,13 @@ export async function GET(req: Request) {
     const sessionUser = await requireAuthenticatedUser();
     const { searchParams } = new URL(req.url);
 
-    const now = new Date();
+    const { year: defaultYear, month: defaultMonth } = getOperationalYearMonth();
     const yearParam = searchParams.get('year');
     const monthParam = searchParams.get('month');
     const staffUidParam = searchParams.get('staffUid');
 
-    const year = yearParam ? parseInt(yearParam, 10) : now.getFullYear();
-    const month = monthParam ? parseInt(monthParam, 10) : now.getMonth() + 1;
+    const year = yearParam ? parseInt(yearParam, 10) : defaultYear;
+    const month = monthParam ? parseInt(monthParam, 10) : defaultMonth;
 
     if (isNaN(year) || isNaN(month) || month < 1 || month > 12) {
       return NextResponse.json(
@@ -56,7 +57,7 @@ export async function GET(req: Request) {
     const docxBuffer = await generateMonthlyReportDOCX(report);
 
     const cleanEmpId = report.employee.employeeId.replace(/[^a-zA-Z0-9_-]/g, '_');
-    const filename = `Agricart_Monthly_Report_${cleanEmpId}_${year}-${String(month).padStart(2, '0')}.docx`;
+    const filename = `Monthly_Field_Activity_Report_${cleanEmpId}_${year}-${String(month).padStart(2, '0')}.docx`;
 
     return new Response(new Uint8Array(docxBuffer), {
       status: 200,

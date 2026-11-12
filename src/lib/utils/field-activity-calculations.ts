@@ -2,6 +2,7 @@ import {
   ACTIVITY_CHOICES,
   ActivityChoiceKey,
   CanonicalActivityStatus,
+  EvidenceMetadataItem,
   FieldActivityRecord,
   FieldActivitySlot,
   FieldReportDailySummary,
@@ -652,6 +653,50 @@ export function mergeEvidenceUrls(singleUrl?: string | null, list?: unknown): st
   }
   add(singleUrl);
   return result;
+}
+
+export function mergeStringList(...sources: Array<string | string[] | null | undefined>): string[] {
+  const result: string[] = [];
+  const add = (val: string | undefined | null) => {
+    const trimmed = typeof val === 'string' ? val.trim() : '';
+    if (trimmed && !result.includes(trimmed)) {
+      result.push(trimmed);
+    }
+  };
+  for (const src of sources) {
+    if (Array.isArray(src)) {
+      for (const item of src) add(item);
+    } else if (typeof src === 'string') {
+      add(src);
+    }
+  }
+  return result;
+}
+
+export function mergeEvidenceMetadata(
+  existing?: EvidenceMetadataItem[] | null,
+  incoming?: EvidenceMetadataItem[] | null
+): EvidenceMetadataItem[] {
+  const byIdentity = new Map<string, EvidenceMetadataItem>();
+  const add = (item?: EvidenceMetadataItem | null) => {
+    if (!item || typeof item !== 'object') return;
+    const identity =
+      item.objectKey?.trim() || item.mediaId?.trim() || item.url?.trim() || item.fileName?.trim();
+    if (!identity) return;
+    const prev = byIdentity.get(identity);
+    byIdentity.set(identity, {
+      objectKey: item.objectKey?.trim() || prev?.objectKey,
+      mediaId: item.mediaId?.trim() || prev?.mediaId,
+      mimeType: item.mimeType || prev?.mimeType || 'application/octet-stream',
+      fileName: item.fileName || prev?.fileName || 'evidence',
+      uploadedAt: item.uploadedAt || prev?.uploadedAt || new Date().toISOString(),
+      uploadedBy: item.uploadedBy || prev?.uploadedBy,
+      url: item.url || prev?.url,
+    });
+  };
+  if (Array.isArray(existing)) existing.forEach(add);
+  if (Array.isArray(incoming)) incoming.forEach(add);
+  return Array.from(byIdentity.values());
 }
 
 export function resolveActivityNameLabel(

@@ -29,9 +29,28 @@ export async function POST(req: Request) {
 
     const existingSettings = await getSystemSettings();
 
+    const resolvedLogoUrl =
+      body.companyLogoUrl ??
+      body.reportingConfig?.organization?.companyLogoUrl ??
+      existingSettings.companyLogoUrl ??
+      existingSettings.reportingConfig?.organization?.companyLogoUrl;
+    const resolvedLogoKey =
+      body.companyLogoKey ??
+      body.reportingConfig?.organization?.companyLogoKey ??
+      existingSettings.companyLogoKey ??
+      existingSettings.reportingConfig?.organization?.companyLogoKey;
+    const resolvedLogoMediaId =
+      body.companyLogoMediaId ??
+      body.reportingConfig?.organization?.companyLogoMediaId ??
+      existingSettings.companyLogoMediaId ??
+      existingSettings.reportingConfig?.organization?.companyLogoMediaId;
+
     const updatedSettings: SystemSettings = {
       ...existingSettings,
       ...body,
+      companyLogoUrl: resolvedLogoUrl,
+      companyLogoKey: resolvedLogoKey,
+      companyLogoMediaId: resolvedLogoMediaId,
       reportingSettings: {
         ...existingSettings.reportingSettings,
         ...(body.reportingSettings || {}),
@@ -70,6 +89,9 @@ export async function POST(req: Request) {
         organization: {
           ...(existingSettings.reportingConfig?.organization || {}),
           ...(body.reportingConfig?.organization || {}),
+          ...(resolvedLogoUrl ? { companyLogoUrl: resolvedLogoUrl } : {}),
+          ...(resolvedLogoKey ? { companyLogoKey: resolvedLogoKey } : {}),
+          ...(resolvedLogoMediaId ? { companyLogoMediaId: resolvedLogoMediaId } : {}),
         },
       } as any,
       id: 'global',

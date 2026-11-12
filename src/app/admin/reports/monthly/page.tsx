@@ -41,7 +41,7 @@ import { Input } from '@/components/ui/input';
 import { Dialog } from '@/components/ui/dialog';
 import { getGoogleMapsUrl } from '@/lib/utils/geolocation';
 import { ReportReviewModal } from '@/components/reports/ReportReviewModal';
-import { formatReadableDate } from '@/lib/utils/date-utils';
+import { formatReadableDate, getOperationalYearMonth } from '@/lib/utils/date-utils';
 
 const MONTHS = [
   { value: 1, label: 'January' },
@@ -59,9 +59,9 @@ const MONTHS = [
 ];
 
 export default function AdminMonthlyReportPage() {
-  const now = new Date();
-  const [selectedYear, setSelectedYear] = useState<number>(now.getFullYear());
-  const [selectedMonth, setSelectedMonth] = useState<number>(now.getMonth() + 1);
+  const { year: defaultYear, month: defaultMonth } = getOperationalYearMonth();
+  const [selectedYear, setSelectedYear] = useState<number>(defaultYear);
+  const [selectedMonth, setSelectedMonth] = useState<number>(defaultMonth);
   const [selectedEmployeeUid, setSelectedEmployeeUid] = useState<string>('all');
   const [selectedDepartmentId, setSelectedDepartmentId] = useState<string>('all');
   const [selectedCenterId, setSelectedCenterId] = useState<string>('all');
@@ -278,7 +278,12 @@ export default function AdminMonthlyReportPage() {
     let records = dataset.dailyRecords.filter((r) => r.employeeUid === detailEmployeeUid);
 
     if (selectedReportStatus && selectedReportStatus !== 'all') {
-      records = records.filter((r) => r.reportStatus?.toLowerCase() === selectedReportStatus.toLowerCase());
+      const target = selectedReportStatus.toLowerCase();
+      records = records.filter(
+        (r) =>
+          r.reportStatus?.toLowerCase() === target ||
+          r.attendanceStatus?.toLowerCase() === target
+      );
     }
 
     return { summary, records };
@@ -421,6 +426,8 @@ export default function AdminMonthlyReportPage() {
                 <option value="Approved">Approved</option>
                 <option value="Correction Required">Correction Required</option>
                 <option value="Present">Present</option>
+                <option value="In Progress">In Progress</option>
+                <option value="Upcoming">Upcoming</option>
                 <option value="Activities Recorded">Activities Recorded</option>
                 <option value="On Leave">On Leave</option>
                 <option value="Holiday">Holiday</option>
@@ -517,6 +524,11 @@ export default function AdminMonthlyReportPage() {
                       </TableCell>
                       <TableCell className="text-right font-bold text-emerald-800">
                         {emp.daysAttended ?? emp.presentDays ?? 0}
+                        {emp.attendancePercentage !== null && emp.attendancePercentage !== undefined && (
+                          <span className="text-[10px] text-slate-500 block font-medium">
+                            ({emp.attendancePercentage}%)
+                          </span>
+                        )}
                       </TableCell>
                       <TableCell className="text-right font-semibold text-blue-800">
                         {emp.daysWithActivities ?? emp.totalDaysWorked ?? 0}
@@ -590,7 +602,15 @@ export default function AdminMonthlyReportPage() {
               </div>
               <div className="p-2.5 bg-emerald-50 rounded-xl border border-emerald-200">
                 <span className="text-[10px] font-bold text-emerald-800 uppercase block">Days Attended</span>
-                <span className="text-lg font-black text-emerald-900">{selectedEmpDetail.summary?.daysAttended ?? selectedEmpDetail.summary?.presentDays ?? 0}</span>
+                <span className="text-lg font-black text-emerald-900">
+                  {selectedEmpDetail.summary?.daysAttended ?? selectedEmpDetail.summary?.presentDays ?? 0}
+                  {selectedEmpDetail.summary?.attendancePercentage !== null &&
+                    selectedEmpDetail.summary?.attendancePercentage !== undefined && (
+                      <span className="text-xs font-bold text-emerald-700 ml-1">
+                        ({selectedEmpDetail.summary.attendancePercentage}%)
+                      </span>
+                    )}
+                </span>
               </div>
               <div className="p-2.5 bg-blue-50 rounded-xl border border-blue-200">
                 <span className="text-[10px] font-bold text-blue-800 uppercase block">Total Activities</span>
@@ -638,7 +658,8 @@ export default function AdminMonthlyReportPage() {
                 <TableBody>
                   {selectedEmpDetail.records.map((r) => {
                     const isOff = r.isWeeklyOff || r.isHoliday;
-                    const isMissing = r.isMissing;
+                    const isUpcoming = r.attendanceStatus === 'Upcoming' || r.reportStatus === 'Upcoming';
+                    const isMissing = !isUpcoming && r.isMissing;
                     const mapsUrl = r.loginGps ? getGoogleMapsUrl(r.loginGps) : (r.finalizationGps ? getGoogleMapsUrl(r.finalizationGps) : null);
                     const isExpanded = expandedDates.has(r.date);
                     const hasActivities = Array.isArray(r.activitiesList) && r.activitiesList.length > 0;
@@ -649,9 +670,11 @@ export default function AdminMonthlyReportPage() {
                           className={
                             isOff
                               ? 'bg-slate-50/60 text-slate-500'
-                              : isMissing
-                                ? 'bg-rose-50/30'
-                                : undefined
+                              : isUpcoming
+                                ? 'bg-slate-50/40 text-slate-500'
+                                : isMissing
+                                  ? 'bg-rose-50/30'
+                                  : undefined
                           }
                         >
                           {/* 1. Date */}
@@ -670,11 +693,15 @@ export default function AdminMonthlyReportPage() {
                               className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold ${
                                 r.attendanceStatus === 'Present'
                                   ? 'bg-emerald-100 text-emerald-800'
-                                  : r.attendanceStatus === 'Active'
+                                  : r.attendanceStatus === 'In Progress' || r.attendanceStatus === 'Active'
                                     ? 'bg-blue-100 text-blue-800'
                                     : r.attendanceStatus === 'Absent'
                                       ? 'bg-rose-100 text-rose-800'
-                                      : 'bg-slate-100 text-slate-700'
+                                      : r.attendanceStatus === 'On Leave'
+                                        ? 'bg-purple-100 text-purple-800'
+                                        : r.attendanceStatus === 'Holiday'
+                                          ? 'bg-indigo-100 text-indigo-800'
+                                          : 'bg-slate-100 text-slate-600'
                               }`}
                             >
                               {r.attendanceStatus || '—'}

@@ -28,6 +28,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { formatReadableDate, formatReadableDateTime } from '@/lib/utils/date-utils';
+import { MediaPreview } from '@/components/media/media-preview';
 import { cn } from '@/lib/utils/cn';
 
 interface EmployeeInfoModalProps {
@@ -133,17 +134,14 @@ export function EmployeeInfoModal({
         <div className="p-4 bg-slate-50 dark:bg-card/70 rounded-2xl border border-slate-200/90 dark:border-border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-2xs">
           <div className="flex items-center gap-3.5 min-w-0">
             <div className="relative">
-              {avatarUrl ? (
-                <img
-                  src={avatarUrl}
-                  alt={current.fullName}
-                  className="h-14 w-14 rounded-full object-cover ring-2 ring-emerald-600/30 shadow-2xs"
-                />
-              ) : (
-                <Avatar className="h-14 w-14 bg-emerald-700 text-white font-black text-lg ring-2 ring-emerald-600/30">
-                  <AvatarFallback>{initials}</AvatarFallback>
-                </Avatar>
-              )}
+              <MediaPreview
+                src={avatarUrl}
+                alt={current.fullName}
+                fallbackText={initials}
+                variant="avatar"
+                shape="circle"
+                className="h-14 w-14 bg-emerald-700 text-white font-black text-lg ring-2 ring-emerald-600/30 shadow-2xs"
+              />
               <span
                 className={cn(
                   'absolute bottom-0 right-0 h-3.5 w-3.5 rounded-full ring-2 ring-white dark:ring-card',

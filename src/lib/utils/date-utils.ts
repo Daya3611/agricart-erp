@@ -33,6 +33,36 @@ export function getTodayDateString(): string {
   return getOperationalDateString();
 }
 
+/**
+ * Returns the operational calendar { year, month } in the specified timezone (default: Asia/Kolkata).
+ * Avoids UTC boundary shifts around month-end.
+ */
+export function getOperationalYearMonth(
+  date: Date = new Date(),
+  timeZone = 'Asia/Kolkata'
+): { year: number; month: number } {
+  const dateStr = getOperationalDateString(date, timeZone);
+  const [y, m] = dateStr.split('-').map(Number);
+  return { year: y, month: m };
+}
+
+/**
+ * Returns minutes since 00:00 (0..1439) in the specified timezone using 24-hour clock (h23).
+ */
+export function getTimeZoneMinutesOfDay(date: Date = new Date(), timeZone = 'Asia/Kolkata'): number {
+  const formatted = new Intl.DateTimeFormat('en-GB', {
+    timeZone,
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).format(date);
+  const [hourStr, minStr] = formatted.split(':');
+  const h = Number(hourStr);
+  const m = Number(minStr);
+  if (Number.isNaN(h) || Number.isNaN(m)) return 0;
+  return h * 60 + m;
+}
+
 export function formatReadableDate(dateStr: string): string {
   if (!dateStr) return '';
   try {

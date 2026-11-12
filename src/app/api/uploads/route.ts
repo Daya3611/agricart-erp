@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { getServerSession } from '@/lib/auth/session';
 import { adminStorage, adminDb } from '@/lib/firebase/admin';
 import { ERP_COLLECTIONS } from '@/lib/firebase/collections';
+import { isR2Configured } from '@/lib/storage/r2';
+import { uploadMediaFile } from '@/lib/storage/media';
 
 export const dynamic = 'force-dynamic';
 
@@ -34,51 +36,82 @@ export async function POST(req: Request) {
     }
 
     const attachmentId = `att_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
-    const storagePath = `reports/${sessionUser.uid}/${reportId}/${attachmentId}_${file.name}`;
-
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
-    // Persist file locally in storage/uploads directory for offline/local development and fallback
-    try {
-      const fs = await import('fs/promises');
-      const path = await import('path');
-      const localFilePath = path.join(process.cwd(), 'storage', 'uploads', storagePath);
-      await fs.mkdir(path.dirname(localFilePath), { recursive: true });
-      await fs.writeFile(localFilePath, buffer);
-    } catch (fsErr: any) {
-      console.warn('Local filesystem upload save warning:', fsErr.message);
-    }
-
+    let storagePath = `reports/${sessionUser.uid}/${reportId}/${attachmentId}_${file.name}`;
     let downloadUrl = `/api/uploads/view?path=${encodeURIComponent(storagePath)}`;
+    let mediaId: string | undefined;
+    let r2ObjectKey: string | undefined;
+    let storageProvider: 'r2' | 'firebase' = 'firebase';
 
-    try {
-      const bucket = adminStorage.bucket();
-      const fileRef = bucket.file(storagePath);
-
-      await fileRef.save(buffer, {
-        metadata: {
-          contentType: file.type,
-          metadata: {
-            staffUid: sessionUser.uid,
-            originalFilename: file.name,
-            uploadedBy: sessionUser.fullName,
-          },
+    // Prefer centralized Cloudflare R2 storage when configured
+    if (isR2Configured()) {
+      const uploadResult = await uploadMediaFile({
+        fileName: file.name,
+        mimeType: file.type,
+        buffer,
+        entityType: 'report',
+        entityId: reportId,
+        uploadedBy: sessionUser,
+        centerId: sessionUser.assignedCenterIds?.[0],
+        caption,
+        isPublic: false,
+        validation: {
+          allowDocuments: true,
+          allowVideos: true,
+          maxImageBytes: maxPhotoSize,
+          maxDocumentBytes: maxPhotoSize,
+          maxVideoBytes: maxVideoSize,
         },
       });
 
-      // Generate signed URL (expires in 7 days) if configured
-      const [url] = await fileRef.getSignedUrl({
-        action: 'read',
-        expires: Date.now() + 7 * 24 * 60 * 60 * 1000,
-      });
-      if (url) {
-        downloadUrl = url;
+      mediaId = uploadResult.record.id;
+      r2ObjectKey = uploadResult.record.objectKey;
+      storagePath = uploadResult.record.objectKey;
+      downloadUrl = uploadResult.resolvedUrl;
+      storageProvider = 'r2';
+    } else {
+      // Persist file locally in storage/uploads directory for offline/local development and fallback
+      try {
+        const fs = await import('fs/promises');
+        const path = await import('path');
+        const localFilePath = path.join(process.cwd(), 'storage', 'uploads', storagePath);
+        await fs.mkdir(path.dirname(localFilePath), { recursive: true });
+        await fs.writeFile(localFilePath, buffer);
+      } catch (fsErr: any) {
+        console.warn('Local filesystem upload save warning:', fsErr.message);
       }
-    } catch (storageErr: any) {
-      console.warn('Firebase Storage cloud save fallback, serving from /api/uploads/view:', storageErr.message);
+
+      try {
+        const bucket = adminStorage.bucket();
+        const fileRef = bucket.file(storagePath);
+
+        await fileRef.save(buffer, {
+          metadata: {
+            contentType: file.type,
+            metadata: {
+              staffUid: sessionUser.uid,
+              originalFilename: file.name,
+              uploadedBy: sessionUser.fullName,
+            },
+          },
+        });
+
+        // Generate signed URL (expires in 7 days) if configured
+        const [url] = await fileRef.getSignedUrl({
+          action: 'read',
+          expires: Date.now() + 7 * 24 * 60 * 60 * 1000,
+        });
+        if (url) {
+          downloadUrl = url;
+        }
+      } catch (storageErr: any) {
+        console.warn('Firebase Storage cloud save fallback, serving from /api/uploads/view:', storageErr.message);
+      }
     }
 
+    const nowIso = new Date().toISOString();
     const attachment = {
       id: attachmentId,
       reportId,
@@ -86,12 +119,17 @@ export async function POST(req: Request) {
       employeeId: sessionUser.employeeId || '',
       storagePath,
       downloadUrl,
+      ...(mediaId ? { mediaId } : {}),
+      ...(r2ObjectKey ? { objectKey: r2ObjectKey, r2ObjectKey } : {}),
+      storageProvider,
       originalFilename: file.name,
+      fileName: file.name,
       mimeType: file.type,
       fileSize: file.size,
       caption,
       uploadedByUid: sessionUser.uid,
-      uploadedAt: new Date().toISOString(),
+      uploadedBy: sessionUser.uid,
+      uploadedAt: nowIso,
     };
 
     // Store file metadata and Storage object paths in erp_report_attachments
@@ -99,6 +137,15 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ success: true, attachment });
   } catch (err: any) {
-    return NextResponse.json({ success: false, error: err.message }, { status: 500 });
+    console.error('[api/uploads] Upload failed:', err);
+    const message = err?.message || 'Upload failed';
+    const isClientError =
+      message.includes('INVALID_') ||
+      message.includes('FILE_TOO_LARGE') ||
+      message.includes('NO_FILE') ||
+      message.includes('EMPTY_FILE') ||
+      message.includes('UNSUPPORTED_FILE_TYPE') ||
+      message.includes('UNSAFE_FILE_TYPE');
+    return NextResponse.json({ success: false, error: message }, { status: isClientError ? 400 : 500 });
   }
 }

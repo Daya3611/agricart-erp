@@ -4,6 +4,7 @@ import { generateMonthlyReport } from '@/lib/services/monthly-report-service';
 import { generateMonthlyReportPDF } from '@/lib/services/monthly-report-pdf-generator';
 import { buildMonthlyReportsDataset } from '@/lib/services/monthly-reports-aggregator';
 import { generateMonthlyReportsWorkbook } from '@/lib/services/monthly-excel-generator';
+import { getOperationalYearMonth } from '@/lib/utils/date-utils';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,12 +22,12 @@ export async function GET(req: Request) {
       return apiError('FORBIDDEN: You can only export your own reports.', 403);
     }
 
-    const now = new Date();
+    const { year: defaultYear, month: defaultMonth } = getOperationalYearMonth();
     const monthParam = searchParams.get('month');
     const yearParam = searchParams.get('year');
 
-    const month = monthParam ? parseInt(monthParam.includes('-') ? monthParam.split('-')[1] : monthParam, 10) : now.getMonth() + 1;
-    const year = yearParam ? parseInt(yearParam, 10) : now.getFullYear();
+    const month = monthParam ? parseInt(monthParam.includes('-') ? monthParam.split('-')[1] : monthParam, 10) : defaultMonth;
+    const year = yearParam ? parseInt(yearParam, 10) : defaultYear;
 
     if (format === 'pdf') {
       const report = await generateMonthlyReport(targetUid, year, month);

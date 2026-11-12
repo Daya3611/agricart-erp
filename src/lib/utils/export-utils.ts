@@ -76,13 +76,42 @@ export async function exportReportsToPDF(reports: DailyReport[], title = 'Agrica
     // Header banner
     doc.setFillColor(6, 78, 59); // Deep agricultural green
     doc.rect(0, 0, 297, 24, 'F');
+
+    let bannerTextX = 14;
+    try {
+      const settingsRes = await fetch('/api/settings');
+      const settingsJson = settingsRes.ok ? await settingsRes.json() : null;
+      const logoUrl =
+        settingsJson?.settings?.companyLogoUrl ||
+        settingsJson?.settings?.reportingConfig?.organization?.companyLogoUrl ||
+        '/logo.png';
+      const imgRes = await fetch(logoUrl);
+      if (imgRes.ok) {
+        const blob = await imgRes.blob();
+        const dataUrl = await new Promise<string>((resolve) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(String(reader.result || ''));
+          reader.readAsDataURL(blob);
+        });
+        if (dataUrl.startsWith('data:image/png') || dataUrl.startsWith('data:image/jpeg')) {
+          const fmt = dataUrl.startsWith('data:image/png') ? 'PNG' : 'JPEG';
+          doc.setFillColor(255, 255, 255);
+          doc.roundedRect(14, 4, 16, 16, 2, 2, 'F');
+          doc.addImage(dataUrl, fmt, 15, 5, 14, 14, undefined, 'FAST');
+          bannerTextX = 34;
+        }
+      }
+    } catch {
+      // Optional logo load failure never blocks export
+    }
+
     doc.setTextColor(255, 255, 255);
     doc.setFontSize(16);
     doc.setFont('helvetica', 'bold');
-    doc.text(title.toUpperCase(), 14, 12);
+    doc.text(title.toUpperCase(), bannerTextX, 12);
     doc.setFontSize(10);
     doc.setFont('helvetica', 'normal');
-    doc.text('Official Verified Report Submission', 14, 18);
+    doc.text('Official Verified Report Submission', bannerTextX, 18);
     doc.text(`Generated: ${new Date().toLocaleDateString('en-IN')}`, 240, 18);
 
     doc.setTextColor(15, 23, 42);

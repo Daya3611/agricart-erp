@@ -50,7 +50,10 @@ export async function GET(req: Request) {
       departmentCode: department?.code || '',
       assignedCenterIds: freshUser.assignedCenterIds || [],
       assignedCenterNames: centers.map((c) => c.name),
-      centers: centers.map((c) => ({ id: c.id, name: c.name, code: c.code, address: c.address })),
+      centers: centers.map((c) => ({ id: c.id, name: c.name, code: c.code, address: c.address, photoUrl: c.photoUrl || c.logoUrl || '' })),
+      avatarUrl: freshUser.avatarUrl || '',
+      avatarMediaId: freshUser.avatarMediaId || '',
+      avatarObjectKey: freshUser.avatarObjectKey || '',
       joiningDate: freshUser.joiningDate || '',
       createdAt: freshUser.createdAt || '',
       updatedAt: freshUser.updatedAt || '',
@@ -75,6 +78,9 @@ export async function PATCH(req: Request) {
     if (data!.phone !== undefined) updates.phone = data!.phone;
     if (data!.emergencyContact !== undefined) updates.emergencyContact = data!.emergencyContact;
     if (data!.bio !== undefined) updates.bio = data!.bio;
+    if (data!.avatarUrl !== undefined) updates.avatarUrl = data!.avatarUrl;
+    if (data!.avatarMediaId !== undefined) updates.avatarMediaId = data!.avatarMediaId;
+    if (data!.avatarObjectKey !== undefined) updates.avatarObjectKey = data!.avatarObjectKey;
 
     await updateDocument(ERP_COLLECTIONS.employees, user.uid, updates);
 

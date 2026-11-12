@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { LeaveType, UserProfile } from '@/types';
 import { calculateLeaveDays } from '@/lib/utils/leave';
+import { MediaUpload } from '@/components/media/media-upload';
 
 interface LeaveModalProps {
   open: boolean;
@@ -290,12 +291,23 @@ export function LeaveModal({
           />
         </div>
 
-        {/* 5. Supporting Document URL */}
-        <div>
-          <label className="font-bold text-slate-700 block mb-1">Supporting Document URL (Optional)</label>
+        {/* 5. Supporting Document */}
+        <div className="space-y-2.5">
+          <label className="font-bold text-slate-700 block">Supporting Document (Optional)</label>
+          <MediaUpload
+            entityType="leave"
+            entityId={selectedStaffUid || currentUser.uid}
+            allowDocuments={true}
+            compact={true}
+            label="Upload Certificate / Letter"
+            description="Upload PDF, PNG, JPEG or DOCX to Cloudflare R2"
+            currentUrl={attachmentUrl}
+            onUploadSingle={(item) => setAttachmentUrl(item.url)}
+            onError={(msg) => setErrorMsg(msg)}
+          />
           <Input
             type="url"
-            placeholder="https://... (medical certificate or permission letter)"
+            placeholder="Or paste https://... supporting document URL"
             value={attachmentUrl}
             onChange={(e) => setAttachmentUrl(e.target.value)}
           />

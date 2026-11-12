@@ -19,12 +19,15 @@ import {
   Cloud,
   Save,
   Upload,
+  Plus,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
+import { MediaPreview } from '@/components/media/media-preview';
 import {
+  EvidenceMetadataItem,
   FieldActivitySlot,
   ACTIVITY_CHOICES,
   SUPPORT_PROVIDED_OPTIONS,
@@ -34,7 +37,9 @@ import { LocationDisplayCard } from '@/components/reports/LocationDisplayCard';
 import { formatCapturedTime } from '@/lib/utils/geolocation';
 import {
   isSingleFarmerActivity,
+  mergeEvidenceMetadata,
   mergeEvidenceUrls,
+  mergeStringList,
   normalizeActivityStatus,
 } from '@/lib/utils/field-activity-calculations';
 
@@ -51,6 +56,7 @@ interface FieldActivitySlotCardProps {
   isReadOnly?: boolean;
   allowEditCompleted?: boolean;
   hasActiveActivityElsewhere?: boolean;
+  dayStarted?: boolean;
 }
 
 export function FieldActivitySlotCard({
@@ -66,16 +72,22 @@ export function FieldActivitySlotCard({
   isReadOnly = false,
   allowEditCompleted = false,
   hasActiveActivityElsewhere = false,
+  dayStarted = true,
 }: FieldActivitySlotCardProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [starting, setStarting] = useState(false);
   const [ending, setEnding] = useState(false);
   const [manualSaving, setManualSaving] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [photoUploadStatus, setPhotoUploadStatus] = useState<string | null>(null);
   const [uploadingVideo, setUploadingVideo] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
   const [elapsedMinutes, setElapsedMinutes] = useState(0);
+
+  const latestSlotRef = useRef(slot);
+  latestSlotRef.current = slot;
 
   const startingRef = useRef(false);
   const endingRef = useRef(false);
@@ -93,7 +105,11 @@ export function FieldActivitySlotCard({
       ? 'cancelled'
       : 'not_started';
 
-  const isFieldLocked = isReadOnly || status === 'cancelled' || (status === 'completed' && !allowEditCompleted);
+  const isFieldLocked =
+    isReadOnly ||
+    status === 'cancelled' ||
+    (status === 'not_started' && !dayStarted) ||
+    (status === 'completed' && !allowEditCompleted);
   const isDeskJob =
     slot.activityName === 'desk_job' ||
     (typeof slot.activityName === 'string' && slot.activityName.toLowerCase().includes('desk'));
@@ -178,6 +194,10 @@ export function FieldActivitySlotCard({
 
   // Handle Start
   const handleStart = async () => {
+    if (!dayStarted) {
+      setActionError('Please click "Clock In / Start Day" first before starting an activity.');
+      return;
+    }
     if (startingRef.current || starting || hasActiveActivityElsewhere || isFieldLocked) return;
     setActionError(null);
     setActionSuccess(null);
@@ -253,40 +273,133 @@ export function FieldActivitySlotCard({
     }
   };
 
-  // Handle evidence upload to /api/uploads
-  const handleEvidenceUpload = async (kind: 'photo' | 'video', file?: File | null) => {
-    if (!file || isFieldLocked) return;
+  // Upload one file to /api/uploads and return its canonical permanent reference + metadata
+  const uploadEvidenceFile = async (kind: 'photo' | 'video', file: File) => {
+    const curSlot = latestSlotRef.current;
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('reportId', curSlot.activityId || `slot_${curSlot.slotNumber}_${Date.now()}`);
+    formData.append('caption', `Activity #${curSlot.slotNumber} ${kind}`);
+
+    const res = await fetch('/api/uploads', { method: 'POST', body: formData });
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      throw new Error(data.error || `Failed to upload ${kind}`);
+    }
+    const url: string =
+      data.attachment?.downloadUrl ||
+      `/api/uploads/view?path=${encodeURIComponent(data.attachment?.storagePath || '')}`;
+    const uploadedObjectKey: string | undefined =
+      data.attachment?.objectKey || data.attachment?.r2ObjectKey;
+    const uploadedMediaId: string | undefined = data.attachment?.mediaId;
+    const metaItem: EvidenceMetadataItem = {
+      objectKey: uploadedObjectKey,
+      mediaId: uploadedMediaId,
+      mimeType:
+        data.attachment?.mimeType || file.type || (kind === 'photo' ? 'image/jpeg' : 'video/mp4'),
+      fileName: data.attachment?.fileName || data.attachment?.originalFilename || file.name,
+      uploadedAt: data.attachment?.uploadedAt || new Date().toISOString(),
+      uploadedBy: data.attachment?.uploadedBy || data.attachment?.uploadedByUid,
+      url,
+    };
+    return { url, uploadedObjectKey, uploadedMediaId, metaItem };
+  };
+
+  // Multi-photo uploader (handles both multi-select batch and sequential Add More Photos)
+  const handlePhotoFilesUpload = async (filesInput?: FileList | File[] | null) => {
+    const files = filesInput ? Array.from(filesInput).filter(Boolean) : [];
+    if (files.length === 0 || isFieldLocked) return;
+
     setActionError(null);
+    setUploadError(null);
     setActionSuccess(null);
-    if (kind === 'photo') setUploadingPhoto(true);
-    else setUploadingVideo(true);
+    setUploadingPhoto(true);
+
+    let successCount = 0;
+    const errors: string[] = [];
 
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-      formData.append('reportId', slot.activityId || `slot_${slot.slotNumber}_${Date.now()}`);
-      formData.append('caption', `Activity #${slot.slotNumber} ${kind}`);
+      for (let i = 0; i < files.length; i++) {
+        setPhotoUploadStatus(
+          files.length > 1 ? `Uploading ${i + 1} of ${files.length}...` : 'Uploading Photo...'
+        );
+        try {
+          const { url, uploadedObjectKey, uploadedMediaId, metaItem } = await uploadEvidenceFile(
+            'photo',
+            files[i]
+          );
+          const cur = latestSlotRef.current;
+          const merged = mergeEvidenceUrls(cur.photoUrl, [...(cur.photoEvidence || []), url]);
+          const nextSlot: FieldActivitySlot = {
+            ...cur,
+            photoUrl: merged[0] || url,
+            photoEvidence: merged,
+            photoObjectKeys: mergeStringList(cur.photoObjectKeys, uploadedObjectKey),
+            photoMediaIds: mergeStringList(cur.photoMediaIds, uploadedMediaId),
+            photoMetadata: mergeEvidenceMetadata(cur.photoMetadata, [metaItem]),
+          };
+          latestSlotRef.current = nextSlot;
+          onChange(nextSlot);
+          successCount++;
+        } catch (err: any) {
+          errors.push(`${files[i].name}: ${err.message || 'Upload failed'}`);
+        }
+      }
 
-      const res = await fetch('/api/uploads', { method: 'POST', body: formData });
-      const data = await res.json();
-      if (!res.ok || !data.success) {
-        throw new Error(data.error || `Failed to upload ${kind}`);
+      if (errors.length > 0) {
+        const msg = errors.join(' | ');
+        setUploadError(msg);
+        setActionError(msg);
       }
-      const url = data.attachment?.downloadUrl || `/api/uploads/view?path=${encodeURIComponent(data.attachment?.storagePath || '')}`;
-      if (kind === 'photo') {
-        const merged = mergeEvidenceUrls(url, slot.photoEvidence);
-        onChange({ ...slot, photoUrl: url, photoEvidence: merged });
-      } else {
-        const merged = mergeEvidenceUrls(url, slot.videoEvidence);
-        onChange({ ...slot, videoUrl: url, videoEvidence: merged });
+      if (successCount > 0) {
+        setActionSuccess(
+          successCount === 1
+            ? 'Photo uploaded and attached.'
+            : `${successCount} photos uploaded and attached.`
+        );
+        setTimeout(() => setActionSuccess(null), 3500);
       }
-      setActionSuccess(`${kind === 'photo' ? 'Photo' : 'Video'} uploaded and attached.`);
+    } finally {
+      setUploadingPhoto(false);
+      setPhotoUploadStatus(null);
+    }
+  };
+
+  // Video uploader to /api/uploads
+  const handleEvidenceUpload = async (kind: 'photo' | 'video', file?: File | null) => {
+    if (!file || isFieldLocked) return;
+    if (kind === 'photo') {
+      await handlePhotoFilesUpload([file]);
+      return;
+    }
+
+    setActionError(null);
+    setUploadError(null);
+    setActionSuccess(null);
+    setUploadingVideo(true);
+
+    try {
+      const { url, uploadedObjectKey, uploadedMediaId, metaItem } = await uploadEvidenceFile('video', file);
+      const cur = latestSlotRef.current;
+      const merged = mergeEvidenceUrls(cur.videoUrl, [...(cur.videoEvidence || []), url]);
+      const nextSlot: FieldActivitySlot = {
+        ...cur,
+        videoUrl: url,
+        videoEvidence: merged,
+        videoObjectKeys: mergeStringList(cur.videoObjectKeys, uploadedObjectKey),
+        videoMediaIds: mergeStringList(cur.videoMediaIds, uploadedMediaId),
+        videoMetadata: mergeEvidenceMetadata(cur.videoMetadata, [metaItem]),
+      };
+      latestSlotRef.current = nextSlot;
+      onChange(nextSlot);
+      setActionSuccess('Video uploaded and attached.');
       setTimeout(() => setActionSuccess(null), 3500);
     } catch (err: any) {
-      setActionError(err.message || `Failed to upload ${kind}.`);
+      const msg = err.message || 'Failed to upload video.';
+      setUploadError(msg);
+      setActionError(msg);
     } finally {
-      if (kind === 'photo') setUploadingPhoto(false);
-      else setUploadingVideo(false);
+      setUploadingVideo(false);
     }
   };
 
@@ -496,7 +609,7 @@ export function FieldActivitySlotCard({
                   type="button"
                   size="default"
                   onClick={handleStart}
-                  disabled={starting || hasActiveActivityElsewhere}
+                  disabled={!dayStarted || starting || hasActiveActivityElsewhere}
                   className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold h-10 px-5 rounded-xl shadow-xs shrink-0"
                 >
                   <Play className={`h-4 w-4 mr-2 ${starting ? 'animate-spin' : ''}`} />
@@ -504,7 +617,13 @@ export function FieldActivitySlotCard({
                 </Button>
               </div>
 
-              {hasActiveActivityElsewhere && (
+              {!dayStarted && (
+                <p className="text-xs text-amber-800 dark:text-amber-300 font-semibold bg-amber-50 dark:bg-amber-950/30 p-2.5 rounded-lg border border-amber-200 dark:border-amber-900/50">
+                  Start Day is required. Please click &quot;Clock In / Start Day&quot; at the top before creating or starting an activity.
+                </p>
+              )}
+
+              {dayStarted && hasActiveActivityElsewhere && (
                 <p className="text-xs text-amber-700 dark:text-amber-400 font-medium bg-amber-50 dark:bg-amber-950/30 p-2 rounded-lg border border-amber-200">
                   Another activity is currently IN PROGRESS. Please complete it by clicking &quot;End Activity&quot; before starting Activity #{slot.slotNumber}.
                 </p>
@@ -981,107 +1100,197 @@ export function FieldActivitySlotCard({
           {/* Evidence Attachments (Photo/Video) */}
           {!isDeskJob && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <label className="font-bold text-foreground flex items-center gap-1.5">
-                    <ImageIcon className="h-3.5 w-3.5 text-primary" /> Photo Evidence URL
-                  </label>
-                  {!isFieldLocked && (
+              <div className="space-y-2">
+                {(() => {
+                  const photoList = mergeEvidenceUrls(slot.photoUrl, slot.photoEvidence);
+                  const removePhotoAt = (urlToRemove: string) => {
+                    const remaining = photoList.filter((u) => u !== urlToRemove);
+                    const remainingMeta = (slot.photoMetadata || []).filter((m) => m.url !== urlToRemove);
+                    onChange({
+                      ...slot,
+                      photoUrl: remaining[0] || '',
+                      photoEvidence: remaining,
+                      photoMetadata: remainingMeta,
+                      photoObjectKeys: remainingMeta.map((m) => m.objectKey).filter((k): k is string => Boolean(k)),
+                      photoMediaIds: remainingMeta.map((m) => m.mediaId).filter((id): id is string => Boolean(id)),
+                    });
+                  };
+
+                  return (
                     <>
+                      <div className="flex items-center justify-between gap-2">
+                        <label className="font-bold text-foreground flex items-center gap-1.5">
+                          <ImageIcon className="h-3.5 w-3.5 text-primary" /> Photo Evidence
+                          {photoList.length > 0 && (
+                            <span className="inline-flex items-center rounded-full bg-emerald-100 dark:bg-emerald-950/60 px-2 py-0.5 text-[10px] font-bold text-emerald-800 dark:text-emerald-300">
+                              {photoList.length} attached
+                            </span>
+                          )}
+                        </label>
+                      </div>
                       <input
                         ref={photoInputRef}
                         type="file"
                         accept="image/*"
+                        multiple
                         className="hidden"
                         onChange={(e) => {
-                          void handleEvidenceUpload('photo', e.target.files?.[0]);
+                          void handlePhotoFilesUpload(e.target.files);
                           e.target.value = '';
                         }}
                       />
-                      <button
-                        type="button"
-                        onClick={() => photoInputRef.current?.click()}
-                        disabled={uploadingPhoto}
-                        className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 hover:text-emerald-800"
-                      >
-                        <Upload className="h-3 w-3" />
-                        {uploadingPhoto ? 'Uploading...' : 'Upload Photo'}
-                      </button>
+                      {photoList.length === 0 ? (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => photoInputRef.current?.click()}
+                          disabled={isFieldLocked || uploadingPhoto}
+                          className="w-full h-10 rounded-xl border-dashed border-emerald-600/40 bg-emerald-50/30 hover:bg-emerald-50/70 text-emerald-800 dark:bg-emerald-950/20 dark:hover:bg-emerald-950/40 dark:text-emerald-300 font-bold text-xs justify-center gap-2"
+                        >
+                          <Upload className={`h-3.5 w-3.5 ${uploadingPhoto ? 'animate-pulse' : ''}`} />
+                          {uploadingPhoto ? photoUploadStatus || 'Uploading Photo...' : 'Upload Photo(s)'}
+                        </Button>
+                      ) : (
+                        <div className="space-y-2.5 rounded-xl border border-border bg-muted/20 p-2.5">
+                          <div className={`grid gap-2 ${photoList.length > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}>
+                            {photoList.map((url, photoIdx) => (
+                              <div
+                                key={`${url}_${photoIdx}`}
+                                className="relative group rounded-lg border border-border bg-background overflow-hidden"
+                              >
+                                <MediaPreview
+                                  src={url}
+                                  alt={`Activity #${slot.slotNumber} photo ${photoIdx + 1}`}
+                                  variant="banner"
+                                  className="h-24 w-full bg-background"
+                                />
+                                <span className="absolute top-1.5 left-1.5 rounded-md bg-black/65 px-1.5 py-0.5 text-[10px] font-semibold text-white">
+                                  #{photoIdx + 1}
+                                </span>
+                                {!isFieldLocked && (
+                                  <button
+                                    type="button"
+                                    title={`Remove Photo #${photoIdx + 1}`}
+                                    onClick={() => removePhotoAt(url)}
+                                    className="absolute top-1.5 right-1.5 inline-flex h-6 w-6 items-center justify-center rounded-md bg-white/90 text-rose-600 shadow-xs hover:bg-rose-50 hover:text-rose-700"
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </button>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                          {!isFieldLocked && (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              onClick={() => photoInputRef.current?.click()}
+                              disabled={uploadingPhoto}
+                              className="w-full h-8 rounded-xl border-dashed border-emerald-600/40 text-emerald-800 hover:bg-emerald-50/70 dark:text-emerald-300 dark:hover:bg-emerald-950/40 text-xs font-bold gap-1.5"
+                            >
+                              {uploadingPhoto ? (
+                                <Upload className="h-3.5 w-3.5 animate-pulse text-emerald-700" />
+                              ) : (
+                                <Plus className="h-3.5 w-3.5 text-emerald-700" />
+                              )}
+                              {uploadingPhoto ? photoUploadStatus || 'Uploading...' : 'Add More Photos'}
+                            </Button>
+                          )}
+                        </div>
+                      )}
                     </>
-                  )}
-                </div>
-                <Input
-                  value={slot.photoUrl || ''}
+                  );
+                })()}
+              </div>
+
+              <div className="space-y-2">
+                <label className="font-bold text-foreground flex items-center gap-1.5">
+                  <VideoIcon className="h-3.5 w-3.5 text-primary" /> Video Evidence{' '}
+                  <span className="text-muted-foreground font-normal">(optional)</span>
+                </label>
+                <input
+                  ref={videoInputRef}
+                  type="file"
+                  accept="video/*"
+                  className="hidden"
                   onChange={(e) => {
-                    const val = e.target.value;
-                    onChange({
-                      ...slot,
-                      photoUrl: val,
-                      photoEvidence: mergeEvidenceUrls(val, slot.photoEvidence?.filter((u) => u !== slot.photoUrl)),
-                    });
+                    void handleEvidenceUpload('video', e.target.files?.[0]);
+                    e.target.value = '';
                   }}
-                  placeholder="https://... (or upload photo)"
-                  disabled={isFieldLocked}
-                  className="text-xs h-9"
                 />
-                {slot.photoUrl && (
-                  <div className="rounded-lg border border-border overflow-hidden bg-muted/20 p-1">
-                    <img
-                      src={slot.photoUrl}
-                      alt={`Activity #${slot.slotNumber} evidence`}
-                      className="h-24 w-full object-cover rounded"
-                      onError={(e) => {
-                        (e.currentTarget as HTMLImageElement).style.display = 'none';
-                      }}
-                    />
+                {!slot.videoUrl ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => videoInputRef.current?.click()}
+                    disabled={isFieldLocked || uploadingVideo}
+                    className="w-full h-10 rounded-xl border-dashed border-emerald-600/40 bg-emerald-50/30 hover:bg-emerald-50/70 text-emerald-800 dark:bg-emerald-950/20 dark:hover:bg-emerald-950/40 dark:text-emerald-300 font-bold text-xs justify-center gap-2"
+                  >
+                    <Upload className={`h-3.5 w-3.5 ${uploadingVideo ? 'animate-pulse' : ''}`} />
+                    {uploadingVideo ? 'Uploading Video...' : 'Upload Video'}
+                  </Button>
+                ) : (
+                  <div className="space-y-2 rounded-xl border border-border bg-muted/20 p-2.5">
+                    <a
+                      href={slot.videoUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="block"
+                      title="Open uploaded video"
+                    >
+                      <MediaPreview
+                        src={slot.videoUrl}
+                        mimeType="video/mp4"
+                        alt={`Activity #${slot.slotNumber} video evidence`}
+                        variant="banner"
+                        className="h-24 w-full rounded-lg border border-border"
+                      />
+                    </a>
+                    {!isFieldLocked && (
+                      <div className="flex items-center gap-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => videoInputRef.current?.click()}
+                          disabled={uploadingVideo}
+                          className="flex-1 h-8 rounded-xl text-xs font-bold gap-1.5"
+                        >
+                          <Upload className="h-3.5 w-3.5 text-emerald-700" />
+                          {uploadingVideo ? 'Uploading...' : 'Replace Video'}
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            const remaining = (slot.videoEvidence || []).filter((u) => u !== slot.videoUrl);
+                            const remainingMeta = (slot.videoMetadata || []).filter((m) => m.url !== slot.videoUrl);
+                            onChange({
+                              ...slot,
+                              videoUrl: remaining[0] || '',
+                              videoEvidence: remaining,
+                              videoMetadata: remainingMeta,
+                              videoObjectKeys: remainingMeta.map((m) => m.objectKey).filter((k): k is string => Boolean(k)),
+                              videoMediaIds: remainingMeta.map((m) => m.mediaId).filter((id): id is string => Boolean(id)),
+                            });
+                          }}
+                          className="h-8 rounded-xl text-xs font-bold text-rose-600 hover:text-rose-700 hover:bg-rose-50 px-2.5"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
-
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <label className="font-bold text-foreground flex items-center gap-1.5">
-                    <VideoIcon className="h-3.5 w-3.5 text-primary" /> Video Evidence URL <span className="text-muted-foreground font-normal">(optional)</span>
-                  </label>
-                  {!isFieldLocked && (
-                    <>
-                      <input
-                        ref={videoInputRef}
-                        type="file"
-                        accept="video/*"
-                        className="hidden"
-                        onChange={(e) => {
-                          void handleEvidenceUpload('video', e.target.files?.[0]);
-                          e.target.value = '';
-                        }}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => videoInputRef.current?.click()}
-                        disabled={uploadingVideo}
-                        className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 hover:text-emerald-800"
-                      >
-                        <Upload className="h-3 w-3" />
-                        {uploadingVideo ? 'Uploading...' : 'Upload Video'}
-                      </button>
-                    </>
-                  )}
+              {uploadError && (
+                <div className="sm:col-span-2 flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700 dark:border-rose-900 dark:bg-rose-950/30 dark:text-rose-300">
+                  <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                  <span>{uploadError}</span>
                 </div>
-                <Input
-                  value={slot.videoUrl || ''}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    onChange({
-                      ...slot,
-                      videoUrl: val,
-                      videoEvidence: mergeEvidenceUrls(val, slot.videoEvidence?.filter((u) => u !== slot.videoUrl)),
-                    });
-                  }}
-                  placeholder="https://... (or upload video)"
-                  disabled={isFieldLocked}
-                  className="text-xs h-9"
-                />
-              </div>
+              )}
             </div>
           )}
         </div>

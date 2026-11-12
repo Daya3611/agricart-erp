@@ -24,7 +24,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { formatReadableDate } from '@/lib/utils/date-utils';
+import { formatReadableDate, getOperationalYearMonth } from '@/lib/utils/date-utils';
 
 const MONTHS = [
   { value: 1, label: 'January' },
@@ -42,9 +42,9 @@ const MONTHS = [
 ];
 
 export default function StaffMonthlyReportPage() {
-  const now = new Date();
-  const [selectedYear, setSelectedYear] = useState<number>(now.getFullYear());
-  const [selectedMonth, setSelectedMonth] = useState<number>(now.getMonth() + 1);
+  const { year: defaultYear, month: defaultMonth } = getOperationalYearMonth();
+  const [selectedYear, setSelectedYear] = useState<number>(defaultYear);
+  const [selectedMonth, setSelectedMonth] = useState<number>(defaultMonth);
   const [report, setReport] = useState<MonthlyReportSummary | null>(null);
   const [dataset, setDataset] = useState<MonthlyReportsDataset | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
@@ -198,6 +198,20 @@ export default function StaffMonthlyReportPage() {
         </Badge>
       );
     }
+    if (s.includes('upcoming')) {
+      return (
+        <Badge className="bg-slate-100 text-slate-600 border-slate-200 font-bold text-[10px]">
+          Upcoming
+        </Badge>
+      );
+    }
+    if (s.includes('in progress')) {
+      return (
+        <Badge className="bg-blue-50 text-blue-800 border-blue-200 font-bold text-[10px]">
+          <Clock className="h-3 w-3 mr-1" /> In Progress
+        </Badge>
+      );
+    }
     if (s.includes('submitted') || s.includes('review')) {
       return (
         <Badge className="bg-sky-50 text-sky-800 border-sky-200 font-bold text-[10px]">
@@ -332,6 +346,9 @@ export default function StaffMonthlyReportPage() {
           <div className="bg-white rounded-xl p-3 border border-slate-200/90 shadow-2xs">
             <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider block">Days Attended</span>
             <span className="text-xl font-black text-emerald-800 leading-tight">{empSummary.daysAttended ?? empSummary.presentDays ?? 0}</span>
+            {empSummary.attendancePercentage !== null && empSummary.attendancePercentage !== undefined && (
+              <span className="text-[10px] text-emerald-700 font-bold block">({empSummary.attendancePercentage}%)</span>
+            )}
           </div>
 
           <div className="bg-white rounded-xl p-3 border border-slate-200/90 shadow-2xs">
@@ -401,7 +418,8 @@ export default function StaffMonthlyReportPage() {
             <TableBody>
               {dailyRecords.map((day) => {
                 const isOff = day.isWeeklyOff || day.isHoliday;
-                const isMissing = day.isMissing;
+                const isUpcoming = day.attendanceStatus === 'Upcoming' || day.reportStatus === 'Upcoming';
+                const isMissing = !isUpcoming && day.isMissing;
                 const isExpanded = expandedDates.has(day.date);
                 const hasActivities = Array.isArray(day.activitiesList) && day.activitiesList.length > 0;
 
@@ -411,9 +429,11 @@ export default function StaffMonthlyReportPage() {
                       className={
                         isOff
                           ? 'bg-slate-50/60 text-slate-500'
-                          : isMissing
-                            ? 'bg-rose-50/30'
-                            : undefined
+                          : isUpcoming
+                            ? 'bg-slate-50/40 text-slate-500'
+                            : isMissing
+                              ? 'bg-rose-50/30'
+                              : undefined
                       }
                     >
                       {/* 1. Date */}
@@ -432,11 +452,15 @@ export default function StaffMonthlyReportPage() {
                           className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold ${
                             day.attendanceStatus === 'Present'
                               ? 'bg-emerald-100 text-emerald-800'
-                              : day.attendanceStatus === 'Active'
+                              : day.attendanceStatus === 'In Progress' || day.attendanceStatus === 'Active'
                                 ? 'bg-blue-100 text-blue-800'
                                 : day.attendanceStatus === 'Absent'
                                   ? 'bg-rose-100 text-rose-800'
-                                  : 'bg-slate-100 text-slate-700'
+                                  : day.attendanceStatus === 'On Leave'
+                                    ? 'bg-purple-100 text-purple-800'
+                                    : day.attendanceStatus === 'Holiday'
+                                      ? 'bg-indigo-100 text-indigo-800'
+                                      : 'bg-slate-100 text-slate-600'
                           }`}
                         >
                           {day.attendanceStatus || '—'}

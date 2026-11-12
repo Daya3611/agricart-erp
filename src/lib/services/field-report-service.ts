@@ -17,7 +17,9 @@ import {
   calculateActivitiesSummary,
   deduplicateActivityRecords,
   mergeDayActivities,
+  mergeEvidenceMetadata,
   mergeEvidenceUrls,
+  mergeStringList,
   normalizeActivityStatus,
 } from '@/lib/utils/field-activity-calculations';
 export { calculateActivitiesSummary };
@@ -115,11 +117,15 @@ export async function createOrUpdateFieldReport(
       }
     }
 
-    // Lookup existing individual activities to preserve IDs, prevent duplicates, and guard completed state
-    const existingActDocs = (await fetchCollection(ERP_COLLECTIONS.fieldActivities, [
-      { field: 'staffUid', op: '==', value: staffUser.uid },
-      { field: 'reportDate', op: '==', value: reportDate },
-    ])) as any[];
+    // Lookup existing individual activities and daily attendance session
+    const attendanceDocId = `att_${staffUser.uid}_${reportDate}`;
+    const [existingActDocs, attendanceSession] = await Promise.all([
+      fetchCollection(ERP_COLLECTIONS.fieldActivities, [
+        { field: 'staffUid', op: '==', value: staffUser.uid },
+        { field: 'reportDate', op: '==', value: reportDate },
+      ]) as Promise<any[]>,
+      fetchDocument(ERP_COLLECTIONS.attendanceSessions, attendanceDocId) as Promise<any>,
+    ]);
     const existingActById = new Map<string, any>();
     for (const a of existingActDocs) {
       const aid = a.activityId || a.id;
@@ -132,6 +138,46 @@ export async function createOrUpdateFieldReport(
     )) {
       const s = Number(canonicalDoc.slotNumber);
       if (s > 0) existingActBySlot.set(s, canonicalDoc);
+    }
+
+    const isRevisionMode = Boolean(
+      existingDoc && (existingDoc.status === 'edit_requested' || existingDoc.status === 'correction_requested')
+    );
+
+    if (!isRevisionMode && staffUser.role === 'staff') {
+      if (!attendanceSession) {
+        return {
+          success: false,
+          error: 'START_DAY_REQUIRED: Please click "Clock In / Start Day" before creating any activity.',
+        };
+      }
+      if (attendanceSession.status !== 'active') {
+        const existingReportSlots = new Set<number>(
+          (existingDoc?.activities || []).map((a: any) => Number(a.slotNumber)).filter((n: number) => n > 0)
+        );
+        const createsNewActivity = (data.activities || []).some((incoming) => {
+          const aid = incoming.activityId || incoming.id || '';
+          const slotNum = Number(incoming.slotNumber) || 1;
+          const isKnown =
+            (aid && existingActById.has(aid)) ||
+            existingActBySlot.has(slotNum) ||
+            existingReportSlots.has(slotNum);
+          const hasData = Boolean(
+            incoming.activityType?.trim() ||
+              incoming.village?.trim() ||
+              incoming.farmerName?.trim() ||
+              incoming.observations?.trim() ||
+              normalizeActivityStatus(incoming) !== 'NOT_STARTED'
+          );
+          return !isKnown && hasData;
+        });
+        if (createsNewActivity) {
+          return {
+            success: false,
+            error: 'START_DAY_REQUIRED: Your workday is not active. Please activate Start Day before creating new activities.',
+          };
+        }
+      }
     }
 
     // Build authoritative map of already COMPLETED slots across both erp_field_reports and erp_field_activities
@@ -385,8 +431,14 @@ export async function createOrUpdateFieldReport(
         activityType: act.activityType || act.participantType || 'group',
         photoUrl: mergedPhotos[0] || '',
         photoEvidence: mergedPhotos,
+        photoObjectKeys: mergeStringList(act.photoObjectKeys),
+        photoMediaIds: mergeStringList(act.photoMediaIds),
+        photoMetadata: mergeEvidenceMetadata(act.photoMetadata),
         videoUrl: mergedVideos[0] || '',
         videoEvidence: mergedVideos,
+        videoObjectKeys: mergeStringList(act.videoObjectKeys),
+        videoMediaIds: mergeStringList(act.videoMediaIds),
+        videoMetadata: mergeEvidenceMetadata(act.videoMetadata),
         syncStatus: 'synced',
         updatedAt: now,
       });

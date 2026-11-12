@@ -37,6 +37,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/com
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Dialog } from '@/components/ui/dialog';
+import { MediaPreview } from '@/components/media/media-preview';
 import {
   RecordCard,
   RecordCardHeader,
@@ -532,18 +533,28 @@ export default function AdminStaffManagementPage() {
                       return (
                         <TableRow key={staff.uid} className={isDeactivated ? 'bg-slate-50 opacity-75' : ''}>
                           <TableCell>
-                            <div>
-                              <div className="font-bold text-slate-900 leading-tight flex items-center gap-1.5">
-                                {staff.fullName}
-                                {isDeactivated && (
-                                  <Badge variant="destructive" className="text-[10px] py-0 px-1.5">
-                                    Inactive
-                                  </Badge>
-                                )}
+                            <div className="flex items-center gap-2.5">
+                              <MediaPreview
+                                src={staff.avatarUrl}
+                                alt={staff.fullName}
+                                fallbackText={staff.fullName}
+                                variant="avatar"
+                                shape="circle"
+                                className="h-8 w-8 shrink-0"
+                              />
+                              <div>
+                                <div className="font-bold text-slate-900 leading-tight flex items-center gap-1.5">
+                                  {staff.fullName}
+                                  {isDeactivated && (
+                                    <Badge variant="destructive" className="text-[10px] py-0 px-1.5">
+                                      Inactive
+                                    </Badge>
+                                  )}
+                                </div>
+                                <p className="text-[11px] text-slate-500 font-mono font-medium">
+                                  <span className="text-emerald-700 font-bold">{staff.employeeId}</span> • {staff.email}
+                                </p>
                               </div>
-                              <p className="text-[11px] text-slate-500 font-mono font-medium">
-                                <span className="text-emerald-700 font-bold">{staff.employeeId}</span> • {staff.email}
-                              </p>
                             </div>
                           </TableCell>
                           <TableCell className="text-xs">
@@ -717,18 +728,28 @@ export default function AdminStaffManagementPage() {
                   return (
                     <RecordCard key={staff.uid} className={isDeactivated ? 'opacity-80 bg-slate-50/70' : ''}>
                       <RecordCardHeader>
-                        <div className="min-w-0 flex-1">
-                          <RecordCardTitle className="flex items-center gap-1.5 truncate">
-                            <span className="truncate">{staff.fullName}</span>
-                            {isDeactivated && (
-                              <Badge variant="destructive" className="text-[10px] py-0 px-1.5 shrink-0">
-                                Inactive
-                              </Badge>
-                            )}
-                          </RecordCardTitle>
-                          <RecordCardSubtitle>
-                            <span className="text-emerald-700 font-bold">{staff.employeeId}</span> • {staff.email}
-                          </RecordCardSubtitle>
+                        <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                          <MediaPreview
+                            src={staff.avatarUrl}
+                            alt={staff.fullName}
+                            fallbackText={staff.fullName}
+                            variant="avatar"
+                            shape="circle"
+                            className="h-9 w-9 shrink-0"
+                          />
+                          <div className="min-w-0 flex-1">
+                            <RecordCardTitle className="flex items-center gap-1.5 truncate">
+                              <span className="truncate">{staff.fullName}</span>
+                              {isDeactivated && (
+                                <Badge variant="destructive" className="text-[10px] py-0 px-1.5 shrink-0">
+                                  Inactive
+                                </Badge>
+                              )}
+                            </RecordCardTitle>
+                            <RecordCardSubtitle>
+                              <span className="text-emerald-700 font-bold">{staff.employeeId}</span> • {staff.email}
+                            </RecordCardSubtitle>
+                          </div>
                         </div>
                         <Badge variant={roleBadges[staff.role]?.variant || 'secondary'} className="text-[10px] shrink-0">
                           {roleBadges[staff.role]?.label || staff.role}

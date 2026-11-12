@@ -1,6 +1,18 @@
 import ExcelJS from 'exceljs';
 import { MonthlyReportsDataset } from '@/types';
 import { getGlobalReportingSettings } from '@/lib/services/settings-service';
+import { createReportMediaResolver, mapConcurrent } from '@/lib/reports/media-resolver';
+
+function extractCleanMediaUrls(urls?: string[], fallbackStr?: string): string[] {
+  if (Array.isArray(urls) && urls.length > 0) {
+    return urls.map((u) => String(u || '').trim()).filter((u) => u && u !== 'None' && u !== '—');
+  }
+  if (!fallbackStr || fallbackStr === 'None' || fallbackStr === '—') return [];
+  return fallbackStr
+    .split(/[\n,]/)
+    .map((u) => u.trim())
+    .filter((u) => u && (u.startsWith('http://') || u.startsWith('https://') || u.startsWith('/')));
+}
 
 function getColumnLetter(colNum: number): string {
   let n = colNum;
@@ -52,6 +64,8 @@ function estimateWrappedRowHeight(
  */
 export async function generateMonthlyReportsWorkbook(dataset: MonthlyReportsDataset): Promise<Buffer> {
   const reportingConfig = await getGlobalReportingSettings();
+  const mediaResolver = createReportMediaResolver();
+
   const excelCfg = reportingConfig.excelSettings || {
     freezePanes: true,
     autoFilter: true,
@@ -60,7 +74,7 @@ export async function generateMonthlyReportsWorkbook(dataset: MonthlyReportsData
   };
 
   const workbook = new ExcelJS.Workbook();
-  workbook.creator = reportingConfig.organization?.companyName || 'Agricart ERP';
+  workbook.creator = 'Monthly Reporting System';
   workbook.created = new Date();
   workbook.modified = new Date();
 
@@ -100,9 +114,11 @@ export async function generateMonthlyReportsWorkbook(dataset: MonthlyReportsData
     { header: 'Center', key: 'centerName', width: 22 },
     { header: 'Reporting Month', key: 'reportingMonth', width: 18 },
     { header: 'Total Working Days', key: 'totalWorkingDays', width: 18 },
+    { header: 'Elapsed Working Days', key: 'elapsedWorkingDays', width: 20 },
     { header: 'Days Attended', key: 'presentDays', width: 15 },
     { header: 'Leave Days', key: 'leaveDays', width: 14 },
     { header: 'Missing Attendance Days', key: 'missingAttendanceDays', width: 22 },
+    { header: 'Attendance %', key: 'attendancePercentage', width: 15 },
     { header: 'Days With Activities', key: 'daysWithActivities', width: 20 },
     { header: 'Total Activities', key: 'totalActivities', width: 16 },
     { header: 'Completed Activities', key: 'completedActivities', width: 20 },
@@ -131,9 +147,14 @@ export async function generateMonthlyReportsWorkbook(dataset: MonthlyReportsData
       centerName: emp.centerName,
       reportingMonth: emp.reportingMonth || dataset.monthName,
       totalWorkingDays: emp.totalWorkingDays ?? emp.totalDaysWorked,
+      elapsedWorkingDays: emp.elapsedWorkingDays ?? emp.totalWorkingDays ?? 0,
       presentDays: emp.presentDays ?? emp.daysAttended ?? emp.totalAttendanceSessions,
       leaveDays: emp.leaveDays,
-      missingAttendanceDays: emp.missingAttendanceDays ?? emp.daysReportMissing,
+      missingAttendanceDays: emp.missingAttendanceDays ?? emp.absentDays ?? 0,
+      attendancePercentage:
+        emp.attendancePercentage !== null && emp.attendancePercentage !== undefined
+          ? `${emp.attendancePercentage}%`
+          : '—',
       daysWithActivities: emp.daysWithActivities ?? 0,
       totalActivities: emp.totalActivities,
       completedActivities: emp.completedActivities ?? 0,
@@ -168,7 +189,20 @@ export async function generateMonthlyReportsWorkbook(dataset: MonthlyReportsData
     };
     sheet1Cols.slice(5).forEach((col, i) => {
       const colLetter = getColumnLetter(i + 6);
-      totalRowData[col.key!] = { formula: `SUM(${colLetter}2:${colLetter}${lastDataRow})` };
+      if (col.key === 'attendancePercentage') {
+        const attendedSum = dataset.employeeSummaries.reduce(
+          (sum, e) => sum + (e.presentDays ?? e.daysAttended ?? 0),
+          0
+        );
+        const missingSum = dataset.employeeSummaries.reduce(
+          (sum, e) => sum + (e.missingAttendanceDays ?? e.absentDays ?? 0),
+          0
+        );
+        const denom = attendedSum + missingSum;
+        totalRowData[col.key] = denom > 0 ? `${Math.round((attendedSum / denom) * 1000) / 10}%` : '—';
+      } else {
+        totalRowData[col.key!] = { formula: `SUM(${colLetter}2:${colLetter}${lastDataRow})` };
+      }
     });
 
     const summaryRow = sheet1.addRow(totalRowData);
@@ -215,7 +249,7 @@ export async function generateMonthlyReportsWorkbook(dataset: MonthlyReportsData
       loginLocation: rec.loginLocation || '—',
       logoutTime: rec.attendanceLogout,
       logoutLocation: rec.logoutLocation || '—',
-      attendanceStatus: rec.attendanceStatus || (rec.attendanceLogin !== '—' ? 'Present' : 'Absent'),
+      attendanceStatus: rec.attendanceStatus || (rec.attendanceLogin !== '—' ? 'Present' : 'Upcoming'),
       workingDuration: rec.workingPeriodFormatted || '—',
       reportStatus: rec.reportStatus || '—',
     };
@@ -229,6 +263,13 @@ export async function generateMonthlyReportsWorkbook(dataset: MonthlyReportsData
       };
       if (excelCfg.highlightMissingDays !== false && (rec.attendanceStatus === 'Absent' || rec.isMissing)) {
         cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF1F2' } };
+      } else if (rec.attendanceStatus === 'In Progress' || rec.attendanceStatus === 'Active') {
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEFF6FF' } };
+      } else if (rec.attendanceStatus === 'Upcoming') {
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8FAFC' } };
+        if (colNum === 9) {
+          cell.font = { color: { argb: 'FF64748B' }, italic: true };
+        }
       } else if (rec.attendanceStatus === 'On Leave') {
         cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF5F3FF' } };
       } else if (rec.attendanceStatus === 'Weekly Off' || rec.attendanceStatus === 'Holiday') {
@@ -294,8 +335,97 @@ export async function generateMonthlyReportsWorkbook(dataset: MonthlyReportsData
   }
 
   const numericColsSheet3 = new Set([8, 17, 18, 19, 31]);
+  const evidenceLinksRows: Array<{
+    employeeId: string;
+    employeeName: string;
+    reportDate: string;
+    slotNumber: number;
+    activityName: string;
+    mediaType: 'Photo' | 'Video';
+    label: string;
+    url: string;
+  }> = [];
+
+  // Preload media IDs and resolve permanent public URLs or fresh 7-day signed R2 URLs for Excel hyperlinks
+  await mediaResolver.preloadMediaIds(
+    dataset.allActivities.flatMap((act) => [
+      ...(act.photoMediaIds || []),
+      ...(act.videoMediaIds || []),
+    ])
+  );
+
+  const resolvedMediaByActivity = await mapConcurrent(dataset.allActivities, 6, async (act) => {
+    const rawPhotos = extractCleanMediaUrls(act.photoUrls, act.photoEvidenceRefs);
+    const rawVideos = extractCleanMediaUrls(act.videoUrls, act.videoEvidenceRefs);
+
+    const photoCount = Math.max(
+      rawPhotos.length,
+      act.photoObjectKeys?.length || 0,
+      act.photoMediaIds?.length || 0
+    );
+    const photoUrls: string[] = [];
+    for (let i = 0; i < photoCount; i++) {
+      const resolved = await mediaResolver.resolveExportUrl({
+        url: rawPhotos[i],
+        objectKey: act.photoObjectKeys?.[i],
+        mediaId: act.photoMediaIds?.[i],
+      });
+      if (resolved) photoUrls.push(resolved);
+    }
+
+    const videoCount = Math.max(
+      rawVideos.length,
+      act.videoObjectKeys?.length || 0,
+      act.videoMediaIds?.length || 0
+    );
+    const videoUrls: string[] = [];
+    for (let i = 0; i < videoCount; i++) {
+      const resolved = await mediaResolver.resolveExportUrl({
+        url: rawVideos[i],
+        objectKey: act.videoObjectKeys?.[i],
+        mediaId: act.videoMediaIds?.[i],
+      });
+      if (resolved) videoUrls.push(resolved);
+    }
+
+    return { photoUrls, videoUrls };
+  });
 
   dataset.allActivities.forEach((act, idx) => {
+    const { photoUrls, videoUrls } = resolvedMediaByActivity[idx] || {
+      photoUrls: extractCleanMediaUrls(act.photoUrls, act.photoEvidenceRefs),
+      videoUrls: extractCleanMediaUrls(act.videoUrls, act.videoEvidenceRefs),
+    };
+    const photoDisplayText =
+      photoUrls.length > 0 ? photoUrls.map((_, i) => `View Photo ${i + 1}`).join(', ') : 'None';
+    const videoDisplayText =
+      videoUrls.length > 0 ? videoUrls.map((_, i) => `View Video ${i + 1}`).join(', ') : 'None';
+
+    photoUrls.forEach((url, i) => {
+      evidenceLinksRows.push({
+        employeeId: act.employeeId,
+        employeeName: act.employeeName,
+        reportDate: act.reportDate,
+        slotNumber: act.slotNumber,
+        activityName: act.activityName,
+        mediaType: 'Photo',
+        label: `View Photo ${i + 1}`,
+        url,
+      });
+    });
+    videoUrls.forEach((url, i) => {
+      evidenceLinksRows.push({
+        employeeId: act.employeeId,
+        employeeName: act.employeeName,
+        reportDate: act.reportDate,
+        slotNumber: act.slotNumber,
+        activityName: act.activityName,
+        mediaType: 'Video',
+        label: `View Video ${i + 1}`,
+        url,
+      });
+    });
+
     const rowData = {
       employeeId: act.employeeId,
       employeeName: act.employeeName,
@@ -332,14 +462,8 @@ export async function generateMonthlyReportsWorkbook(dataset: MonthlyReportsData
       startGpsCoords: act.startGpsCoords || act.startGps || '—',
       endGpsLocationName: act.endGpsLocationName || 'Location unavailable',
       endGpsCoords: act.endGpsCoords || act.endGps || '—',
-      photoEvidenceRefs:
-        Array.isArray(act.photoUrls) && act.photoUrls.length > 0
-          ? act.photoUrls.join('\n')
-          : act.photoEvidenceRefs || 'None',
-      videoEvidenceRefs:
-        Array.isArray(act.videoUrls) && act.videoUrls.length > 0
-          ? act.videoUrls.join('\n')
-          : act.videoEvidenceRefs || 'None',
+      photoEvidenceRefs: photoDisplayText,
+      videoEvidenceRefs: videoDisplayText,
       reviewStatus: act.reviewStatus || '—',
       reviewerName: act.reviewerName || '—',
       reviewComments: act.reviewComments || '—',
@@ -358,6 +482,32 @@ export async function generateMonthlyReportsWorkbook(dataset: MonthlyReportsData
         cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF9FAFB' } };
       }
     });
+
+    if (photoUrls.length > 0) {
+      const photoCell = row.getCell('photoEvidenceRefs');
+      photoCell.value = {
+        text: photoDisplayText,
+        hyperlink: photoUrls[0],
+        tooltip:
+          photoUrls.length === 1
+            ? photoUrls[0]
+            : `Opens Photo 1 of ${photoUrls.length} — see Photo & Video Links sheet for individual links`,
+      };
+      photoCell.font = { name: 'Calibri', size: 11, color: { argb: 'FF1D4ED8' }, underline: true };
+    }
+
+    if (videoUrls.length > 0) {
+      const videoCell = row.getCell('videoEvidenceRefs');
+      videoCell.value = {
+        text: videoDisplayText,
+        hyperlink: videoUrls[0],
+        tooltip:
+          videoUrls.length === 1
+            ? videoUrls[0]
+            : `Opens Video 1 of ${videoUrls.length} — see Photo & Video Links sheet for individual links`,
+      };
+      videoCell.font = { name: 'Calibri', size: 11, color: { argb: 'FF1D4ED8' }, underline: true };
+    }
   });
 
   if (dataset.allActivities.length === 0) {
@@ -489,6 +639,51 @@ export async function generateMonthlyReportsWorkbook(dataset: MonthlyReportsData
       row.height = 22;
       row.getCell(2).font = { italic: true, color: { argb: 'FF64748B' } };
     }
+  }
+
+  // ==========================================
+  // SHEET 6: Photo & Video Evidence Hyperlinks (Individual 1-click links for every image/video)
+  // ==========================================
+  if (evidenceLinksRows.length > 0) {
+    const sheet6 = workbook.addWorksheet('Photo & Video Links', { views: sheetViews });
+    const sheet6Cols = [
+      { header: 'Employee ID', key: 'employeeId', width: 16 },
+      { header: 'Employee Name', key: 'employeeName', width: 22 },
+      { header: 'Activity Date', key: 'reportDate', width: 14 },
+      { header: 'Slot #', key: 'slotNumber', width: 10 },
+      { header: 'Activity Name', key: 'activityName', width: 28 },
+      { header: 'Media Type', key: 'mediaType', width: 14 },
+      { header: 'Evidence Link', key: 'label', width: 20 },
+      { header: 'Original URL', key: 'url', width: 64 },
+    ];
+    sheet6.columns = sheet6Cols;
+    styleHeaderRow(sheet6.getRow(1));
+    if (excelCfg.autoFilter !== false) {
+      sheet6.autoFilter = { from: 'A1', to: `${getColumnLetter(sheet6Cols.length)}1` };
+    }
+
+    evidenceLinksRows.forEach((ev, idx) => {
+      const row = sheet6.addRow(ev);
+      row.height = 22;
+      row.eachCell((cell, colNum) => {
+        cell.alignment = {
+          vertical: 'middle',
+          horizontal: colNum === 4 ? 'right' : 'left',
+          wrapText: true,
+        };
+        if (idx % 2 === 1) {
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF9FAFB' } };
+        }
+      });
+
+      const labelCell = row.getCell('label');
+      labelCell.value = { text: ev.label, hyperlink: ev.url, tooltip: ev.url };
+      labelCell.font = { name: 'Calibri', size: 11, color: { argb: 'FF1D4ED8' }, underline: true, bold: true };
+
+      const urlCell = row.getCell('url');
+      urlCell.value = { text: ev.url, hyperlink: ev.url, tooltip: ev.label };
+      urlCell.font = { name: 'Calibri', size: 10, color: { argb: 'FF1D4ED8' }, underline: true };
+    });
   }
 
   const arrayBuffer = await workbook.xlsx.writeBuffer();

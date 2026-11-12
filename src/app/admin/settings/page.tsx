@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import Image from 'next/image';
 import {
   Settings,
   Save,
@@ -27,6 +26,8 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { UserProfile, SystemSettings, GlobalReportingConfig } from '@/types';
 import { DEFAULT_GLOBAL_REPORTING_CONFIG } from '@/lib/constants/reporting-defaults';
+import { MediaUpload } from '@/components/media/media-upload';
+import { MediaPreview } from '@/components/media/media-preview';
 
 export default function AdminSettingsPage() {
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
@@ -34,6 +35,9 @@ export default function AdminSettingsPage() {
 
   // Form states
   const [companyName, setCompanyName] = useState('Agricart Farmers Producer Company Ltd');
+  const [companyLogoUrl, setCompanyLogoUrl] = useState('/logo.png');
+  const [companyLogoKey, setCompanyLogoKey] = useState<string | undefined>(undefined);
+  const [companyLogoMediaId, setCompanyLogoMediaId] = useState<string | undefined>(undefined);
   const [companyAddress, setCompanyAddress] = useState('Plot 42, MIDC Dindori Road, Nashik, Maharashtra 422004');
   const [companyPhone, setCompanyPhone] = useState('+91 253 2500000');
   const [companyEmail, setCompanyEmail] = useState('contact@agricartfpc.in');
@@ -67,6 +71,15 @@ export default function AdminSettingsPage() {
         if (data.settings) {
           const s: SystemSettings = data.settings;
           if (s.companyName) setCompanyName(s.companyName);
+          if (s.companyLogoUrl || s.reportingConfig?.organization?.companyLogoUrl) {
+            setCompanyLogoUrl(s.companyLogoUrl || s.reportingConfig?.organization?.companyLogoUrl || '/logo.png');
+          }
+          if (s.companyLogoKey || s.reportingConfig?.organization?.companyLogoKey) {
+            setCompanyLogoKey(s.companyLogoKey || s.reportingConfig?.organization?.companyLogoKey);
+          }
+          if (s.companyLogoMediaId || s.reportingConfig?.organization?.companyLogoMediaId) {
+            setCompanyLogoMediaId(s.companyLogoMediaId || s.reportingConfig?.organization?.companyLogoMediaId);
+          }
           if (s.emailSettings?.fromEmail) setFromEmail(s.emailSettings.fromEmail);
           if (s.emailSettings?.fromName) setFromName(s.emailSettings.fromName);
 
@@ -134,6 +147,9 @@ export default function AdminSettingsPage() {
     try {
       const payload: Partial<SystemSettings> = {
         companyName,
+        companyLogoUrl,
+        ...(companyLogoKey ? { companyLogoKey } : {}),
+        ...(companyLogoMediaId ? { companyLogoMediaId } : {}),
         emailSettings: {
           fromEmail,
           fromName,
@@ -159,7 +175,9 @@ export default function AdminSettingsPage() {
           ...config,
           organization: {
             companyName,
-            companyLogoUrl: '/logo.png',
+            companyLogoUrl: companyLogoUrl || '/logo.png',
+            ...(companyLogoKey ? { companyLogoKey } : {}),
+            ...(companyLogoMediaId ? { companyLogoMediaId } : {}),
             address: companyAddress,
             phone: companyPhone,
             email: companyEmail,
@@ -308,14 +326,38 @@ export default function AdminSettingsPage() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4 text-xs">
-                <div className="flex items-center gap-4 p-3 bg-slate-50/80 rounded-xl border border-slate-100">
-                  <div className="relative h-12 w-12 shrink-0 bg-white rounded-xl border border-slate-200/80 p-1 flex items-center justify-center">
-                    <Image src="/logo.png" alt="Logo" width={40} height={40} className="h-full w-full object-contain" />
+                <div className="space-y-3 p-3.5 bg-slate-50/80 rounded-xl border border-slate-100">
+                  <div className="flex items-center gap-4">
+                    <MediaPreview
+                      src={companyLogoUrl || '/logo.png'}
+                      alt={companyName}
+                      variant="logo"
+                      className="h-14 w-14 rounded-xl bg-white shadow-2xs"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <p className="font-bold text-slate-900 text-xs">Organization Logo (R2 / Primary Asset)</p>
+                      <p className="text-slate-500 text-[11px] truncate">
+                        Automatically placed in the sidebar, generated PDF covers, Excel workbooks & DOCX headers
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="font-bold text-slate-900 text-xs">Agricart Logo (/logo.png)</p>
-                    <p className="text-slate-500 text-[11px]">Automatically placed on generated PDF covers & Excel workbooks</p>
-                  </div>
+                  <MediaUpload
+                    entityType="organization"
+                    entityId="global"
+                    isPublic={true}
+                    setAsPrimary={true}
+                    compact={true}
+                    disabled={!isSuperAdmin}
+                    label="Upload Organization Logo"
+                    description="PNG, JPEG or WebP logo (recommended square or landscape high-res)"
+                    currentUrl={companyLogoUrl}
+                    onUploadSingle={(item) => {
+                      setCompanyLogoUrl(item.url);
+                      setCompanyLogoKey(item.objectKey);
+                      setCompanyLogoMediaId(item.id);
+                    }}
+                    onError={(msg) => setError(msg)}
+                  />
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
